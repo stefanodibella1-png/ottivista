@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OttiVista · Prova occhiali</title>
+<meta name="theme-color" content="#0B0D0F">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+:root{
+  --ink:#14171A; --muted:#6A7178; --line:#E6E8EA; --soft:#F4F5F6; --white:#FFFFFF;
+  --accent:#1E4FD6; --accent-soft:#E8EEFC; --good:#1B8A4B; --warn:#B26A12; --bad:#C0392B;
+  --cam:#0B0D0F;
+  --f-ui:"Figtree", "Helvetica Neue", Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--cam);color:var(--ink);font-family:var(--f-ui);font-size:15px}
+button{font:inherit;color:inherit}
+.app{height:100%;display:flex;flex-direction:column}
+
+/* Area fotocamera */
+.cam{position:relative;flex:1;min-height:0;background:var(--cam);overflow:hidden}
+#cv,#gl{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+#gl{pointer-events:none}
+.top{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 12px) max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px));
+  background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,0));z-index:3}
+.logo{color:#fff;font-weight:700;font-size:19px;letter-spacing:-.02em}
+.logo span{font-weight:500;opacity:.7;font-size:13px;margin-left:6px}
+.icons{display:flex;gap:8px}
+.ib{width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.16);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  display:grid;place-items:center;cursor:pointer;color:#fff}
+.ib svg{width:21px;height:21px}
+.ib.on{background:#fff;color:var(--ink)}
+.ib:focus-visible,.sw:focus-visible,.fr:focus-visible,.seg button:focus-visible,.cta:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.status{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:3;background:rgba(0,0,0,.6);color:#fff;font-size:13.5px;padding:7px 13px;border-radius:999px;white-space:nowrap;max-width:calc(100% - 28px);overflow:hidden;text-overflow:ellipsis}
+.status:empty{display:none}
+.shutter{position:absolute;right:max(14px,env(safe-area-inset-right,0px));bottom:16px;z-index:3;display:flex;flex-direction:column;gap:10px}
+
+/* Pannello misure */
+.meas{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 66px);z-index:3;width:min(300px,calc(100% - 24px));
+  background:rgba(255,255,255,.96);border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:grid;gap:10px}
+.meas h3{margin:0;font-size:14px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
+.meas h3 small{font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.mv b{display:block;font-family:var(--f-mono);font-size:19px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mv b em{font-style:normal;font-size:12px;color:var(--muted);margin-left:2px}
+.mv span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.mnote{font-size:12.5px;color:var(--muted);margin:0;line-height:1.4}
+
+/* Schermata iniziale */
+.start{position:absolute;inset:0;z-index:4;background:var(--white);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+  padding:calc(env(safe-area-inset-top,0px) + 24px) max(24px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(24px,env(safe-area-inset-left,0px));text-align:center}
+.start h1{font-size:clamp(28px,7vw,40px);line-height:1.08;letter-spacing:-.03em;margin:0;text-wrap:balance;font-weight:700}
+.start p{margin:0;color:var(--muted);max-width:34ch;line-height:1.5}
+#hero{width:min(360px,86vw);height:auto}
+.cta{border:0;background:var(--ink);color:#fff;font-weight:600;font-size:16px;padding:15px 26px;border-radius:999px;cursor:pointer;display:inline-flex;gap:9px;align-items:center}
+.cta svg{width:20px;height:20px}
+.link{background:none;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:6px}
+.link input{display:none}
+.priv{font-size:12px;color:var(--muted)}
+
+/* Pannello prodotto */
+.sheet{background:var(--white);border-radius:20px 20px 0 0;margin-top:-18px;position:relative;z-index:2;display:grid;gap:12px;
+  padding:14px max(14px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 14px) max(14px,env(safe-area-inset-left,0px))}
+.prod{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.prod .nm{font-weight:700;font-size:18px;letter-spacing:-.01em}
+.prod .sz{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);margin-top:1px}
+.pill{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;white-space:nowrap}
+.pill.good{background:#E6F4EC;color:var(--good)} .pill.warn{background:#FBF0E2;color:var(--warn)} .pill.bad{background:#FBE7E5;color:var(--bad)}
+.opts{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.sws{display:flex;gap:9px}
+.sw{width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.seg{display:inline-flex;background:var(--soft);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;padding:6px 11px;border-radius:999px;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.car{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 4px;scrollbar-width:none}
+.car::-webkit-scrollbar{display:none}
+.fr{flex:0 0 auto;width:118px;scroll-snap-align:start;border:1.5px solid var(--line);background:var(--soft);border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:grid;gap:2px;position:relative;text-align:left}
+.fr[aria-pressed="true"]{border-color:var(--ink);background:#fff}
+.fr canvas{width:100%;height:auto;display:block}
+.fr .t{font-weight:600;font-size:13.5px;padding:0 4px;display:flex;justify-content:space-between}
+.fr .t small{font-family:var(--f-mono);font-size:11px;color:var(--accent);font-weight:500}
+.fr .s{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);padding:0 4px}
+.fr .best{position:absolute;top:6px;left:6px;background:var(--accent);color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:999px;letter-spacing:.03em}
+.credit{font-size:10.5px;color:var(--muted);margin:0}
+.credit a{color:inherit}
+.fr .d3{position:absolute;top:6px;right:6px;background:var(--ink);color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:999px}
+@media (min-width:900px){
+  .app{flex-direction:row}
+  .sheet{width:380px;margin-top:0;border-radius:0;align-content:start;overflow-y:auto;padding-top:22px}
+  .car{flex-wrap:wrap;overflow:visible}
+  .fr{width:calc(50% - 5px)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="cam">
+    <canvas id="cv" width="1280" height="960" aria-label="Specchio virtuale"></canvas>
+    <canvas id="gl" width="1280" height="960" aria-hidden="true"></canvas>
+    <video id="vid" playsinline muted hidden></video>
+
+    <div class="top">
+      <div class="logo">OttiVista<span id="engineTxt">avvio…</span><i id="engine" hidden></i></div>
+      <div class="icons">
+        <button class="ib" id="measBtn" aria-label="Misure del volto" title="Misure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></svg></button>
+        <button class="ib" id="holdBtn" aria-label="Tieni premuto per vedere senza occhiali" title="Senza occhiali"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 13.5c1.2-1 2.8-1 4 0M3 4l18 18"/></svg></button>
+        <button class="ib" id="flipBtn" aria-label="Cambia sorgente" title="Carica foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg></button>
+      </div>
+    </div>
+
+    <div class="meas" id="meas" hidden>
+      <h3>Misure del volto <small id="mSrc">dal vivo</small></h3>
+      <div class="mgrid">
+        <div class="mv"><b id="mPD">—</b><span>Distanza pupillare</span></div>
+        <div class="mv"><b id="mMono">—</b><span>PD dx / sx</span></div>
+        <div class="mv"><b id="mFace">—</b><span>Larghezza viso</span></div>
+        <div class="mv"><b id="mShape">—</b><span>Forma viso</span></div>
+        <div class="mv"><b id="mSize">—</b><span>Calibro consigliato</span></div>
+        <div class="mv"><b id="mDec">—</b><span>Decentramento</span></div>
+      </div>
+      <p class="mnote" id="why"></p>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="shutter">
+      <button class="ib" id="snapBtn" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+    </div>
+
+    <div class="start" id="start">
+      <canvas id="hero" width="720" height="300" aria-hidden="true"></canvas>
+      <h1>Provali addosso,<br>prima di sceglierli.</h1>
+      <p>Inquadra il viso: gli occhiali ti seguono in tempo reale, in scala reale, e misuriamo la tua distanza pupillare.</p>
+      <button class="cta" id="goBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Prova ora</button>
+      <label class="link" for="upload">oppure carica una foto<input id="upload" type="file" accept="image/*"></label>
+      <span class="priv">L'immagine resta sul tuo telefono: niente viene inviato.</span>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="prod">
+      <div><div class="nm" id="pName">Etna</div><div class="sz" id="pSize">49□21-145 · panto · acetato</div></div>
+      <span class="pill good" id="pFit">Calza giusto</span>
+    </div>
+    <div class="opts">
+      <div class="sws" id="colors"></div>
+      <div class="seg" id="lensMode"><button data-v="clear" aria-pressed="true">Chiare</button><button data-v="sun" aria-pressed="false">Sole</button><button data-v="photo" aria-pressed="false">Foto</button></div>
+    </div>
+    <div class="car" id="car"></div>
+    <p class="credit">Modelli 3D: «Glasses» di andlipin1 e «Glasses 08» di Dokono Kinokoda, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>, via Sketchfab.</p>
+  </div>
+</div>
+<input id="uv" type="range" min="0" max="100" value="70" hidden>
+
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+const MP_VER = "0.10.14";
+const IRIS_MM = 11.7;
+/* ---------- Catalogo ---------- */
+const FRAMES = [
+  {id:"etna", name:"Etna", style:"panto", lens:49, bridge:21, temple:145, h:42, n:2.4, rim:3.4, mat:"acetato", keyhole:true},
+  {id:"ortigia", name:"Ortigia", style:"rect", lens:54, bridge:17, temple:145, h:34, n:4.6, rim:3.0, mat:"acetato"},
+  {id:"taormina", name:"Taormina", style:"cat", lens:53, bridge:16, temple:140, h:38, n:3.0, rim:3.6, mat:"acetato"},
+  {id:"stromboli", name:"Stromboli", style:"aviator", lens:58, bridge:14, temple:140, h:50, n:2.4, rim:1.1, mat:"metallo"},
+  {id:"noto", name:"Noto", style:"browline", lens:51, bridge:20, temple:145, h:40, n:3.1, rim:1.0, mat:"misto"},
+  {id:"cefalu", name:"Cefalù", style:"hex", lens:50, bridge:20, temple:145, h:44, n:2, rim:1.2, mat:"metallo"},
+  {id:"marzamemi", name:"Marzamemi", style:"square", lens:55, bridge:18, temple:145, h:47, n:5.2, rim:4.0, mat:"acetato"},
+  {id:"vulcano", name:"Vulcano", style:"round", lens:47, bridge:22, temple:140, h:45, n:2, rim:1.0, mat:"metallo"}
+];
+const STYLE_IT = {panto:"panto", rect:"rettangolare", cat:"cat-eye", aviator:"goccia", browline:"browline", hex:"esagonale", square:"squadrato oversize", round:"tondo"};
+const COLORS_ACE = [
+  {id:"nero", name:"Nero lucido", c:"#121314"},
+  {id:"tarta", name:"Tartaruga", c:"pattern"},
+  {id:"cristallo", name:"Cristallo", c:"rgba(226,233,236,0.55)"},
+  {id:"notte", name:"Blu notte", c:"#1D2B4C"},
+  {id:"bordeaux", name:"Bordeaux", c:"#5C1B27"},
+  {id:"miele", name:"Miele", c:"rgba(196,128,52,0.82)"}
+];
+const COLORS_MET = [
+  {id:"oro", name:"Oro", c:"metal", m:["#F3DC9A","#B88A2F","#F6E5B0","#9C7424"]},
+  {id:"argento", name:"Argento", c:"metal", m:["#F1F3F5","#9DA3AA","#FFFFFF","#7F868D"]},
+  {id:"canna", name:"Canna di fucile", c:"metal", m:["#6B7076","#2E3135","#7D8288","#24272A"]},
+  {id:"rosa", name:"Oro rosa", c:"metal", m:["#F2CDB9","#B47A62","#F7DACB","#986350"]}
+];
+const TINTS = [
+  {id:"grigio", name:"Grigio", rgb:[38,42,44]},
+  {id:"marrone", name:"Marrone", rgb:[92,58,28]},
+  {id:"g15", name:"G-15", rgb:[48,66,42]},
+  {id:"blu", name:"Blu specchiato", rgb:[28,58,112], mirror:true},
+  {id:"rosa", name:"Rosa", rgb:[170,86,108]}
+];
+const SHAPES = {
+  "Ovale":     {panto:.9,rect:.9,cat:.9,aviator:.9,browline:.9,hex:.85,square:.85,round:.85, why:"Il viso ovale è il più versatile: quasi tutte le forme stanno bene, conta soprattutto la misura giusta."},
+  "Tondo":     {rect:1,square:1,cat:.9,browline:.9,hex:.85,aviator:.6,panto:.5,round:.3, why:"Sul viso tondo servono linee dritte e angoli che allungano: rettangolari, squadrate, browline."},
+  "Quadrato":  {round:1,panto:.95,aviator:.9,cat:.85,hex:.6,browline:.55,rect:.35,square:.3, why:"Sul viso squadrato le curve ammorbidiscono la mandibola: tondi, panto e goccia."},
+  "Allungato": {square:1,aviator:.9,panto:.9,browline:.8,round:.7,hex:.7,cat:.6,rect:.45, why:"Sul viso allungato servono lenti alte che accorciano la proporzione: oversize e goccia."},
+  "A cuore":   {aviator:1,round:.9,panto:.85,rect:.75,hex:.7,square:.6,cat:.45,browline:.4, why:"Sul viso a cuore conviene alleggerire la parte alta: forme più ampie in basso, come goccia e tondo."},
+  "Diamante":  {cat:1,browline:.95,panto:.85,round:.8,hex:.7,aviator:.7,rect:.6,square:.55, why:"Sul viso a diamante una linea superiore marcata bilancia gli zigomi: cat-eye e browline."}
+};
+
+/* ---------- Stato ---------- */
+const S = {
+  frame: FRAMES[0], color: COLORS_ACE[1], metalColor: COLORS_MET[0],
+  lensMode:"clear", tint: TINTS[0], uv:.7, ar:true, polar:false, grad:false,
+  hide:false, adjust:false, source:"demo", live:false,
+  base:null, F:null, knownPD:63, M:null, drag:null
+};
+let mp = null, mpVision = null, sampleCap = null, downloadsCap = null;
+
+/* ---------- Utilità ---------- */
+const d2 = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
+const mid = (a,b) => [(a[0]+b[0])/2, (a[1]+b[1])/2];
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const fmt = (v,d=1) => (Math.round(v*10**d)/10**d).toFixed(d);
+function setStatus(t){ $("status").textContent = t || ""; }
+function setEngine(txt, on){ $("engineTxt").textContent = txt; $("engine").classList.toggle("on", !!on); }
+
+/* ---------- Pattern tartaruga ---------- */
+const tortoise = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 160;
+  const g = c.getContext("2d");
+  g.fillStyle = "#6B3A14"; g.fillRect(0,0,160,160);
+  let seed = 7; const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  const cols = ["#2A1408","#3B1D0A","#8C5420","#B9782E","#1E0F06","#D29A48"];
+  for (let i=0;i<70;i++){
+    const x=rnd()*160, y=rnd()*160, r=4+rnd()*20;
+    for (const ox of [-160,0,160]) for (const oy of [-160,0,160]){
+      g.fillStyle = cols[i%cols.length]; g.globalAlpha = .35 + rnd()*.5;
+      g.beginPath(); g.ellipse(x+ox, y+oy, r, r*(.5+rnd()*.6), rnd()*3, 0, Math.PI*2); g.fill();
+    }
+  }
+  g.globalAlpha = 1; return c;
+})();
+let tortoisePat = null;
+
+/* ---------- Geometria lente ---------- */
+function lensPts(fr, outer){
+  const w = fr.lens, h = fr.h, pts = [];
+  if (fr.style === "hex"){
+    return [[w/2,0],[w/4,h/2],[-w/4,h/2],[-w/2,0],[-w/4,-h/2],[w/4,-h/2]].map(p => [p[0]*outer, p[1]]);
+  }
+  const N = 120, n = fr.n;
+  for (let i=0;i<N;i++){
+    const t = i/N*Math.PI*2, c = Math.cos(t), s = Math.sin(t);
+    let x = w/2*Math.sign(c)*Math.abs(c)**(2/n);
+    let y = h/2*Math.sign(s)*Math.abs(s)**(2/n);
+    const u = x*outer/(w/2), v = y/(h/2);
+    if (fr.style === "cat"){
+      if (v<0){ y -= h*.24*Math.max(0,u)**2.4*(-v); x += outer*w*.07*Math.max(0,u)**2*(-v); }
+      else { y -= h*.1*Math.max(0,u)*v; }
+    } else if (fr.style === "aviator"){
+      if (v>0){ y += h*.2*((u+1)/2)**1.6*v; if (u<0) x += outer*w*.07*(-u)*v; }
+      else y *= .92;
+    } else if (fr.style === "panto"){
+      if (v<0) y *= .86; else if (u<0) x += outer*w*.05*(-u)*v;
+    }
+    pts.push([x,y]);
+  }
+  return pts;
+}
+function lensCY(fr){ return fr.style === "aviator" ? fr.h*.12 : 1.5; }
+function pathPts(g, pts, ox, oy){
+  g.beginPath(); pts.forEach((p,i) => i ? g.lineTo(p[0]+ox,p[1]+oy) : g.moveTo(p[0]+ox,p[1]+oy)); g.closePath();
+}
+
+/* ---------- Disegno occhiale (unità: mm, origine tra le pupille) ---------- */
+function frameStroke(g, fr, scaleRef){
+  const col = (fr.mat === "metallo") ? S.metalColor : S.color;
+  if (col.c === "pattern"){
+    tortoisePat = tortoisePat || g.createPattern(tortoise, "repeat");
+    try { tortoisePat.setTransform(new DOMMatrix().scale(.14)); } catch(e){}
+    return tortoisePat;
+  }
+  if (col.c === "metal"){
+    const gr = g.createLinearGradient(-70,-25,70,25);
+    gr.addColorStop(0,col.m[0]); gr.addColorStop(.35,col.m[1]); gr.addColorStop(.6,col.m[2]); gr.addColorStop(1,col.m[3]);
+    return gr;
+  }
+  return col.c;
+}
+function wireStroke(g){
+  const col = S.metalColor.c === "metal" ? S.metalColor : COLORS_MET[0];
+  const gr = g.createLinearGradient(-70,-25,70,25);
+  gr.addColorStop(0,col.m[0]); gr.addColorStop(.4,col.m[1]); gr.addColorStop(.7,col.m[2]); gr.addColorStop(1,col.m[3]);
+  return gr;
+}
+function lensAlpha(){
+  if (S.lensMode === "sun") return .74;
+  if (S.lensMode === "photo") return .05 + .7*S.uv;
+  return .035;
+}
+function drawGlasses(g, fr, pxScale, opts={}){
+  const shadow = opts.shadow !== false;
+  const cy = lensCY(fr), dx = (fr.lens + fr.bridge)/2;
+  const sides = [-1, 1];
+  const L = sides.map(s => ({s, cx: s*dx, pts: lensPts(fr, s)}));
+  const a = lensAlpha();
+  const tint = S.lensMode === "clear" ? [150,170,190] : S.tint.rgb;
+
+  // Lenti
+  for (const l of L){
+    g.save();
+    pathPts(g, l.pts, l.cx, cy); g.clip();
+    let fill;
+    if (S.grad && S.lensMode !== "clear"){
+      fill = g.createLinearGradient(0, cy-fr.h/2, 0, cy+fr.h/2);
+      fill.addColorStop(0, `rgba(${tint},${a})`); fill.addColorStop(1, `rgba(${tint},${a*.18})`);
+    } else fill = `rgba(${tint},${a})`;
+    g.fillStyle = fill; g.fillRect(l.cx-fr.lens, cy-fr.h, fr.lens*2, fr.h*2);
+    // riflessi
+    const glare = S.polar ? .07 : (S.ar ? .1 : .3);
+    const rg = g.createLinearGradient(l.cx-fr.lens/2, cy-fr.h/2, l.cx+fr.lens/2, cy+fr.h/2);
+    rg.addColorStop(0, "rgba(255,255,255,0)"); rg.addColorStop(.28, `rgba(255,255,255,${glare})`);
+    rg.addColorStop(.36, "rgba(255,255,255,0)"); rg.addColorStop(.62, "rgba(255,255,255,0)");
+    rg.addColorStop(.7, `rgba(255,255,255,${glare*.55})`); rg.addColorStop(.76, "rgba(255,255,255,0)");
+    g.fillStyle = rg; g.fillRect(l.cx-fr.lens, cy-fr.h, fr.lens*2, fr.h*2);
+    if (S.ar && S.lensMode === "clear"){
+      const ag = g.createRadialGradient(l.cx+fr.lens*.18, cy-fr.h*.22, 1, l.cx+fr.lens*.18, cy-fr.h*.22, fr.lens*.32);
+      ag.addColorStop(0, "rgba(120,230,170,.16)"); ag.addColorStop(1, "rgba(120,230,170,0)");
+      g.fillStyle = ag; g.fillRect(l.cx-fr.lens, cy-fr.h, fr.lens*2, fr.h*2);
+    }
+    if (S.tint.mirror && S.lensMode !== "clear"){
+      const mg = g.createLinearGradient(0, cy-fr.h/2, 0, cy+fr.h/2);
+      mg.addColorStop(0, `rgba(120,180,255,${.45*a})`); mg.addColorStop(.5, `rgba(200,120,255,${.25*a})`); mg.addColorStop(1, `rgba(60,120,220,${.4*a})`);
+      g.fillStyle = mg; g.fillRect(l.cx-fr.lens, cy-fr.h, fr.lens*2, fr.h*2);
+    }
+    g.restore();
+    // bisello
+    g.save(); pathPts(g, l.pts, l.cx, cy); g.lineWidth = .45; g.strokeStyle = "rgba(255,255,255,.28)"; g.stroke(); g.restore();
+  }
+
+  // Montatura
+  const metal = fr.mat === "metallo", mixed = fr.mat === "misto";
+  const stroke = metal ? frameStroke(g, fr) : (mixed ? wireStroke(g) : frameStroke(g, fr));
+  const rim = mixed ? 1.0 : fr.rim;
+  g.save();
+  if (shadow){ g.shadowColor = "rgba(0,0,0,.38)"; g.shadowBlur = 3.2*pxScale; g.shadowOffsetY = 2.4*pxScale; }
+  g.lineJoin = "round"; g.lineCap = "round";
+  g.strokeStyle = stroke; g.lineWidth = rim;
+  for (const l of L){ pathPts(g, l.pts, l.cx, cy); g.stroke(); }
+
+  // ponte
+  const yb = cy - fr.h*(fr.style==="aviator" ? .3 : .2);
+  g.beginPath();
+  g.moveTo(-fr.bridge/2 - rim*.3, yb); g.quadraticCurveTo(0, yb - (metal||mixed ? 4.5 : 3.2), fr.bridge/2 + rim*.3, yb);
+  g.lineWidth = metal || mixed ? 1.3 : rim*1.25; g.stroke();
+  if (fr.keyhole){
+    g.beginPath(); g.moveTo(-fr.bridge/2, yb+3); g.quadraticCurveTo(0, yb-1.5, fr.bridge/2, yb+3);
+    g.lineWidth = rim*.8; g.stroke();
+  }
+  if (fr.style === "aviator"){
+    const ty = cy - fr.h/2 + 2.5;
+    g.beginPath(); g.moveTo(-fr.bridge/2 - 3, ty); g.lineTo(fr.bridge/2 + 3, ty); g.lineWidth = 1.2; g.stroke();
+  }
+  // cerniere e aste
+  for (const l of L){
+    const ox = l.s*(dx + fr.lens/2) - l.s*1, oy = cy - fr.h*.28;
+    g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + l.s*6.5, oy - .6);
+    g.lineWidth = metal ? 1.8 : rim*1.15; g.stroke();
+  }
+  // browline: sopracciglio in acetato
+  if (mixed){
+    const top = S.color.c === "pattern" ? (tortoisePat || g.createPattern(tortoise,"repeat")) : (S.color.c === "metal" ? COLORS_ACE[0].c : S.color.c);
+    if (top && top.setTransform){ try{ top.setTransform(new DOMMatrix().scale(.14)); }catch(e){} }
+    g.strokeStyle = top; g.lineWidth = 4.4;
+    for (const l of L){
+      const tp = l.pts.filter(p => p[1] < -fr.h*.16);
+      tp.sort((p,q) => p[0]-q[0]);
+      g.beginPath(); tp.forEach((p,i) => i ? g.lineTo(p[0]+l.cx, p[1]+cy-.6) : g.moveTo(p[0]+l.cx, p[1]+cy-.6)); g.stroke();
+    }
+  }
+  g.restore();
+
+  // lucentezza acetato
+  if (!metal){
+    g.save(); g.lineCap = "round"; g.strokeStyle = "rgba(255,255,255,.22)"; g.lineWidth = Math.max(.35, rim*.22);
+    for (const l of L){
+      const tp = l.pts.filter(p => p[1] < -fr.h*.25).sort((p,q)=>p[0]-q[0]);
+      g.beginPath(); tp.forEach((p,i) => i ? g.lineTo(p[0]+l.cx, p[1]+cy - rim*.22) : g.moveTo(p[0]+l.cx, p[1]+cy - rim*.22)); g.stroke();
+    }
+    g.restore();
+  }
+  // naselli
+  if (metal || mixed){
+    g.save(); g.fillStyle = "rgba(235,240,240,.35)"; g.strokeStyle = "rgba(255,255,255,.5)"; g.lineWidth = .3;
+    for (const s of sides){ g.beginPath(); g.ellipse(s*(fr.bridge/2 + 1.2), cy + 3, 1.8, 3.4, s*.35, 0, Math.PI*2); g.fill(); g.stroke(); }
+    g.restore();
+  }
+}
+
+
+/* ---------- Misure ---------- */
+function computeMeasures(){
+  const F = S.F; if (!F) return null;
+  const eyeDist = d2(F.eyeA, F.eyeB);
+  const cx = (F.edgeA[0]+F.edgeB[0])/2, half = Math.abs(F.edgeB[0]-F.edgeA[0])/2 || 1;
+  const yawS = clamp((F.bridge[0]-cx)/half, -.7, .7);
+  const cosY = Math.sqrt(1 - (yawS*.85)**2);
+  if (S.source !== "mp") F.pxPerMm = eyeDist / (S.knownPD * cosY);
+  const px = F.pxPerMm;
+  const pd = eyeDist/(px*cosY);
+  const mA = Math.abs(F.bridge[0]-F.eyeA[0])/(px*cosY), mB = Math.abs(F.eyeB[0]-F.bridge[0])/(px*cosY);
+  const k = pd/(mA+mB);
+  const faceW = d2(F.edgeA, F.edgeB)/(px*cosY);
+  const innerMm = F.innerA ? d2(F.innerA, F.innerB)/(px*cosY) : 32;
+  const bridgeEst = Math.round(clamp(innerMm*.56, 15, 22));
+  let shape = F.shape;
+  if (S.source === "mp"){
+    const C = d2(F.edgeA,F.edgeB), L = d2(F.top,F.chin), J = d2(F.jawA,F.jawB), Fo = d2(F.foreA,F.foreB);
+    const r = L/C, jr = J/C, fr = Fo/C;
+    shape = r > 1.38 ? "Allungato" : (jr > .86 && r < 1.22) ? "Quadrato" : r < 1.16 ? "Tondo" : (fr > .9 && jr < .76) ? "A cuore" : fr < .8 ? "Diamante" : "Ovale";
+  }
+  // la persona: occhio destro = lato sinistro dell'immagine (foto non speculare)
+  const monoD = S.live ? mB*k : mA*k, monoS = S.live ? mA*k : mB*k;
+  const lens = Math.round((faceW - bridgeEst - 10)/2);
+  return { pd, monoD, monoS, faceW, shape: shape || "Ovale", bridgeEst, yawS, lens, temple: faceW < 136 ? 140 : 145 };
+}
+function frameWidth(fr){ return fr.front || (2*fr.lens + fr.bridge + 10); }
+function scoreFrame(fr, M){
+  const st = (SHAPES[M.shape] || SHAPES.Ovale)[fr.style] ?? .7;
+  const diff = frameWidth(fr) - M.faceW;
+  const fit = Math.max(0, 1 - Math.abs(diff)/16);
+  return { score: Math.round(100*(.55*st + .45*fit)), diff, st };
+}
+
+
+function mpToF(lm, W, H, mirror){
+  const P = i => [ (mirror ? 1-lm[i].x : lm[i].x)*W, lm[i].y*H ];
+  const pair = (i,j) => { const a = P(i), b = P(j); return a[0] <= b[0] ? [a,b] : [b,a]; };
+  const [eyeA, eyeB] = pair(468, 473);
+  const [edgeA, edgeB] = pair(234, 454);
+  const [jawA, jawB] = pair(172, 397);
+  const [foreA, foreB] = pair(54, 284);
+  const [innerA, innerB] = pair(133, 362);
+  const irisPx = (d2(P(469),P(471)) + d2(P(474),P(476)) + d2(P(470),P(472)) + d2(P(475),P(477)))/4;
+  return { eyeA, eyeB, edgeA, edgeB, jawA, jawB, foreA, foreB, innerA, innerB, bridge:P(168), top:P(10), chin:P(152), pxPerMm: irisPx/IRIS_MM };
+}
+function smoothF(prev, next, k){
+  if (!prev) return next;
+  const out = {...next};
+  for (const key of Object.keys(next)){
+    if (Array.isArray(next[key])) out[key] = [prev[key][0] + (next[key][0]-prev[key][0])*k, prev[key][1] + (next[key][1]-prev[key][1])*k];
+    else if (typeof next[key] === "number") out[key] = prev[key] + (next[key]-prev[key])*k;
+  }
+  return out;
+}
+
+
+S.source = "mp"; S.F = null;
+
+/* ---------- Montature 3D ---------- */
+FRAMES.unshift(
+  {id:"tondo3d", name:"Vulcano 3D", style:"round", lens:44, bridge:22, temple:140, h:44, n:2, rim:1, mat:"metallo", model:"models/round.glb", front:131},
+  {id:"sport3d", name:"Scirocco 3D", style:"sport", lens:71, bridge:0, temple:130, h:31, n:2, rim:1, mat:"acetato", model:"models/sport.glb", front:142, sun:true}
+);
+STYLE_IT.sport = "sportivo avvolgente";
+for (const k in SHAPES) SHAPES[k].sport = SHAPES[k].sport ?? .75;
+S.frame = FRAMES[0];
+const METAL_BASE = {oro:"#D9B24C", argento:"#C8CDD3", canna:"#4C5056", rosa:"#D8A08A"};
+const T = {ok:false};
+let pose = null;
+
+async function init3D(){
+  try {
+    const THREE = await import("three");
+    const {GLTFLoader} = await import("three/addons/loaders/GLTFLoader.js");
+    const {RoomEnvironment} = await import("three/addons/environments/RoomEnvironment.js");
+    const mk = canvas => {
+      const r = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true, preserveDrawingBuffer:true});
+      r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+      r.setClearColor(0x000000, 0); return r;
+    };
+    const renderer = mk($("gl"));
+    const scene = new THREE.Scene();
+    const pm = new THREE.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(new RoomEnvironment(), .04).texture;
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(.4, 1, 1.2); scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xffffff, .35));
+    const cam = new THREE.OrthographicCamera(0, 1, 0, -1, -1e6, 1e6);
+    const root = new THREE.Group(); root.matrixAutoUpdate = false; scene.add(root);
+    const occ = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), new THREE.MeshBasicMaterial({colorWrite:false}));
+    occ.renderOrder = -1; root.add(occ);
+    // anteprime
+    const thumbCanvas = document.createElement("canvas"); thumbCanvas.width = 480; thumbCanvas.height = 220;
+    const thumbR = mk(thumbCanvas);
+    const thumbScene = new THREE.Scene(); thumbScene.environment = new THREE.PMREMGenerator(thumbR).fromScene(new RoomEnvironment(), .04).texture;
+    const tl = new THREE.DirectionalLight(0xffffff, 1.6); tl.position.set(.3, 1, 1.4); thumbScene.add(tl, new THREE.AmbientLight(0xffffff,.4));
+    Object.assign(T, {THREE, renderer, scene, cam, root, occ, thumbR, thumbScene, models:{}, ok:true});
+    const loader = new GLTFLoader();
+    await Promise.all(FRAMES.filter(f => f.model).map(f => new Promise(res => {
+      loader.load(f.model, g => { T.models[f.id] = g.scene; res(); }, undefined, () => res());
+    })));
+    applyMaterials(); drawThumbs(); render();
+  } catch(e){ console.warn("3D non disponibile", e); }
+}
+function parseCol(c){
+  if (c.c === "pattern") return {hex:"#6E3D16", op:1};
+  const m = /rgba?\(([^)]+)\)/.exec(c.c);
+  if (m){ const v = m[1].split(",").map(Number); return {hex:`rgb(${v[0]},${v[1]},${v[2]})`, op: v[3] ?? 1}; }
+  return {hex:c.c, op:1};
+}
+function lensMaterial(){
+  const {THREE} = T, a = lensAlpha();
+  const tint = S.lensMode === "clear" ? "#DCE6EC" : `rgb(${S.tint.rgb.join(",")})`;
+  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(tint), transparent:true,
+    opacity: S.lensMode === "clear" ? .1 : Math.min(.92, a + .12), roughness:.04, metalness: S.tint.mirror && S.lensMode !== "clear" ? .55 : .05,
+    clearcoat:1, clearcoatRoughness:.04, envMapIntensity: S.polar ? .35 : (S.ar && S.lensMode === "clear" ? .45 : 1.1),
+    depthWrite:false, side:THREE.DoubleSide});
+}
+function frameMaterial(fr){
+  const {THREE} = T;
+  if (fr.mat === "metallo"){
+    return new THREE.MeshStandardMaterial({color: new THREE.Color(METAL_BASE[S.metalColor.id] || "#D9B24C"), metalness:1, roughness:.26, side:THREE.DoubleSide});
+  }
+  const pc = parseCol(S.color);
+  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(pc.hex), roughness:.32, metalness:0, clearcoat:1, clearcoatRoughness:.08,
+    transparent: pc.op < 1, opacity: pc.op, side:THREE.DoubleSide});
+}
+function applyMaterials(){
+  if (!T.ok) return;
+  const {THREE} = T;
+  for (const f of FRAMES.filter(f => f.model && T.models[f.id])){
+    const lens = lensMaterial(), frame = frameMaterial(f);
+    T.models[f.id].traverse(o => {
+      if (!o.isMesh) return;
+      const n = o.material.name || o.name;
+      if (n.startsWith("lens")){ o.material = lens; o.renderOrder = 2; }
+      else if (n.startsWith("tips")) o.material = new THREE.MeshStandardMaterial({color:0x151515, roughness:.4});
+      else if (n.startsWith("pads")) o.material = new THREE.MeshPhysicalMaterial({color:0xEEF2F4, transparent:true, opacity:.55, roughness:.2});
+      else o.material = frame;
+    });
+  }
+}
+function computePose(lm, W, H, mirror){
+  const V = T.THREE.Vector3;
+  const P = i => new V((mirror ? 1-lm[i].x : lm[i].x)*W, -lm[i].y*H, -lm[i].z*W);
+  const x = P(263).sub(P(33)); if (x.x < 0) x.negate(); x.normalize();
+  const yr = P(10).sub(P(152));
+  const z = new V().crossVectors(x, yr).normalize();
+  const y = new V().crossVectors(z, x).normalize();
+  const eye = P(468).add(P(473)).multiplyScalar(.5);
+  return {x, y, z, eye};
+}
+function smoothPose(p, n, k){
+  if (!p) return n;
+  const L = (a,b) => a.clone().lerp(b, k);
+  const x = L(p.x, n.x).normalize(), z0 = L(p.z, n.z).normalize();
+  const y = new T.THREE.Vector3().crossVectors(z0, x).normalize(), z = new T.THREE.Vector3().crossVectors(x, y).normalize();
+  return {x, y, z, eye: L(p.eye, n.eye)};
+}
+function render3D(){
+  if (!T.ok) return;
+  const {renderer, scene, cam, root, occ} = T;
+  const W = cv.width, H = cv.height;
+  if (renderer.domElement.width !== W || renderer.domElement.height !== H) renderer.setSize(W, H, false);
+  cam.left = 0; cam.right = W; cam.top = 0; cam.bottom = -H; cam.updateProjectionMatrix();
+  const fr = S.frame, model = T.models[fr.id];
+  root.children.filter(c => c !== occ).forEach(c => root.remove(c));
+  if (model && pose && S.F && !S.hide){
+    root.add(model);
+    const px = S.F.pxPerMm, M = S.M;
+    const pos = pose.eye.clone().addScaledVector(pose.z, 13*px).addScaledVector(pose.y, (fr.style==="sport" ? 2 : .5)*px);
+    const m = new T.THREE.Matrix4().makeBasis(pose.x, pose.y, pose.z);
+    m.scale(new T.THREE.Vector3(px, px, px)); m.setPosition(pos);
+    root.matrix.copy(m); root.matrixWorldNeedsUpdate = true;
+    const fw = M ? M.faceW : 140;
+    occ.scale.set(fw/2 + 3, 118, 100); occ.position.set(0, -18, -112);
+    root.visible = true;
+  } else root.visible = false;
+  renderer.render(scene, cam);
+}
+function thumb3D(f, c){
+  if (!T.ok || !T.models[f.id]) return false;
+  const {THREE, thumbR, thumbScene} = T, model = T.models[f.id];
+  thumbScene.add(model);
+  const half = (f.front || 140)/2 + 4, aspect = c.width/c.height;
+  const cam = new THREE.OrthographicCamera(-half, half, half/aspect, -half/aspect, -1000, 1000);
+  cam.position.set(0, 18, 60); cam.lookAt(0, 0, -20);
+  thumbR.render(thumbScene, cam); thumbScene.remove(model);
+  const g = c.getContext("2d"); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height); g.drawImage(thumbR.domElement, 0, 0, c.width, c.height);
+  return true;
+}
+
+let mpReady = null, stream = null, raf = 0, lastTs = -1, frameN = 0;
+const pdHist = [];
+
+/* ---------- Motore AR ---------- */
+function initMP(){
+  const base = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+  mpReady = (async () => {
+    const vision = await import(`${base}/vision_bundle.mjs`);
+    const fs = await vision.FilesetResolver.forVisionTasks(`${base}/wasm`);
+    const make = delegate => vision.FaceLandmarker.createFromOptions(fs, {
+      baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate },
+      runningMode:"VIDEO", numFaces:1 });
+    try { mp = await make("GPU"); } catch(e){ mp = await make("CPU"); }
+    $("engineTxt").textContent = "AR live";
+    return mp;
+  })().catch(e => { $("engineTxt").textContent = "motore non disponibile"; throw e; });
+  mpReady.catch(() => {});
+}
+
+/* ---------- Rendering ---------- */
+function render(){
+  const W = cv.width, H = cv.height;
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
+  if (S.live){ ctx.save(); ctx.translate(W,0); ctx.scale(-1,1); ctx.drawImage($("vid"),0,0,W,H); ctx.restore(); }
+  else if (S.base) ctx.drawImage(S.base,0,0,W,H);
+  const F = S.F;
+  if (F && !S.hide && !S.frame.model){
+    const M = S.M || computeMeasures();
+    const c = mid(F.eyeA, F.eyeB);
+    const roll = Math.atan2(F.eyeB[1]-F.eyeA[1], F.eyeB[0]-F.eyeA[0]);
+    const sx = Math.sqrt(1 - (M.yawS*.85)**2), px = F.pxPerMm;
+    ctx.save(); ctx.translate(c[0] + M.yawS*px*4, c[1]); ctx.rotate(roll); ctx.scale(px*sx, px);
+    drawGlasses(ctx, S.frame, px); ctx.restore();
+  }
+  render3D();
+}
+
+/* ---------- Pannello ---------- */
+function median(a){ const b = [...a].sort((x,y)=>x-y); return b[Math.floor(b.length/2)]; }
+function updatePanel(){
+  const fr = S.frame;
+  $("pName").textContent = fr.name;
+  $("pSize").textContent = (fr.model && !fr.bridge ? `monolente ${fr.front} mm` : `${fr.lens}□${fr.bridge}-${fr.temple}`) + ` · ${STYLE_IT[fr.style]} · ${fr.mat === "metallo" ? "metallo" : "acetato"}${fr.model ? " · 3D" : ""}`;
+  const M = S.M;
+  const pill = $("pFit");
+  if (!M){ pill.className = "pill"; pill.textContent = ""; renderCar(null); return; }
+  const s = scoreFrame(fr, M), d = Math.round(s.diff);
+  pill.className = "pill " + (Math.abs(d) <= 4 ? "good" : Math.abs(d) <= 9 ? "warn" : "bad");
+  pill.textContent = Math.abs(d) <= 4 ? "Calza giusto" : d > 0 ? `Largo di ${d} mm` : `Stretto di ${-d} mm`;
+  const pd = pdHist.length ? median(pdHist) : M.pd;
+  $("mPD").innerHTML = `${fmt(pd)}<em>mm</em>`;
+  $("mMono").textContent = `${fmt(M.monoD)} / ${fmt(M.monoS)}`;
+  $("mFace").innerHTML = `${Math.round(M.faceW)}<em>mm</em>`;
+  $("mShape").textContent = M.shape;
+  $("mSize").textContent = `${M.lens}□${M.bridgeEst}`;
+  $("mDec").innerHTML = `${fmt(((fr.lens+fr.bridge)-pd)/2)}<em>mm/occhio</em>`;
+  $("mSrc").textContent = S.live ? "dal vivo" : "da foto";
+  $("why").textContent = (SHAPES[M.shape] || SHAPES.Ovale).why;
+  renderCar(M);
+}
+function renderCar(M){
+  const host = $("car");
+  if (!host.children.length){
+    for (const f of FRAMES){
+      const b = document.createElement("button"); b.className = "fr"; b.dataset.id = f.id;
+      b.innerHTML = `<canvas width="240" height="110"></canvas><div class="t">${f.name}<small></small></div><div class="s">${f.model && !f.bridge ? "monolente " + f.front + " mm" : f.lens + "□" + f.bridge + "-" + f.temple}</div>${f.model ? '<span class="d3">3D</span>' : ""}`;
+      b.addEventListener("click", () => { S.frame = f; if (f.sun && S.lensMode === "clear") setLens("sun"); renderColors(); updatePanel(); drawThumbs(); if (!S.live) render(); });
+      host.appendChild(b);
+    }
+  }
+  const els = {}; [...host.children].forEach(el => els[el.dataset.id] = el);
+  let order = FRAMES.map(f => ({f, score: M ? scoreFrame(f, M).score : null}));
+  if (M) order.sort((a,b) => b.score - a.score);
+  order.forEach((it,i) => {
+    const el = els[it.f.id]; host.appendChild(el);
+    el.setAttribute("aria-pressed", String(it.f === S.frame));
+    el.querySelector("small").textContent = it.score ?? "";
+    const old = el.querySelector(".best"); if (old) old.remove();
+    if (M && i === 0){ const t = document.createElement("span"); t.className = "best"; t.textContent = "PIÙ ADATTO"; el.appendChild(t); }
+  });
+}
+function drawThumbs(){
+  for (const el of $("car").children){
+    const f = FRAMES.find(x => x.id === el.dataset.id), c = el.querySelector("canvas"), g = c.getContext("2d");
+    if (f.model){ thumb3D(f, c); continue; }
+    g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height);
+    const sc = (c.width - 16)/(frameWidth(f) + 4);
+    g.translate(c.width/2, c.height/2 - lensCY(f)*sc); g.scale(sc,sc);
+    drawGlasses(g, f, sc, {shadow:false});
+  }
+}
+function renderColors(){
+  const host = $("colors"); host.innerHTML = "";
+  const metal = S.frame.mat === "metallo", list = metal ? COLORS_MET : COLORS_ACE, cur = metal ? S.metalColor : S.color;
+  for (const c of list){
+    const b = document.createElement("button"); b.className = "sw"; b.title = c.name; b.setAttribute("aria-label", c.name);
+    b.setAttribute("aria-pressed", String(c === cur));
+    b.style.background = c.c === "pattern" ? `url(${tortoise.toDataURL()}) center/60px` : c.c === "metal" ? `linear-gradient(135deg,${c.m.join(",")})` : c.c;
+    b.addEventListener("click", () => { if (metal) S.metalColor = c; else S.color = c; applyMaterials(); renderColors(); drawThumbs(); if (!S.live) render(); });
+    host.appendChild(b);
+  }
+}
+function drawHero(){
+  const c = $("hero"), g = c.getContext("2d"), flat = FRAMES.filter(f => !f.model), list = [flat[2], flat[3], flat[7]];
+  g.clearRect(0,0,c.width,c.height);
+  list.forEach((f,i) => {
+    const sc = 1.55, x = [150, 360, 570][i], y = [110, 190, 110][i];
+    g.save(); g.translate(x, y); g.rotate([-.12, 0, .12][i]); g.scale(sc, sc);
+    drawGlasses(g, f, sc, {shadow:false}); g.restore();
+  });
+}
+
+/* ---------- Live ---------- */
+async function startLive(){
+  setStatus("Avvio fotocamera…");
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user", width:{ideal:1280}, height:{ideal:720}}, audio:false});
+  } catch(e){
+    setStatus("Fotocamera non autorizzata: carica una foto");
+    $("start").hidden = false; return;
+  }
+  const v = $("vid"); v.srcObject = stream; await v.play();
+  cv.width = v.videoWidth; cv.height = v.videoHeight;
+  $("start").hidden = true;
+  setStatus("Caricamento motore AR…");
+  try { await mpReady; await mp.setOptions({runningMode:"VIDEO"}); }
+  catch(e){ setStatus("Motore AR non caricato: controlla la connessione"); }
+  S.live = true; S.F = null; pose = null; pdHist.length = 0; setStatus("Guarda dritto in camera");
+  loop();
+}
+function loop(){
+  if (!S.live) return;
+  const v = $("vid"), ts = performance.now();
+  if (mp && v.readyState >= 2 && ts !== lastTs){
+    lastTs = ts;
+    const r = mp.detectForVideo(v, ts);
+    if (r.faceLandmarks && r.faceLandmarks.length){
+      S.F = smoothF(S.F, mpToF(r.faceLandmarks[0], cv.width, cv.height, true), .5);
+      if (T.ok) pose = smoothPose(pose, computePose(r.faceLandmarks[0], cv.width, cv.height, true), .5);
+      S.M = computeMeasures();
+      if (Math.abs(S.M.yawS) < .1){ pdHist.push(S.M.pd); if (pdHist.length > 60) pdHist.shift(); }
+      if (++frameN % 15 === 0) updatePanel();
+      if ($("status").textContent) setStatus(Math.abs(S.M.yawS) > .25 ? "Gira la testa lentamente: le aste ti seguono" : "");
+    } else { S.F = null; pose = null; setStatus("Inquadra il viso"); }
+  }
+  render();
+  raf = requestAnimationFrame(loop);
+}
+function stopLive(){
+  S.live = false; cancelAnimationFrame(raf);
+  if (stream) stream.getTracks().forEach(t => t.stop()); stream = null;
+}
+
+/* ---------- Foto ---------- */
+async function handleFile(file){
+  if (!file) return;
+  stopLive(); $("start").hidden = true; setStatus("Analisi del volto…");
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const k = Math.min(1, 1600/Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url);
+  S.base = c; cv.width = c.width; cv.height = c.height; S.F = null; render();
+  try {
+    await mpReady; await mp.setOptions({runningMode:"IMAGE"});
+    const r = mp.detect(c);
+    if (r.faceLandmarks && r.faceLandmarks.length){
+      S.F = mpToF(r.faceLandmarks[0], c.width, c.height, false); S.M = computeMeasures(); pdHist.length = 0;
+      pose = T.ok ? computePose(r.faceLandmarks[0], c.width, c.height, false) : null;
+      setStatus(""); updatePanel(); render();
+    } else setStatus("Nessun volto: usa una foto frontale ben illuminata");
+  } catch(e){ setStatus("Motore AR non caricato: controlla la connessione"); }
+}
+
+/* ---------- Comandi ---------- */
+$("goBtn").addEventListener("click", startLive);
+$("upload").addEventListener("change", e => { handleFile(e.target.files[0]); e.target.value = ""; });
+$("flipBtn").addEventListener("click", () => {
+  if (S.live){ const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; i.onchange = () => handleFile(i.files[0]); i.click(); }
+  else startLive();
+});
+$("measBtn").addEventListener("click", () => { const m = $("meas"); m.hidden = !m.hidden; $("measBtn").classList.toggle("on", !m.hidden); updatePanel(); });
+const hold = $("holdBtn");
+const setHide = v => { S.hide = v; hold.classList.toggle("on", v); if (!S.live) render(); };
+hold.addEventListener("pointerdown", e => { e.preventDefault(); setHide(true); });
+["pointerup","pointerleave","pointercancel"].forEach(ev => hold.addEventListener(ev, () => setHide(false)));
+$("snapBtn").addEventListener("click", () => {
+  render();
+  const out = document.createElement("canvas"); out.width = cv.width; out.height = cv.height;
+  const og = out.getContext("2d"); og.drawImage(cv, 0, 0); if (T.ok) og.drawImage($("gl"), 0, 0);
+  out.toBlob(blob => {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ottivista-${S.frame.id}.jpg`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    setStatus("Foto salvata"); setTimeout(() => setStatus(""), 1800);
+  }, "image/jpeg", .92);
+});
+$("lensMode").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setLens(b.dataset.v); drawThumbs(); if (!S.live) render();
+});
+function setLens(v){
+  S.lensMode = v; S.uv = .75;
+  [...$("lensMode").children].forEach(x => x.setAttribute("aria-pressed", String(x.dataset.v === v)));
+  applyMaterials();
+}
+
+/* ---------- Avvio ---------- */
+initMP();
+init3D();
+renderColors(); updatePanel(); drawThumbs(); drawHero();
+})();
+</script>
+</body>
+</html>
