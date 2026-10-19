@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OttiVista Studio</title>
+<meta name="theme-color" content="#FFFFFF">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="profile3d.js"></script>
+<script src="studio-analyze.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+:root{
+  --ink:#14171A; --muted:#646B72; --line:#E4E7EA; --soft:#F4F5F7; --white:#FFFFFF;
+  --accent:#1E4FD6; --good:#1B8A4B; --warn:#B26A12; --bad:#C0392B;
+  --f-ui:"Figtree", "Helvetica Neue", Arial, sans-serif; --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--soft);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.45}
+.top{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+  padding:calc(env(safe-area-inset-top,0px) + 10px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));display:flex;justify-content:space-between;align-items:center;gap:12px}
+.top b{font-size:18px;letter-spacing:-.02em}
+.top b span{font-weight:500;color:var(--muted)}
+.top a{color:var(--accent);font-weight:600;text-decoration:none;font-size:14px}
+main{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 60px max(16px,env(safe-area-inset-left,0px));display:grid;gap:16px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px;min-width:0}
+.card h2{margin:0;font-size:17px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.card h2 i{font-style:normal;font-family:var(--f-mono);font-size:12px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;flex:0 0 auto}
+.tips{margin:0;padding-left:18px;color:var(--muted);font-size:14px;display:grid;gap:3px}
+.tips b{color:var(--ink);font-weight:600}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{text-decoration:none;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:600;font-size:15px;padding:11px 16px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
+.btn input{display:none}
+.btn:focus-visible,input:focus-visible,select:focus-visible,.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.photo{position:relative;border-radius:12px;overflow:hidden;background:var(--soft);min-height:120px;display:grid;place-items:center}
+.photo canvas{max-width:100%;height:auto;display:block}
+.photo .empty{color:var(--muted);font-size:14px;padding:30px 16px;text-align:center}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label.f{display:grid;gap:5px;font-size:13px;font-weight:600}
+label.f span{font-weight:400;color:var(--muted);font-size:12px}
+input[type=text]{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%}
+input.mono{font-family:var(--f-mono)}
+.seg{display:inline-flex;background:var(--soft);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;padding:7px 14px;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+input[type=range]{width:100%;accent-color:var(--ink)}
+.checks{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:14px}
+.checks li{display:flex;gap:8px;align-items:flex-start}
+.checks li::before{content:"";width:18px;height:18px;border-radius:50%;flex:0 0 auto;margin-top:1px;background:var(--good) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12l4 4 8-8'/%3E%3C/svg%3E") center/14px no-repeat}
+.checks li.no::before{background:var(--warn) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M12 7v6M12 17v.5'/%3E%3C/svg%3E") center/14px no-repeat}
+.checks li.err::before{background:var(--bad) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M8 8l8 8M16 8l-8 8'/%3E%3C/svg%3E") center/14px no-repeat}
+.meas{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.meas b{color:var(--ink);font-weight:500}
+#view3d{width:100%;aspect-ratio:16/10;border-radius:12px;background:radial-gradient(circle at 50% 40%,#fff,#E9ECEF);display:block;touch-action:none;max-width:100%}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.list{display:grid;gap:8px}
+.item{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.item img{width:84px;height:40px;object-fit:contain;background:var(--soft);border-radius:8px}
+.item .n{flex:1;min-width:0}
+.item .n b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .n span{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.del{border:0;background:none;color:var(--bad);font:inherit;font-weight:600;cursor:pointer;padding:6px}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:10;max-width:calc(100% - 32px)}
+.toast:empty{display:none}
+</style>
+</head>
+<body>
+<div class="top"><b>OttiVista <span>Studio</span></b><a href="./">Apri la prova live</a></div>
+<main>
+  <section class="card">
+    <h2><i>1</i>Fotografa la montatura</h2>
+    <ul class="tips">
+      <li><b>Sfondo bianco</b> e uniforme dietro gli occhiali (un foglio A4 va benissimo), con spazio libero attorno.</li>
+      <li><b>Aste aperte</b>, lenti demo trasparenti, occhiali appoggiati in piedi.</li>
+      <li><b>Telefono all'altezza delle lenti</b>, perfettamente frontale, a circa 40 cm, con zoom 2× se disponibile.</li>
+      <li><b>Luce diffusa</b>, niente flash e niente ombre nette.</li>
+    </ul>
+    <div class="row">
+      <label class="btn primary" for="shot">Scatta la foto<input id="shot" type="file" accept="image/*" capture="environment"></label>
+      <label class="btn" for="pick">Scegli dalla galleria<input id="pick" type="file" accept="image/*"></label>
+    </div>
+    <div class="photo"><canvas id="pc" hidden></canvas><div class="empty" id="pEmpty">Qui vedrai la foto con il contorno riconosciuto: verde la montatura, azzurro le lenti.</div></div>
+  </section>
+
+  <section class="card">
+    <h2><i>2</i>Dati del modello</h2>
+    <div class="fields">
+      <label class="f" for="nm">Nome del modello<input id="nm" type="text" placeholder="es. Ray-Ban RX5154 Nero" autocomplete="off"></label>
+      <label class="f" for="cal">Calibro <span>stampato sull'asta interna, es. 51□21-145</span><input id="cal" class="mono" type="text" inputmode="numeric" placeholder="51 21 145" autocomplete="off"></label>
+    </div>
+    <div class="row"><span style="font-size:13px;font-weight:600">Materiale</span>
+      <div class="seg" id="mat"><button data-v="acetato" aria-pressed="true">Acetato</button><button data-v="metallo" aria-pressed="false">Metallo</button></div>
+    </div>
+    <label class="f" for="thr">Sensibilità del contorno <span id="thrTxt">60 · alzala se prende ombre, abbassala se il bordo è sottile o chiaro</span></label>
+    <input id="thr" type="range" min="25" max="140" value="60">
+    <ul class="checks" id="checks"></ul>
+    <div class="meas" id="meas" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2><i>3</i>Controlla in 3D e salva</h2>
+    <canvas id="view3d" aria-label="Anteprima 3D della montatura"></canvas>
+    <p class="hint">Trascina per ruotare. La faccia frontale usa la foto reale, le aste il colore rilevato.</p>
+    <div class="row">
+      <button class="btn primary" id="save" disabled>Aggiungi al catalogo</button>
+      <a class="btn" href="./">Provala addosso</a>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Il tuo catalogo <span style="font-weight:500;color:var(--muted);font-size:14px" id="count"></span></h2>
+    <div class="list" id="list"></div>
+    <p class="hint">Le montature salvate compaiono subito nella prova live su questo telefono. Per averle su tutti i dispositivi esporta il catalogo e caricalo nel repository come <code>models/catalog.json</code>.</p>
+    <div class="row">
+      <button class="btn" id="exp">Esporta catalogo</button>
+      <label class="btn" for="imp">Importa<input id="imp" type="file" accept="application/json,.json"></label>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+const st = { img:null, res:null, mat:"acetato", thr:60, texData:null, profile:null };
+let toastT = 0;
+function toast(t){ $("toast").textContent = t; clearTimeout(toastT); toastT = setTimeout(() => $("toast").textContent = "", 2600); }
+function loadList(){ try { return JSON.parse(localStorage.getItem("ov_custom") || "[]"); } catch(e){ return []; } }
+function saveList(l){ localStorage.setItem("ov_custom", JSON.stringify(l)); }
+function parseCal(s){
+  const m = String(s).match(/(\d{2})\D+(\d{1,2})\D+(\d{3})/);
+  return m ? {lens:+m[1], bridge:+m[2], temple:+m[3]} : null;
+}
+
+/* ---------- foto ---------- */
+async function onFile(file){
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const k = Math.min(1, 1100/Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+  st.img = c; run();
+}
+$("shot").addEventListener("change", e => { onFile(e.target.files[0]); e.target.value = ""; });
+$("pick").addEventListener("change", e => { onFile(e.target.files[0]); e.target.value = ""; });
+
+function drawOverlay(){
+  const pc = $("pc"), c = st.img; pc.hidden = false; $("pEmpty").hidden = true;
+  pc.width = c.width; pc.height = c.height;
+  const g = pc.getContext("2d"); g.drawImage(c, 0, 0);
+  const r = st.res; if (!r || !r.ok) return;
+  const lw = Math.max(2, c.width/300);
+  const poly = (pts, col) => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.lineWidth = lw; g.strokeStyle = col; g.stroke(); };
+  poly(r.outerPx, "#1FBF5A");
+  for (const h of r.holesPx) poly(h, "#1EA7FF");
+  g.fillStyle = "#E5484D";
+  for (const hp of r.profile.hinge){ g.beginPath(); g.arc(r.cx + hp[0]*r.ppm, r.cy - hp[1]*r.ppm, lw*2.2, 0, Math.PI*2); g.fill(); }
+}
+
+function run(){
+  const cal = parseCal($("cal").value);
+  const checks = $("checks"); checks.innerHTML = "";
+  const li = (txt, cls) => { const e = document.createElement("li"); e.textContent = txt; if (cls) e.className = cls; checks.appendChild(e); };
+  $("meas").hidden = true; $("save").disabled = true; st.profile = null;
+  if (!st.img){ li("Scatta o carica la foto frontale", "no"); return; }
+  if (!cal){ drawOverlay(); li("Inserisci il calibro (es. 51 21 145) per avere la scala in millimetri", "no"); return; }
+  const g = st.img.getContext("2d");
+  st.res = OVAnalyze.analyze(g.getImageData(0, 0, st.img.width, st.img.height), {threshold:st.thr, lens:cal.lens, bridge:cal.bridge});
+  drawOverlay();
+  if (!st.res.ok){ li(st.res.msg, "err"); preview(); return; }
+  for (const c of st.res.checks) li(c.txt, c.ok ? "" : "no");
+  const p = st.res.profile;
+  const t = document.createElement("canvas"); const tw = Math.min(1024, st.res.tex.width), k = tw/st.res.tex.width;
+  const full = document.createElement("canvas"); full.width = st.res.tex.width; full.height = st.res.tex.height; full.getContext("2d").putImageData(st.res.tex, 0, 0);
+  t.width = tw; t.height = Math.round(st.res.tex.height*k); t.getContext("2d").drawImage(full, 0, 0, t.width, t.height);
+  p.tex.data = t.toDataURL("image/jpeg", .86);
+  p.calibro = cal; p.mat = st.mat; p.depth = st.mat === "metallo" ? 1.6 : 4.4;
+  p.name = $("nm").value.trim() || `Modello ${cal.lens}□${cal.bridge}`;
+  st.profile = p;
+  $("meas").hidden = false;
+  $("meas").innerHTML = `<span>Frontale <b>${p.front.toFixed(0)} mm</b></span><span>Altezza lente <b>${p.h.toFixed(1)} mm</b></span><span>Colore <b style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;background:${p.frameColor}"></b> <b>${p.frameColor}</b></span>`;
+  $("save").disabled = false;
+  preview();
+}
+let runT = 0;
+const rerun = () => { clearTimeout(runT); runT = setTimeout(run, 180); };
+$("cal").addEventListener("input", rerun);
+$("nm").addEventListener("input", () => { if (st.profile) st.profile.name = $("nm").value.trim() || st.profile.name; });
+$("thr").addEventListener("input", e => { st.thr = +e.target.value; $("thrTxt").textContent = `${st.thr} · alzala se prende ombre, abbassala se il bordo è sottile o chiaro`; rerun(); });
+$("mat").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return; st.mat = b.dataset.v;
+  [...$("mat").children].forEach(x => x.setAttribute("aria-pressed", String(x === b))); rerun();
+});
+
+/* ---------- anteprima 3D ---------- */
+const V = { ok:false };
+async function init3D(){
+  try {
+    const THREE = await import("three");
+    const {OrbitControls} = await import("three/addons/controls/OrbitControls.js");
+    const {RoomEnvironment} = await import("three/addons/environments/RoomEnvironment.js");
+    const canvas = $("view3d");
+    const r = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+    const scene = new THREE.Scene(); scene.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), .04).texture;
+    const l = new THREE.DirectionalLight(0xffffff, 1.4); l.position.set(.4, 1, 1.2); scene.add(l, new THREE.AmbientLight(0xffffff, .35));
+    const cam = new THREE.PerspectiveCamera(30, 1.6, 1, 2000); cam.position.set(110, 60, 230);
+    const ctl = new OrbitControls(cam, canvas); ctl.target.set(0, 0, -30); ctl.enableDamping = true; ctl.autoRotate = true; ctl.autoRotateSpeed = 1.2; ctl.enablePan = false;
+    ctl.addEventListener("start", () => ctl.autoRotate = false);
+    Object.assign(V, {THREE, r, scene, cam, ctl, group:null, ok:true});
+    const size = () => { const w = canvas.clientWidth, h = canvas.clientHeight; r.setSize(w, h, false); r.setPixelRatio(Math.min(2, devicePixelRatio)); cam.aspect = w/h; cam.updateProjectionMatrix(); };
+    new ResizeObserver(size).observe(canvas); size();
+    const loop = () => { ctl.update(); r.render(scene, cam); requestAnimationFrame(loop); };
+    loop(); preview();
+  } catch(e){ console.warn(e); toast("Anteprima 3D non disponibile su questo dispositivo"); }
+}
+function preview(){
+  if (!V.ok) return;
+  const {THREE, scene} = V;
+  if (V.group){ scene.remove(V.group); V.group = null; }
+  if (!st.profile) return;
+  const g = OVProfile.build(THREE, Object.assign({}, st.profile));
+  g.traverse(o => {
+    if (!o.isMesh) return;
+    if (o.userData.part === "lens"){ o.material = new THREE.MeshPhysicalMaterial({color:0xE4ECF0, transparent:true, opacity:.14, roughness:.03, clearcoat:1, depthWrite:false, side:THREE.DoubleSide}); o.renderOrder = 2; }
+    if (o.userData.part === "pads") o.material = new THREE.MeshPhysicalMaterial({color:0xF2F5F6, transparent:true, opacity:.6, roughness:.15});
+  });
+  scene.add(g); V.group = g;
+}
+
+/* ---------- catalogo ---------- */
+function renderList(){
+  const l = loadList(), host = $("list"); host.innerHTML = "";
+  $("count").textContent = l.length ? `· ${l.length} modell${l.length === 1 ? "o" : "i"}` : "";
+  if (!l.length){ host.innerHTML = '<p class="hint">Ancora nessuna montatura digitalizzata.</p>'; return; }
+  for (const p of l){
+    const it = document.createElement("div"); it.className = "item";
+    const img = document.createElement("img"); img.src = p.tex.data; img.alt = "";
+    const n = document.createElement("div"); n.className = "n";
+    const b = document.createElement("b"); b.textContent = p.name;
+    const s = document.createElement("span"); s.textContent = `${p.calibro.lens}□${p.calibro.bridge}-${p.calibro.temple} · ${p.mat}`;
+    n.append(b, s);
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "Elimina";
+    del.addEventListener("click", () => {
+      if (del.dataset.armed){ saveList(loadList().filter(x => x.id !== p.id)); renderList(); toast("Eliminato"); }
+      else { del.dataset.armed = "1"; del.textContent = "Conferma"; setTimeout(() => { del.dataset.armed = ""; del.textContent = "Elimina"; }, 3000); }
+    });
+    it.append(img, n, del); host.appendChild(it);
+  }
+}
+$("save").addEventListener("click", () => {
+  if (!st.profile) return;
+  const p = Object.assign({}, st.profile, {id: "c" + Date.now().toString(36), name: $("nm").value.trim() || st.profile.name, v:1});
+  delete p.onReady;
+  const l = loadList(); l.unshift(p);
+  try { saveList(l); } catch(e){ toast("Memoria del browser piena: esporta il catalogo ed elimina qualche modello"); return; }
+  renderList(); toast(`«${p.name}» aggiunto: lo trovi nella prova live`);
+});
+$("exp").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(loadList())], {type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "catalog.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+$("imp").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const add = JSON.parse(await f.text()).filter(p => p && p.outer && p.tex);
+    const l = loadList(), have = new Set(l.map(p => p.id));
+    for (const p of add) if (!have.has(p.id)) l.push(p);
+    saveList(l); renderList(); toast(`${add.length} modelli importati`);
+  } catch(err){ toast("File non valido: serve un catalog.json esportato dallo Studio"); }
+});
+
+run(); renderList(); init3D();
+})();
+</script>
+</body>
+</html>
