@@ -25,8 +25,9 @@ button{font:inherit;color:inherit}
 
 /* Area fotocamera */
 .cam{position:relative;flex:1;min-height:0;background:var(--cam);overflow:hidden}
-#cv,#gl{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-#gl{pointer-events:none}
+#cv,#gl,#sh{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+#gl,#sh{pointer-events:none}
+#sh{filter:blur(5px);opacity:.42}
 .top{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;gap:10px;
   padding:calc(env(safe-area-inset-top,0px) + 12px) max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px));
   background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,0));z-index:3}
@@ -53,6 +54,13 @@ button{font:inherit;color:inherit}
 .mv span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .mnote{font-size:12.5px;color:var(--muted);margin:0;line-height:1.4}
 
+.rg{display:flex;justify-content:space-between;font-size:13px;font-weight:500}
+.rg output{font-family:var(--f-mono);color:var(--muted)}
+.meas input[type=range]{width:100%;accent-color:var(--ink)}
+.pdset{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
+.pdset input{width:80px;font:inherit;font-family:var(--f-mono);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.row2{display:flex;gap:8px}
+.mini{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500;cursor:pointer}
 /* Schermata iniziale */
 .start{position:absolute;inset:0;z-index:4;background:var(--white);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
   padding:calc(env(safe-area-inset-top,0px) + 24px) max(24px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(24px,env(safe-area-inset-left,0px));text-align:center}
@@ -105,6 +113,7 @@ button{font:inherit;color:inherit}
 <div class="app">
   <div class="cam">
     <canvas id="cv" width="1280" height="960" aria-label="Specchio virtuale"></canvas>
+    <canvas id="sh" width="1280" height="960" aria-hidden="true"></canvas>
     <canvas id="gl" width="1280" height="960" aria-hidden="true"></canvas>
     <video id="vid" playsinline muted hidden></video>
 
@@ -112,6 +121,7 @@ button{font:inherit;color:inherit}
       <div class="logo">OttiVista<span id="engineTxt">avvio…</span><i id="engine" hidden></i></div>
       <div class="icons">
         <button class="ib" id="measBtn" aria-label="Misure del volto" title="Misure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></svg></button>
+        <button class="ib" id="adjBtn" aria-label="Regola posizione e misura" title="Regola"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
         <button class="ib" id="holdBtn" aria-label="Tieni premuto per vedere senza occhiali" title="Senza occhiali"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 13.5c1.2-1 2.8-1 4 0M3 4l18 18"/></svg></button>
         <button class="ib" id="flipBtn" aria-label="Cambia sorgente" title="Carica foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg></button>
       </div>
@@ -130,6 +140,16 @@ button{font:inherit;color:inherit}
       <p class="mnote" id="why"></p>
     </div>
 
+    <div class="meas" id="adj" hidden>
+      <h3>Regola la calzata <small id="calTxt">calibrazione…</small></h3>
+      <label class="rg" for="rUp">Altezza <output id="oUp">0 mm</output></label>
+      <input type="range" id="rUp" min="-8" max="8" step="0.5" value="0">
+      <label class="rg" for="rSc">Dimensione <output id="oSc">100%</output></label>
+      <input type="range" id="rSc" min="88" max="112" step="1" value="100">
+      <div class="pdset"><label for="pdIn">PD nota</label><input id="pdIn" type="number" inputmode="decimal" min="50" max="80" step="0.5" placeholder="auto"><span>mm</span></div>
+      <p class="mnote">Se conosci la tua distanza pupillare inseriscila: la scala diventa esatta al millimetro.</p>
+      <div class="row2"><button class="mini" id="recal">Ricalibra</button><button class="mini" id="reset">Azzera</button></div>
+    </div>
     <div class="status" id="status"></div>
     <div class="shutter">
       <button class="ib" id="snapBtn" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
@@ -456,21 +476,284 @@ function smoothF(prev, next, k){
   return out;
 }
 
-
+/* =====================================================================
+   OttiVista · motore AR
+   ===================================================================== */
 S.source = "mp"; S.F = null;
-
-/* ---------- Montature 3D ---------- */
 FRAMES.unshift(
-  {id:"tondo3d", name:"Vulcano 3D", style:"round", lens:44, bridge:22, temple:140, h:44, n:2, rim:1, mat:"metallo", model:"models/round.glb", front:131},
-  {id:"sport3d", name:"Scirocco 3D", style:"sport", lens:71, bridge:0, temple:130, h:31, n:2, rim:1, mat:"acetato", model:"models/sport.glb", front:142, sun:true}
+  {id:"tondo3d", name:"Vulcano Steam", style:"round", lens:44, bridge:22, temple:140, h:44, n:2, rim:1, mat:"metallo", model:"models/round.glb", front:131},
+  {id:"sport3d", name:"Scirocco", style:"sport", lens:71, bridge:0, temple:130, h:31, n:2, rim:1, mat:"acetato", model:"models/sport.glb", front:142, sun:true}
 );
 STYLE_IT.sport = "sportivo avvolgente";
 for (const k in SHAPES) SHAPES[k].sport = SHAPES[k].sport ?? .75;
-S.frame = FRAMES[0];
+S.frame = FRAMES[2];
+
+const store = {
+  get(k, d){ try { const v = localStorage.getItem("ov_" + k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem("ov_" + k, JSON.stringify(v)); } catch(e){} }
+};
+const ADJ = Object.assign({dy:0, sc:1}, store.get("adj", {}));
+let knownPD = store.get("pd", null);
+let calPD = null;
+const pdSamples = [];
 const METAL_BASE = {oro:"#D9B24C", argento:"#C8CDD3", canna:"#4C5056", rosa:"#D8A08A"};
-const T = {ok:false};
+const VERTEX_MM = 12;
+const T = {ok:false, models:{}};
+let mpReady = null, stream = null, raf = 0, lastTs = -1, frameN = 0;
 let pose = null;
 
+/* ---------- Filtro One Euro ---------- */
+class OneEuro {
+  constructor(minCut, beta, dCut = 1){ this.minCut = minCut; this.beta = beta; this.dCut = dCut; this.x = null; this.dx = 0; this.t = 0; }
+  a(cut, dt){ const tau = 1/(2*Math.PI*cut); return 1/(1 + tau/dt); }
+  f(x, t){
+    if (this.x === null){ this.x = x; this.t = t; return x; }
+    const dt = Math.max(1e-3, (t - this.t)/1000); this.t = t;
+    const dx = (x - this.x)/dt; this.dx += this.a(this.dCut, dt)*(dx - this.dx);
+    this.x += this.a(this.minCut + this.beta*Math.abs(this.dx), dt)*(x - this.x);
+    return this.x;
+  }
+}
+let FL = null;
+function resetFilters(){
+  FL = { x:new OneEuro(1.4,.012), y:new OneEuro(1.4,.012), z:new OneEuro(1,.01), s:new OneEuro(.9,.4),
+         q:[0,1,2,3].map(() => new OneEuro(1.6,.9)), prevQ:null };
+}
+resetFilters();
+
+/* ---------- Motore di tracciamento ---------- */
+function initMP(){
+  const base = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+  mpReady = (async () => {
+    const vision = await import(`${base}/vision_bundle.mjs`);
+    const fs = await vision.FilesetResolver.forVisionTasks(`${base}/wasm`);
+    const make = delegate => vision.FaceLandmarker.createFromOptions(fs, {
+      baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate },
+      runningMode:"VIDEO", numFaces:1, outputFacialTransformationMatrixes:true });
+    try { mp = await make("GPU"); } catch(e){ mp = await make("CPU"); }
+    $("engineTxt").textContent = "AR live";
+    return mp;
+  })();
+  mpReady.catch(() => { $("engineTxt").textContent = "motore non disponibile"; });
+}
+
+/* ---------- Posa della testa ---------- */
+function lmP(lm, i, W, H, mir){ return new T.THREE.Vector3((mir ? 1-lm[i].x : lm[i].x)*W, -lm[i].y*H, -lm[i].z*W); }
+function basisFromLandmarks(lm, W, H, mir){
+  const {Vector3, Matrix4} = T.THREE, P = i => lmP(lm, i, W, H, mir);
+  const x = new Vector3();
+  for (const [a,b] of [[33,263],[133,362],[234,454],[127,356],[70,300],[61,291]]){
+    const v = P(b).sub(P(a)); if (v.x < 0) v.negate(); x.add(v.normalize());
+  }
+  x.normalize();
+  const yr = P(10).sub(P(152)).normalize().add(P(9).sub(P(200)).normalize());
+  const z = new Vector3().crossVectors(x, yr).normalize();
+  const y = new Vector3().crossVectors(z, x).normalize();
+  return new T.THREE.Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z));
+}
+let matrixMode = null; // quale convenzione della matrice MediaPipe concorda con i punti del viso
+function quatFromMatrix(arr, mir, qRef){
+  const {Matrix4, Quaternion} = T.THREE;
+  const R = new Matrix4().extractRotation(new Matrix4().fromArray(arr));
+  const F = new Matrix4().makeScale(-1, 1, 1);
+  const cands = [R.clone(), F.clone().multiply(R).multiply(F)];
+  const qs = cands.map(m => new Quaternion().setFromRotationMatrix(m));
+  if (mir){ /* il video è specchiato: la convenzione va verificata sui punti */ }
+  let best = matrixMode;
+  if (best === null){
+    const ang = qs.map(q => q.angleTo(qRef));
+    best = ang[0] < ang[1] ? 0 : 1;
+    if (ang[best] > .45) return null;
+  }
+  const q = qs[best];
+  if (q.angleTo(qRef) > .6) return null;
+  return {q, mode:best};
+}
+let modeVotes = [0, 0];
+function measurePose(res, W, H, mir, t){
+  const lm = res.faceLandmarks[0];
+  const {Vector3, Quaternion} = T.THREE, P = i => lmP(lm, i, W, H, mir);
+  const qL = basisFromLandmarks(lm, W, H, mir);
+  let q = qL;
+  const mats = res.facialTransformationMatrixes;
+  if (mats && mats[0] && mats[0].data){
+    const r = quatFromMatrix(mats[0].data, mir, qL);
+    if (r){ q = r.q; if (matrixMode === null && ++modeVotes[r.mode] > 20) matrixMode = r.mode; }
+  }
+  // scala: distanza 3D tra le pupille / PD in mm
+  const eA = P(468), eB = P(473), eyeD = eA.distanceTo(eB);
+  const irisPx = (d2(pt(lm,469,W,H), pt(lm,471,W,H)) + d2(pt(lm,474,W,H), pt(lm,476,W,H)) + d2(pt(lm,470,W,H), pt(lm,472,W,H)) + d2(pt(lm,475,W,H), pt(lm,477,W,H)))/4;
+  const pdIris = eyeD/(irisPx/IRIS_MM);
+  const zAxis = new Vector3(0,0,1).applyQuaternion(q);
+  const yaw = Math.atan2(zAxis.x, zAxis.z), pitch = Math.asin(clamp(zAxis.y, -1, 1));
+  if (!knownPD && calPD === null && Math.abs(yaw) < .12 && Math.abs(pitch) < .2 && pdIris > 48 && pdIris < 80){
+    pdSamples.push(pdIris);
+    if (pdSamples.length >= 45){ calPD = median(pdSamples); updateCalTxt(); }
+    else if (pdSamples.length % 5 === 0) setStatus(`Calibrazione: guarda dritto in camera · ${Math.round(pdSamples.length/45*100)}%`);
+  }
+  const PD = knownPD || calPD || (pdSamples.length ? median(pdSamples) : 63);
+  const px = eyeD / PD;
+  const mid3 = eA.clone().add(eB).multiplyScalar(.5);
+  const raw = {q, pos:mid3, px, yaw, pitch, PD};
+  if (t === null) return raw;
+  // filtri
+  if (FL.prevQ && FL.prevQ.dot(q) < 0) q.set(-q.x, -q.y, -q.z, -q.w);
+  const qf = new Quaternion(FL.q[0].f(q.x,t), FL.q[1].f(q.y,t), FL.q[2].f(q.z,t), FL.q[3].f(q.w,t)).normalize();
+  FL.prevQ = qf.clone();
+  return { q:qf, pos:new Vector3(FL.x.f(mid3.x,t), FL.y.f(mid3.y,t), FL.z.f(mid3.z,t)), px:FL.s.f(px,t), yaw, pitch, PD };
+}
+function pt(lm, i, W, H){ return [lm[i].x*W, lm[i].y*H]; }
+function median(a){ const b = [...a].sort((x,y) => x-y); return b[Math.floor(b.length/2)]; }
+
+/* ---------- Montature 3D procedurali ---------- */
+function offsetPoly(pts, d){
+  let area = 0;
+  for (let i=0;i<pts.length;i++){ const a = pts[i], b = pts[(i+1)%pts.length]; area += a[0]*b[1] - b[0]*a[1]; }
+  const sg = area > 0 ? 1 : -1, n = pts.length, out = [];
+  for (let i=0;i<n;i++){
+    const p = pts[(i-1+n)%n], c = pts[i], q = pts[(i+1)%n];
+    const e1 = [c[0]-p[0], c[1]-p[1]], e2 = [q[0]-c[0], q[1]-c[1]];
+    const l1 = Math.hypot(...e1) || 1, l2 = Math.hypot(...e2) || 1;
+    const n1 = [e1[1]/l1*sg, -e1[0]/l1*sg], n2 = [e2[1]/l2*sg, -e2[0]/l2*sg];
+    let nv = [n1[0]+n2[0], n1[1]+n2[1]]; const ln = Math.hypot(...nv) || 1; nv = [nv[0]/ln, nv[1]/ln];
+    const k = d/Math.max(.45, nv[0]*n1[0] + nv[1]*n1[1]);
+    out.push([c[0]+nv[0]*k, c[1]+nv[1]*k]);
+  }
+  return out;
+}
+function bend(geo, R){
+  const p = geo.attributes.position;
+  for (let i=0;i<p.count;i++){ const x = p.getX(i); p.setZ(i, p.getZ(i) - x*x/(2*R)); }
+  p.needsUpdate = true; geo.computeVertexNormals();
+}
+function named(mesh, name){ mesh.name = name; mesh.userData.part = name; return mesh; }
+function buildFrame(fr){
+  const {THREE} = T, g = new THREE.Group();
+  const metal = fr.mat === "metallo", mixed = fr.mat === "misto";
+  const rim = mixed ? 1.1 : metal ? Math.max(1.1, fr.rim) : fr.rim + .4;
+  const depth = metal || mixed ? 1.6 : 4.4;
+  const wrap = fr.style === "aviator" ? 220 : 260;
+  const dx = (fr.lens + fr.bridge)/2, cyOff = -lensCY(fr);
+  const yb = fr.h*(fr.style === "aviator" ? .3 : .2) + cyOff;
+  const tmp = new THREE.MeshStandardMaterial();
+  for (const s of [-1, 1]){
+    const pts = lensPts(fr, s).map(p => [p[0], -p[1]]);
+    const outer = offsetPoly(pts, rim);
+    const shape = new THREE.Shape(outer.map(p => new THREE.Vector2(p[0], p[1])));
+    shape.holes.push(new THREE.Path(pts.map(p => new THREE.Vector2(p[0], p[1]))));
+    const ring = new THREE.ExtrudeGeometry(shape, {depth, bevelEnabled:true, bevelThickness:depth*.22, bevelSize:Math.min(rim*.32, .9), bevelSegments:3, curveSegments:2});
+    ring.translate(s*dx, cyOff, -depth);
+    bend(ring, wrap);
+    g.add(named(new THREE.Mesh(ring, tmp), mixed ? "metal" : "frame"));
+    const lensG = new THREE.ShapeGeometry(new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1]))), 6);
+    lensG.translate(s*dx, cyOff, -depth*.5);
+    const lp = lensG.attributes.position;
+    for (let i=0;i<lp.count;i++){ const lx = lp.getX(i) - s*dx, ly = lp.getY(i) - cyOff; lp.setZ(i, lp.getZ(i) + (900 - lx*lx - ly*ly)/(2*120)*.25); }
+    bend(lensG, wrap);
+    g.add(named(new THREE.Mesh(lensG, tmp), "lens"));
+    if (mixed){
+      const top = outer.filter(p => p[1] > fr.h*.12).sort((a,b) => a[0]-b[0]).map(p => new THREE.Vector3(p[0] + s*dx, p[1] + cyOff + .4, -depth*.3));
+      if (top.length > 3){
+        const tg = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(top), 40, 2.3, 10, false);
+        tg.scale(1, .85, 1.25); bend(tg, wrap);
+        g.add(named(new THREE.Mesh(tg, tmp), "frame"));
+      }
+    }
+    // cerniera
+    const xh = s*(dx + fr.lens/2 + rim + 1.4), yh = fr.h*.26 + cyOff;
+    const hinge = new THREE.BoxGeometry(5.5, metal ? 2.6 : 4.2, 7, 2, 2, 2);
+    hinge.translate(xh, yh, -4); bend(hinge, wrap);
+    g.add(named(new THREE.Mesh(hinge, tmp), mixed ? "metal" : "frame"));
+    // asta
+    const zx = -(xh*xh)/(2*wrap);
+    const path = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(xh, yh, zx - 6), new THREE.Vector3(xh + s*1.8, yh, zx - 45),
+      new THREE.Vector3(xh + s*1.2, yh - 1.5, zx - 98), new THREE.Vector3(xh - s*3, yh - 20, zx - 124)]);
+    const tg = new THREE.TubeGeometry(path, 48, metal || mixed ? .95 : 1.7, 10, false);
+    if (!metal && !mixed) tg.scale(.75, 1.6, 1);
+    g.add(named(new THREE.Mesh(tg, tmp), mixed ? "metal" : "frame"));
+    if (metal || mixed){
+      const pad = new THREE.SphereGeometry(1, 16, 12); pad.scale(1.5, 3.4, 1.1); pad.rotateZ(s*.35);
+      pad.translate(s*(fr.bridge/2 + 1.3), cyOff - 3.5, -5.5);
+      g.add(named(new THREE.Mesh(pad, tmp), "pads"));
+    }
+  }
+  // ponte
+  const pr = metal || mixed ? .95 : rim*.62;
+  const bridge = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-fr.bridge/2 - rim*.4, yb, -depth*.5), new THREE.Vector3(0, yb + (metal||mixed ? 3.2 : 2.2), -depth*.5 + .6),
+    new THREE.Vector3(fr.bridge/2 + rim*.4, yb, -depth*.5)]), 20, pr, 10, false);
+  if (!metal && !mixed) bridge.scale(1, 1.5, 1.4);
+  bend(bridge, wrap);
+  g.add(named(new THREE.Mesh(bridge, tmp), mixed ? "metal" : "frame"));
+  if (fr.keyhole){
+    const k = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-fr.bridge/2, yb - 3.5, -depth*.5), new THREE.Vector3(0, yb + .5, -depth*.5), new THREE.Vector3(fr.bridge/2, yb - 3.5, -depth*.5)]), 16, rim*.4, 8, false);
+    bend(k, wrap); g.add(named(new THREE.Mesh(k, tmp), "frame"));
+  }
+  if (fr.style === "aviator"){
+    const ty = fr.h/2 - 2.5 + cyOff;
+    const bar = new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(-fr.bridge/2 - 4, ty, -depth*.5), new THREE.Vector3(fr.bridge/2 + 4, ty, -depth*.5)), 8, .8, 8, false);
+    bend(bar, wrap); g.add(named(new THREE.Mesh(bar, tmp), "frame"));
+  }
+  return g;
+}
+
+/* ---------- Materiali ---------- */
+let tortoiseTex = null;
+function parseCol(c){
+  const m = /rgba?\(([^)]+)\)/.exec(c.c);
+  if (m){ const v = m[1].split(",").map(Number); return {hex:`rgb(${v[0]},${v[1]},${v[2]})`, op: v[3] ?? 1}; }
+  return {hex:c.c, op:1};
+}
+function lensMaterial(){
+  const {THREE} = T, a = lensAlpha();
+  const clear = S.lensMode === "clear";
+  return new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(clear ? "#E4ECF0" : `rgb(${S.tint.rgb.join(",")})`), transparent:true,
+    opacity: clear ? .1 : Math.min(.93, a + .1), roughness:.03,
+    metalness: S.tint.mirror && !clear ? .6 : .02, clearcoat:1, clearcoatRoughness:.03,
+    envMapIntensity: S.polar ? .3 : (S.ar && clear ? .35 : 1.2),
+    iridescence: clear && S.ar ? .6 : 0, iridescenceIOR: 1.6, iridescenceThicknessRange:[260, 420],
+    depthWrite:false, side:THREE.DoubleSide });
+}
+function acetateMaterial(hasUV){
+  const {THREE} = T;
+  if (S.color.c === "pattern"){
+    if (hasUV){
+      if (!tortoiseTex){ tortoiseTex = new THREE.CanvasTexture(tortoise); tortoiseTex.wrapS = tortoiseTex.wrapT = THREE.RepeatWrapping; tortoiseTex.repeat.set(1/26, 1/26); tortoiseTex.colorSpace = THREE.SRGBColorSpace; }
+      return new THREE.MeshPhysicalMaterial({map:tortoiseTex, roughness:.28, clearcoat:1, clearcoatRoughness:.06, side:THREE.DoubleSide});
+    }
+    return new THREE.MeshPhysicalMaterial({color:"#6E3D16", roughness:.3, clearcoat:1, clearcoatRoughness:.06, side:THREE.DoubleSide});
+  }
+  const pc = parseCol(S.color);
+  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(pc.hex), roughness:.26, clearcoat:1, clearcoatRoughness:.06,
+    transparent: pc.op < 1, opacity: pc.op, transmission: pc.op < 1 ? .35 : 0, thickness: 3, side:THREE.DoubleSide});
+}
+function metalMaterial(id){
+  return new T.THREE.MeshStandardMaterial({color: new T.THREE.Color(METAL_BASE[id] || "#D9B24C"), metalness:1, roughness:.24, side:T.THREE.DoubleSide});
+}
+function applyMaterials(){
+  if (!T.ok) return;
+  const {THREE} = T;
+  const lens = lensMaterial();
+  for (const f of FRAMES){
+    const model = T.models[f.id]; if (!model) continue;
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      const part = o.userData.part || (o.material && o.material.name) || o.name;
+      const hasUV = !!o.geometry.attributes.uv;
+      if (part.startsWith("lens")){ o.material = lens; o.renderOrder = 2; }
+      else if (part.startsWith("tips")) o.material = new THREE.MeshStandardMaterial({color:0x141414, roughness:.45});
+      else if (part.startsWith("pads")) o.material = new THREE.MeshPhysicalMaterial({color:0xF2F5F6, transparent:true, opacity:.55, roughness:.15});
+      else if (part.startsWith("metal")) o.material = metalMaterial("oro");
+      else o.material = f.mat === "metallo" ? metalMaterial(S.metalColor.id) : acetateMaterial(hasUV);
+      o.userData.part = part;
+    });
+  }
+}
+
+/* ---------- Scena 3D ---------- */
 async function init3D(){
   try {
     const THREE = await import("three");
@@ -481,134 +764,82 @@ async function init3D(){
       r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
       r.setClearColor(0x000000, 0); return r;
     };
+    T.THREE = THREE;
     const renderer = mk($("gl"));
-    const scene = new THREE.Scene();
-    const pm = new THREE.PMREMGenerator(renderer);
-    scene.environment = pm.fromScene(new RoomEnvironment(), .04).texture;
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(.4, 1, 1.2); scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xffffff, .35));
+    const env = s => new THREE.PMREMGenerator(s).fromScene(new RoomEnvironment(), .04).texture;
+    const scene = new THREE.Scene(); scene.environment = env(renderer);
+    const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(.35, 1, 1.3);
+    scene.add(key, new THREE.AmbientLight(0xffffff, .3));
     const cam = new THREE.OrthographicCamera(0, 1, 0, -1, -1e6, 1e6);
-    const root = new THREE.Group(); root.matrixAutoUpdate = false; scene.add(root);
-    const occ = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), new THREE.MeshBasicMaterial({colorWrite:false}));
-    occ.renderOrder = -1; root.add(occ);
-    // anteprime
+    const glasses = new THREE.Group(); glasses.matrixAutoUpdate = false; scene.add(glasses);
+    const head = new THREE.Group(); head.matrixAutoUpdate = false; scene.add(head);
+    const occ = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), new THREE.MeshBasicMaterial({colorWrite:false}));
+    occ.renderOrder = -1; head.add(occ);
+    const shadowMat = new THREE.MeshBasicMaterial({color:0x000000});
     const thumbCanvas = document.createElement("canvas"); thumbCanvas.width = 480; thumbCanvas.height = 220;
     const thumbR = mk(thumbCanvas);
-    const thumbScene = new THREE.Scene(); thumbScene.environment = new THREE.PMREMGenerator(thumbR).fromScene(new RoomEnvironment(), .04).texture;
-    const tl = new THREE.DirectionalLight(0xffffff, 1.6); tl.position.set(.3, 1, 1.4); thumbScene.add(tl, new THREE.AmbientLight(0xffffff,.4));
-    Object.assign(T, {THREE, renderer, scene, cam, root, occ, thumbR, thumbScene, models:{}, ok:true});
+    const thumbScene = new THREE.Scene(); thumbScene.environment = env(thumbR);
+    const tl = new THREE.DirectionalLight(0xffffff, 1.5); tl.position.set(.3, 1, 1.4); thumbScene.add(tl, new THREE.AmbientLight(0xffffff, .4));
+    Object.assign(T, {renderer, scene, cam, glasses, head, occ, shadowMat, thumbR, thumbScene, ok:true});
+    for (const f of FRAMES) if (!f.model) T.models[f.id] = buildFrame(f);
+    applyMaterials(); drawThumbs(); render();
     const loader = new GLTFLoader();
     await Promise.all(FRAMES.filter(f => f.model).map(f => new Promise(res => {
       loader.load(f.model, g => { T.models[f.id] = g.scene; res(); }, undefined, () => res());
     })));
     applyMaterials(); drawThumbs(); render();
-  } catch(e){ console.warn("3D non disponibile", e); }
-}
-function parseCol(c){
-  if (c.c === "pattern") return {hex:"#6E3D16", op:1};
-  const m = /rgba?\(([^)]+)\)/.exec(c.c);
-  if (m){ const v = m[1].split(",").map(Number); return {hex:`rgb(${v[0]},${v[1]},${v[2]})`, op: v[3] ?? 1}; }
-  return {hex:c.c, op:1};
-}
-function lensMaterial(){
-  const {THREE} = T, a = lensAlpha();
-  const tint = S.lensMode === "clear" ? "#DCE6EC" : `rgb(${S.tint.rgb.join(",")})`;
-  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(tint), transparent:true,
-    opacity: S.lensMode === "clear" ? .1 : Math.min(.92, a + .12), roughness:.04, metalness: S.tint.mirror && S.lensMode !== "clear" ? .55 : .05,
-    clearcoat:1, clearcoatRoughness:.04, envMapIntensity: S.polar ? .35 : (S.ar && S.lensMode === "clear" ? .45 : 1.1),
-    depthWrite:false, side:THREE.DoubleSide});
-}
-function frameMaterial(fr){
-  const {THREE} = T;
-  if (fr.mat === "metallo"){
-    return new THREE.MeshStandardMaterial({color: new THREE.Color(METAL_BASE[S.metalColor.id] || "#D9B24C"), metalness:1, roughness:.26, side:THREE.DoubleSide});
+  } catch(e){
+    console.warn("3D non disponibile", e);
+    setStatus("Grafica 3D non disponibile su questo dispositivo");
   }
-  const pc = parseCol(S.color);
-  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(pc.hex), roughness:.32, metalness:0, clearcoat:1, clearcoatRoughness:.08,
-    transparent: pc.op < 1, opacity: pc.op, side:THREE.DoubleSide});
-}
-function applyMaterials(){
-  if (!T.ok) return;
-  const {THREE} = T;
-  for (const f of FRAMES.filter(f => f.model && T.models[f.id])){
-    const lens = lensMaterial(), frame = frameMaterial(f);
-    T.models[f.id].traverse(o => {
-      if (!o.isMesh) return;
-      const n = o.material.name || o.name;
-      if (n.startsWith("lens")){ o.material = lens; o.renderOrder = 2; }
-      else if (n.startsWith("tips")) o.material = new THREE.MeshStandardMaterial({color:0x151515, roughness:.4});
-      else if (n.startsWith("pads")) o.material = new THREE.MeshPhysicalMaterial({color:0xEEF2F4, transparent:true, opacity:.55, roughness:.2});
-      else o.material = frame;
-    });
-  }
-}
-function computePose(lm, W, H, mirror){
-  const V = T.THREE.Vector3;
-  const P = i => new V((mirror ? 1-lm[i].x : lm[i].x)*W, -lm[i].y*H, -lm[i].z*W);
-  const x = P(263).sub(P(33)); if (x.x < 0) x.negate(); x.normalize();
-  const yr = P(10).sub(P(152));
-  const z = new V().crossVectors(x, yr).normalize();
-  const y = new V().crossVectors(z, x).normalize();
-  const eye = P(468).add(P(473)).multiplyScalar(.5);
-  return {x, y, z, eye};
-}
-function smoothPose(p, n, k){
-  if (!p) return n;
-  const L = (a,b) => a.clone().lerp(b, k);
-  const x = L(p.x, n.x).normalize(), z0 = L(p.z, n.z).normalize();
-  const y = new T.THREE.Vector3().crossVectors(z0, x).normalize(), z = new T.THREE.Vector3().crossVectors(x, y).normalize();
-  return {x, y, z, eye: L(p.eye, n.eye)};
 }
 function render3D(){
   if (!T.ok) return;
-  const {renderer, scene, cam, root, occ} = T;
+  const {THREE, renderer, scene, cam, glasses, head, occ, shadowMat} = T;
   const W = cv.width, H = cv.height;
-  if (renderer.domElement.width !== W || renderer.domElement.height !== H) renderer.setSize(W, H, false);
+  if (renderer.domElement.width !== W || renderer.domElement.height !== H){ renderer.setSize(W, H, false); const sh = $("sh"); sh.width = W; sh.height = H; }
   cam.left = 0; cam.right = W; cam.top = 0; cam.bottom = -H; cam.updateProjectionMatrix();
-  const fr = S.frame, model = T.models[fr.id];
-  root.children.filter(c => c !== occ).forEach(c => root.remove(c));
-  if (model && pose && S.F && !S.hide){
-    root.add(model);
-    const px = S.F.pxPerMm, M = S.M;
-    const pos = pose.eye.clone().addScaledVector(pose.z, 13*px).addScaledVector(pose.y, (fr.style==="sport" ? 2 : .5)*px);
-    const m = new T.THREE.Matrix4().makeBasis(pose.x, pose.y, pose.z);
-    m.scale(new T.THREE.Vector3(px, px, px)); m.setPosition(pos);
-    root.matrix.copy(m); root.matrixWorldNeedsUpdate = true;
-    const fw = M ? M.faceW : 140;
-    occ.scale.set(fw/2 + 3, 118, 100); occ.position.set(0, -18, -112);
-    root.visible = true;
-  } else root.visible = false;
+  glasses.clear();
+  const sctx = $("sh").getContext("2d"); sctx.clearRect(0, 0, W, H);
+  const model = T.models[S.frame.id];
+  if (!(model && pose && !S.hide)){ glasses.visible = head.visible = false; renderer.render(scene, cam); return; }
+  glasses.add(model); glasses.visible = head.visible = true;
+  const fr = S.frame, px = pose.px;
+  const R = new THREE.Matrix4().makeRotationFromQuaternion(pose.q);
+  const ax = new THREE.Vector3(), ay = new THREE.Vector3(), az = new THREE.Vector3(); R.extractBasis(ax, ay, az);
+  const tilt = new THREE.Matrix4().makeRotationX((fr.style === "sport" ? 5 : 8)*Math.PI/180);
+  const pos = pose.pos.clone().addScaledVector(az, VERTEX_MM*px).addScaledVector(ay, (ADJ.dy + (fr.style === "sport" ? 1.5 : 0))*px);
+  const k = px*ADJ.sc;
+  glasses.matrix.copy(new THREE.Matrix4().makeTranslation(pos.x, pos.y, pos.z).multiply(R).multiply(tilt).multiply(new THREE.Matrix4().makeScale(k, k, k)));
+  glasses.matrixWorldNeedsUpdate = true;
+  head.matrix.copy(new THREE.Matrix4().makeTranslation(pose.pos.x, pose.pos.y, pose.pos.z).multiply(R).multiply(new THREE.Matrix4().makeScale(px, px, px)));
+  head.matrixWorldNeedsUpdate = true;
+  const fw = S.M ? S.M.faceW : 140;
+  occ.scale.set(fw/2 - 2, 122, 104); occ.position.set(0, 6, -102);
+  // ombra morbida sulla pelle
+  const shift = new THREE.Matrix4().makeTranslation(0, -2.6*px, 0);
+  const keepM = glasses.matrix.clone();
+  glasses.matrix.premultiply(shift); glasses.matrixWorldNeedsUpdate = true;
+  const hideLens = S.lensMode === "clear";
+  model.traverse(o => { if (o.isMesh && hideLens && o.userData.part.startsWith("lens")) o.visible = false; });
+  scene.overrideMaterial = shadowMat; head.visible = false;
+  renderer.render(scene, cam);
+  sctx.drawImage(renderer.domElement, 0, 0);
+  scene.overrideMaterial = null; head.visible = true;
+  model.traverse(o => { if (o.isMesh) o.visible = true; });
+  glasses.matrix.copy(keepM); glasses.matrixWorldNeedsUpdate = true;
   renderer.render(scene, cam);
 }
 function thumb3D(f, c){
   if (!T.ok || !T.models[f.id]) return false;
   const {THREE, thumbR, thumbScene} = T, model = T.models[f.id];
-  thumbScene.add(model);
-  const half = (f.front || 140)/2 + 4, aspect = c.width/c.height;
+  const parent = model.parent; thumbScene.add(model);
+  const half = frameWidth(f)/2 + 6, aspect = c.width/c.height;
   const cam = new THREE.OrthographicCamera(-half, half, half/aspect, -half/aspect, -1000, 1000);
-  cam.position.set(0, 18, 60); cam.lookAt(0, 0, -20);
-  thumbR.render(thumbScene, cam); thumbScene.remove(model);
+  cam.position.set(0, 14, 60); cam.lookAt(0, 0, -25);
+  thumbR.render(thumbScene, cam); thumbScene.remove(model); if (parent) parent.add(model);
   const g = c.getContext("2d"); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height); g.drawImage(thumbR.domElement, 0, 0, c.width, c.height);
   return true;
-}
-
-let mpReady = null, stream = null, raf = 0, lastTs = -1, frameN = 0;
-const pdHist = [];
-
-/* ---------- Motore AR ---------- */
-function initMP(){
-  const base = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
-  mpReady = (async () => {
-    const vision = await import(`${base}/vision_bundle.mjs`);
-    const fs = await vision.FilesetResolver.forVisionTasks(`${base}/wasm`);
-    const make = delegate => vision.FaceLandmarker.createFromOptions(fs, {
-      baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate },
-      runningMode:"VIDEO", numFaces:1 });
-    try { mp = await make("GPU"); } catch(e){ mp = await make("CPU"); }
-    $("engineTxt").textContent = "AR live";
-    return mp;
-  })().catch(e => { $("engineTxt").textContent = "motore non disponibile"; throw e; });
-  mpReady.catch(() => {});
 }
 
 /* ---------- Rendering ---------- */
@@ -617,38 +848,32 @@ function render(){
   ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
   if (S.live){ ctx.save(); ctx.translate(W,0); ctx.scale(-1,1); ctx.drawImage($("vid"),0,0,W,H); ctx.restore(); }
   else if (S.base) ctx.drawImage(S.base,0,0,W,H);
-  const F = S.F;
-  if (F && !S.hide && !S.frame.model){
-    const M = S.M || computeMeasures();
-    const c = mid(F.eyeA, F.eyeB);
-    const roll = Math.atan2(F.eyeB[1]-F.eyeA[1], F.eyeB[0]-F.eyeA[0]);
-    const sx = Math.sqrt(1 - (M.yawS*.85)**2), px = F.pxPerMm;
-    ctx.save(); ctx.translate(c[0] + M.yawS*px*4, c[1]); ctx.rotate(roll); ctx.scale(px*sx, px);
-    drawGlasses(ctx, S.frame, px); ctx.restore();
-  }
   render3D();
 }
 
 /* ---------- Pannello ---------- */
-function median(a){ const b = [...a].sort((x,y)=>x-y); return b[Math.floor(b.length/2)]; }
+function currentPD(){ return knownPD || calPD || (pdSamples.length ? median(pdSamples) : null); }
+function updateCalTxt(){
+  $("calTxt").textContent = knownPD ? `PD impostata ${fmt(knownPD)} mm` : calPD ? `PD misurata ${fmt(calPD)} mm` : "calibrazione…";
+  if (calPD && !knownPD) setStatus(`Calibrato · PD ${fmt(calPD)} mm`), setTimeout(() => { if ($("status").textContent.startsWith("Calibrato")) setStatus(""); }, 2200);
+}
 function updatePanel(){
   const fr = S.frame;
   $("pName").textContent = fr.name;
-  $("pSize").textContent = (fr.model && !fr.bridge ? `monolente ${fr.front} mm` : `${fr.lens}□${fr.bridge}-${fr.temple}`) + ` · ${STYLE_IT[fr.style]} · ${fr.mat === "metallo" ? "metallo" : "acetato"}${fr.model ? " · 3D" : ""}`;
-  const M = S.M;
-  const pill = $("pFit");
+  $("pSize").textContent = (fr.model && !fr.bridge ? `monolente ${fr.front} mm` : `${fr.lens}□${fr.bridge}-${fr.temple}`) + ` · ${STYLE_IT[fr.style]}`;
+  const M = S.M, pill = $("pFit");
   if (!M){ pill.className = "pill"; pill.textContent = ""; renderCar(null); return; }
-  const s = scoreFrame(fr, M), d = Math.round(s.diff);
+  const sc = scoreFrame(fr, M), d = Math.round(sc.diff);
   pill.className = "pill " + (Math.abs(d) <= 4 ? "good" : Math.abs(d) <= 9 ? "warn" : "bad");
   pill.textContent = Math.abs(d) <= 4 ? "Calza giusto" : d > 0 ? `Largo di ${d} mm` : `Stretto di ${-d} mm`;
-  const pd = pdHist.length ? median(pdHist) : M.pd;
+  const pd = currentPD() || M.pd;
   $("mPD").innerHTML = `${fmt(pd)}<em>mm</em>`;
-  $("mMono").textContent = `${fmt(M.monoD)} / ${fmt(M.monoS)}`;
+  $("mMono").textContent = `${fmt(M.monoD*pd/M.pd)} / ${fmt(M.monoS*pd/M.pd)}`;
   $("mFace").innerHTML = `${Math.round(M.faceW)}<em>mm</em>`;
   $("mShape").textContent = M.shape;
   $("mSize").textContent = `${M.lens}□${M.bridgeEst}`;
-  $("mDec").innerHTML = `${fmt(((fr.lens+fr.bridge)-pd)/2)}<em>mm/occhio</em>`;
-  $("mSrc").textContent = S.live ? "dal vivo" : "da foto";
+  $("mDec").innerHTML = fr.bridge ? `${fmt(((fr.lens+fr.bridge)-pd)/2)}<em>mm/occhio</em>` : "—";
+  $("mSrc").textContent = knownPD ? "PD impostata" : calPD ? "calibrate" : "in calibrazione";
   $("why").textContent = (SHAPES[M.shape] || SHAPES.Ovale).why;
   renderCar(M);
 }
@@ -657,15 +882,15 @@ function renderCar(M){
   if (!host.children.length){
     for (const f of FRAMES){
       const b = document.createElement("button"); b.className = "fr"; b.dataset.id = f.id;
-      b.innerHTML = `<canvas width="240" height="110"></canvas><div class="t">${f.name}<small></small></div><div class="s">${f.model && !f.bridge ? "monolente " + f.front + " mm" : f.lens + "□" + f.bridge + "-" + f.temple}</div>${f.model ? '<span class="d3">3D</span>' : ""}`;
+      b.innerHTML = `<canvas width="240" height="110"></canvas><div class="t">${f.name}<small></small></div><div class="s">${f.model && !f.bridge ? "monolente " + f.front + " mm" : f.lens + "□" + f.bridge + "-" + f.temple}</div>`;
       b.addEventListener("click", () => { S.frame = f; if (f.sun && S.lensMode === "clear") setLens("sun"); renderColors(); updatePanel(); drawThumbs(); if (!S.live) render(); });
       host.appendChild(b);
     }
   }
   const els = {}; [...host.children].forEach(el => els[el.dataset.id] = el);
-  let order = FRAMES.map(f => ({f, score: M ? scoreFrame(f, M).score : null}));
+  const order = FRAMES.map(f => ({f, score: M ? scoreFrame(f, M).score : null}));
   if (M) order.sort((a,b) => b.score - a.score);
-  order.forEach((it,i) => {
+  order.forEach((it, i) => {
     const el = els[it.f.id]; host.appendChild(el);
     el.setAttribute("aria-pressed", String(it.f === S.frame));
     el.querySelector("small").textContent = it.score ?? "";
@@ -675,11 +900,12 @@ function renderCar(M){
 }
 function drawThumbs(){
   for (const el of $("car").children){
-    const f = FRAMES.find(x => x.id === el.dataset.id), c = el.querySelector("canvas"), g = c.getContext("2d");
-    if (f.model){ thumb3D(f, c); continue; }
-    g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height);
+    const f = FRAMES.find(x => x.id === el.dataset.id), c = el.querySelector("canvas");
+    if (thumb3D(f, c)) continue;
+    if (f.model) continue;
+    const g = c.getContext("2d"); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height);
     const sc = (c.width - 16)/(frameWidth(f) + 4);
-    g.translate(c.width/2, c.height/2 - lensCY(f)*sc); g.scale(sc,sc);
+    g.translate(c.width/2, c.height/2 - lensCY(f)*sc); g.scale(sc, sc);
     drawGlasses(g, f, sc, {shadow:false});
   }
 }
@@ -695,47 +921,45 @@ function renderColors(){
   }
 }
 function drawHero(){
-  const c = $("hero"), g = c.getContext("2d"), flat = FRAMES.filter(f => !f.model), list = [flat[2], flat[3], flat[7]];
+  const c = $("hero"), g = c.getContext("2d"), flat = FRAMES.filter(f => !f.model), list = [flat[2], flat[3], flat[0]];
   g.clearRect(0,0,c.width,c.height);
   list.forEach((f,i) => {
-    const sc = 1.55, x = [150, 360, 570][i], y = [110, 190, 110][i];
-    g.save(); g.translate(x, y); g.rotate([-.12, 0, .12][i]); g.scale(sc, sc);
-    drawGlasses(g, f, sc, {shadow:false}); g.restore();
+    const x = [150, 360, 570][i], y = [110, 190, 110][i];
+    g.save(); g.translate(x, y); g.rotate([-.12, 0, .12][i]); g.scale(1.55, 1.55);
+    drawGlasses(g, f, 1.55, {shadow:false}); g.restore();
   });
 }
 
-/* ---------- Live ---------- */
+/* ---------- Fotocamera live ---------- */
 async function startLive(){
   setStatus("Avvio fotocamera…");
   try {
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user", width:{ideal:1280}, height:{ideal:720}}, audio:false});
-  } catch(e){
-    setStatus("Fotocamera non autorizzata: carica una foto");
-    $("start").hidden = false; return;
-  }
+  } catch(e){ setStatus("Fotocamera non autorizzata: carica una foto"); $("start").hidden = false; return; }
   const v = $("vid"); v.srcObject = stream; await v.play();
   cv.width = v.videoWidth; cv.height = v.videoHeight;
   $("start").hidden = true;
   setStatus("Caricamento motore AR…");
   try { await mpReady; await mp.setOptions({runningMode:"VIDEO"}); }
   catch(e){ setStatus("Motore AR non caricato: controlla la connessione"); }
-  S.live = true; S.F = null; pose = null; pdHist.length = 0; setStatus("Guarda dritto in camera");
+  S.live = true; S.F = null; pose = null; resetFilters();
+  setStatus(currentPD() && (knownPD || calPD) ? "" : "Calibrazione: guarda dritto in camera");
   loop();
 }
 function loop(){
   if (!S.live) return;
   const v = $("vid"), ts = performance.now();
-  if (mp && v.readyState >= 2 && ts !== lastTs){
+  if (mp && T.ok && v.readyState >= 2 && ts !== lastTs){
     lastTs = ts;
     const r = mp.detectForVideo(v, ts);
     if (r.faceLandmarks && r.faceLandmarks.length){
-      S.F = smoothF(S.F, mpToF(r.faceLandmarks[0], cv.width, cv.height, true), .5);
-      if (T.ok) pose = smoothPose(pose, computePose(r.faceLandmarks[0], cv.width, cv.height, true), .5);
+      pose = measurePose(r, cv.width, cv.height, true, ts);
+      S.F = mpToF(r.faceLandmarks[0], cv.width, cv.height, true);
+      S.F.pxPerMm = pose.px;
       S.M = computeMeasures();
-      if (Math.abs(S.M.yawS) < .1){ pdHist.push(S.M.pd); if (pdHist.length > 60) pdHist.shift(); }
       if (++frameN % 15 === 0) updatePanel();
-      if ($("status").textContent) setStatus(Math.abs(S.M.yawS) > .25 ? "Gira la testa lentamente: le aste ti seguono" : "");
-    } else { S.F = null; pose = null; setStatus("Inquadra il viso"); }
+      if ($("status").textContent === "Inquadra il viso") setStatus("");
+    } else { pose = null; S.F = null; resetFilters(); setStatus("Inquadra il viso"); }
   }
   render();
   raf = requestAnimationFrame(loop);
@@ -753,15 +977,15 @@ async function handleFile(file){
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
   const k = Math.min(1, 1600/Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
-  c.getContext("2d").drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url);
-  S.base = c; cv.width = c.width; cv.height = c.height; S.F = null; render();
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+  S.base = c; cv.width = c.width; cv.height = c.height; S.F = null; pose = null; render();
   try {
     await mpReady; await mp.setOptions({runningMode:"IMAGE"});
     const r = mp.detect(c);
-    if (r.faceLandmarks && r.faceLandmarks.length){
-      S.F = mpToF(r.faceLandmarks[0], c.width, c.height, false); S.M = computeMeasures(); pdHist.length = 0;
-      pose = T.ok ? computePose(r.faceLandmarks[0], c.width, c.height, false) : null;
-      setStatus(""); updatePanel(); render();
+    if (r.faceLandmarks && r.faceLandmarks.length && T.ok){
+      pose = measurePose(r, c.width, c.height, false, null);
+      S.F = mpToF(r.faceLandmarks[0], c.width, c.height, false); S.F.pxPerMm = pose.px;
+      S.M = computeMeasures(); setStatus(""); updatePanel(); render();
     } else setStatus("Nessun volto: usa una foto frontale ben illuminata");
   } catch(e){ setStatus("Motore AR non caricato: controlla la connessione"); }
 }
@@ -773,7 +997,25 @@ $("flipBtn").addEventListener("click", () => {
   if (S.live){ const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; i.onchange = () => handleFile(i.files[0]); i.click(); }
   else startLive();
 });
-$("measBtn").addEventListener("click", () => { const m = $("meas"); m.hidden = !m.hidden; $("measBtn").classList.toggle("on", !m.hidden); updatePanel(); });
+function togglePanel(id, btn){
+  for (const [p, b] of [["meas","measBtn"],["adj","adjBtn"]]) if (p !== id){ $(p).hidden = true; $(b).classList.remove("on"); }
+  const el = $(id); el.hidden = !el.hidden; $(btn).classList.toggle("on", !el.hidden); updatePanel();
+}
+$("measBtn").addEventListener("click", () => togglePanel("meas", "measBtn"));
+$("adjBtn").addEventListener("click", () => togglePanel("adj", "adjBtn"));
+function syncAdj(){
+  $("rUp").value = ADJ.dy; $("rSc").value = Math.round(ADJ.sc*100);
+  $("oUp").textContent = `${ADJ.dy > 0 ? "+" : ""}${ADJ.dy} mm`; $("oSc").textContent = `${Math.round(ADJ.sc*100)}%`;
+  $("pdIn").value = knownPD ?? ""; updateCalTxt();
+}
+$("rUp").addEventListener("input", e => { ADJ.dy = +e.target.value; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
+$("rSc").addEventListener("input", e => { ADJ.sc = e.target.value/100; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
+$("pdIn").addEventListener("change", e => {
+  const v = parseFloat(String(e.target.value).replace(",", "."));
+  knownPD = v >= 50 && v <= 80 ? v : null; store.set("pd", knownPD); syncAdj(); updatePanel();
+});
+$("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
+$("reset").addEventListener("click", () => { ADJ.dy = 0; ADJ.sc = 1; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
 const hold = $("holdBtn");
 const setHide = v => { S.hide = v; hold.classList.toggle("on", v); if (!S.live) render(); };
 hold.addEventListener("pointerdown", e => { e.preventDefault(); setHide(true); });
@@ -781,7 +1023,8 @@ hold.addEventListener("pointerdown", e => { e.preventDefault(); setHide(true); }
 $("snapBtn").addEventListener("click", () => {
   render();
   const out = document.createElement("canvas"); out.width = cv.width; out.height = cv.height;
-  const og = out.getContext("2d"); og.drawImage(cv, 0, 0); if (T.ok) og.drawImage($("gl"), 0, 0);
+  const og = out.getContext("2d"); og.drawImage(cv, 0, 0);
+  if (T.ok){ og.save(); og.globalAlpha = .42; og.filter = "blur(5px)"; og.drawImage($("sh"), 0, 0); og.restore(); og.drawImage($("gl"), 0, 0); }
   out.toBlob(blob => {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ottivista-${S.frame.id}.jpg`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -801,7 +1044,7 @@ function setLens(v){
 /* ---------- Avvio ---------- */
 initMP();
 init3D();
-renderColors(); updatePanel(); drawThumbs(); drawHero();
+renderColors(); updatePanel(); drawThumbs(); drawHero(); syncAdj();
 })();
 </script>
 </body>
