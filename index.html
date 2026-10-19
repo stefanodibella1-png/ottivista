@@ -5,8 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>OttiVista · Prova occhiali</title>
 <meta name="theme-color" content="#0B0D0F">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OttiVista">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="profile3d.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <style>
 :root{
@@ -21,10 +29,10 @@
 [hidden]{display:none!important}
 html,body{margin:0;height:100%;background:var(--cam);color:var(--ink);font-family:var(--f-ui);font-size:15px}
 button{font:inherit;color:inherit}
-.app{height:100%;display:flex;flex-direction:column}
+.app{height:100%;position:relative}
 
 /* Area fotocamera */
-.cam{position:relative;flex:1;min-height:0;background:var(--cam);overflow:hidden}
+.cam{position:absolute;inset:0;background:var(--cam);overflow:hidden}
 #cv,#gl,#sh{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 #gl,#sh{pointer-events:none}
 #sh{filter:blur(5px);opacity:.42}
@@ -33,13 +41,14 @@ button{font:inherit;color:inherit}
   background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,0));z-index:3}
 .logo{color:#fff;font-weight:700;font-size:19px;letter-spacing:-.02em}
 .logo span{font-weight:500;opacity:.7;font-size:13px;margin-left:6px}
+@media (max-width:440px){.logo span{display:none}}
 .icons{display:flex;gap:8px}
 .ib{width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.16);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   display:grid;place-items:center;cursor:pointer;color:#fff}
 .ib svg{width:21px;height:21px}
 .ib.on{background:#fff;color:var(--ink)}
 .ib:focus-visible,.sw:focus-visible,.fr:focus-visible,.seg button:focus-visible,.cta:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.status{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:3;background:rgba(0,0,0,.6);color:#fff;font-size:13.5px;padding:7px 13px;border-radius:999px;white-space:nowrap;max-width:calc(100% - 28px);overflow:hidden;text-overflow:ellipsis}
+.status{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 66px);z-index:3;background:rgba(0,0,0,.6);color:#fff;font-size:13.5px;padding:7px 13px;border-radius:999px;white-space:nowrap;max-width:calc(100% - 28px);overflow:hidden;text-overflow:ellipsis}
 .status:empty{display:none}
 .shutter{position:absolute;right:max(14px,env(safe-area-inset-right,0px));bottom:16px;z-index:3;display:flex;flex-direction:column;gap:10px}
 
@@ -73,39 +82,46 @@ button{font:inherit;color:inherit}
 .link input{display:none}
 .priv{font-size:12px;color:var(--muted)}
 
-/* Pannello prodotto */
-.sheet{background:var(--white);border-radius:20px 20px 0 0;margin-top:-18px;position:relative;z-index:2;display:grid;gap:12px;
-  padding:14px max(14px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 14px) max(14px,env(safe-area-inset-left,0px))}
-.prod{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.prod .nm{font-weight:700;font-size:18px;letter-spacing:-.01em}
-.prod .sz{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);margin-top:1px}
-.pill{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;white-space:nowrap}
-.pill.good{background:#E6F4EC;color:var(--good)} .pill.warn{background:#FBF0E2;color:var(--warn)} .pill.bad{background:#FBE7E5;color:var(--bad)}
-.opts{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.sws{display:flex;gap:9px}
-.sw{width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
-.sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
-.seg{display:inline-flex;background:var(--soft);border-radius:999px;padding:3px}
-.seg button{border:0;background:transparent;padding:6px 11px;border-radius:999px;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted)}
-.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.car{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 4px;scrollbar-width:none}
+/* Pannello prodotto: sovrapposto e trasparente */
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:2;display:grid;gap:8px;color:#fff;
+  padding:28px max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 10px) max(12px,env(safe-area-inset-left,0px));
+  background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.38) 40%,rgba(0,0,0,.5))}
+.sheet.min .opts,.sheet.min .car,.sheet.min .credit{display:none}
+.prod{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.prod .nm{font-weight:700;font-size:16px;letter-spacing:-.01em;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.prod .sz{font-family:var(--f-mono);font-size:11.5px;opacity:.85;margin-top:1px}
+.prod .rt{display:flex;align-items:center;gap:8px}
+.tog{border:0;background:rgba(255,255,255,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;cursor:pointer}
+.tog svg{width:18px;height:18px;transition:transform .2s}
+.sheet.min .tog svg{transform:rotate(180deg)}
+.pill{font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:999px;white-space:nowrap;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pill:empty{display:none}
+.pill.good{background:rgba(27,138,75,.85);color:#fff} .pill.warn{background:rgba(178,106,18,.88);color:#fff} .pill.bad{background:rgba(192,57,43,.88);color:#fff}
+.opts{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.sws{display:flex;gap:8px;align-items:center}
+.sw{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,.9);box-shadow:none;cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 2px #fff,0 0 0 4px rgba(0,0,0,.35)}
+.real{font-size:12px;opacity:.85}
+.seg{display:inline-flex;background:rgba(255,255,255,.16);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:999px;padding:2px}
+.seg button{border:0;background:transparent;padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:500;cursor:pointer;color:rgba(255,255,255,.85)}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink)}
+.car{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px;scrollbar-width:none}
 .car::-webkit-scrollbar{display:none}
-.fr{flex:0 0 auto;width:118px;scroll-snap-align:start;border:1.5px solid var(--line);background:var(--soft);border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:grid;gap:2px;position:relative;text-align:left}
-.fr[aria-pressed="true"]{border-color:var(--ink);background:#fff}
+.fr{flex:0 0 auto;width:92px;scroll-snap-align:start;border:1.5px solid transparent;background:rgba(255,255,255,.5);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-radius:12px;padding:3px 3px 5px;cursor:pointer;display:grid;gap:0;position:relative;text-align:left;color:var(--ink)}
+.fr[aria-pressed="true"]{border-color:#fff;background:rgba(255,255,255,.82)}
 .fr canvas{width:100%;height:auto;display:block}
-.fr .t{font-weight:600;font-size:13.5px;padding:0 4px;display:flex;justify-content:space-between}
-.fr .t small{font-family:var(--f-mono);font-size:11px;color:var(--accent);font-weight:500}
-.fr .s{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);padding:0 4px}
-.fr .best{position:absolute;top:6px;left:6px;background:var(--accent);color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:999px;letter-spacing:.03em}
-.credit{font-size:10.5px;color:var(--muted);margin:0}
+.fr .t{font-weight:600;font-size:11.5px;padding:0 4px;display:flex;justify-content:space-between;white-space:nowrap;overflow:hidden}
+.fr .t small{font-family:var(--f-mono);font-size:10px;color:var(--accent);font-weight:500}
+.fr .s{display:none}
+.fr .best{position:absolute;top:4px;left:4px;background:var(--accent);color:#fff;font-size:8.5px;font-weight:700;padding:1px 5px;border-radius:999px;letter-spacing:.03em}
+.credit{font-size:10px;opacity:.6;margin:0}
 .credit a{color:inherit}
-.fr .d3{position:absolute;top:6px;right:6px;background:var(--ink);color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:999px}
-@media (min-width:900px){
-  .app{flex-direction:row}
-  .sheet{width:380px;margin-top:0;border-radius:0;align-content:start;overflow-y:auto;padding-top:22px}
-  .car{flex-wrap:wrap;overflow:visible}
-  .fr{width:calc(50% - 5px)}
-}
+.inst{position:absolute;z-index:6;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 66px);
+  background:#fff;color:var(--ink);border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);display:grid;gap:8px;max-width:420px;margin:0 auto}
+.inst h3{margin:0;font-size:15px}
+.inst ol{margin:0;padding-left:20px;font-size:14px;line-height:1.55}
+@media (min-width:900px){ .car{flex-wrap:nowrap} .sheet{left:50%;transform:translateX(-50%);width:min(760px,100%);border-radius:18px 18px 0 0} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -123,6 +139,8 @@ button{font:inherit;color:inherit}
         <button class="ib" id="measBtn" aria-label="Misure del volto" title="Misure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></svg></button>
         <button class="ib" id="adjBtn" aria-label="Regola posizione e misura" title="Regola"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
         <button class="ib" id="holdBtn" aria-label="Tieni premuto per vedere senza occhiali" title="Senza occhiali"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 13.5c1.2-1 2.8-1 4 0M3 4l18 18"/></svg></button>
+        <button class="ib" id="snapBtn" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+        <button class="ib" id="instBtn" hidden aria-label="Installa l'app" title="Installa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
         <button class="ib" id="flipBtn" aria-label="Cambia sorgente" title="Carica foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg></button>
       </div>
     </div>
@@ -150,9 +168,14 @@ button{font:inherit;color:inherit}
       <p class="mnote">Se conosci la tua distanza pupillare inseriscila: la scala diventa esatta al millimetro.</p>
       <div class="row2"><button class="mini" id="recal">Ricalibra</button><button class="mini" id="reset">Azzera</button></div>
     </div>
+    <div class="inst" id="instIos" hidden>
+      <h3>Installa OttiVista su iPhone</h3>
+      <ol><li>Tocca il pulsante <b>Condividi</b> di Safari (quadrato con la freccia in alto).</li><li>Scorri e scegli <b>Aggiungi alla schermata Home</b>.</li><li>Premi <b>Aggiungi</b>: l'icona OttiVista compare tra le tue app.</li></ol>
+      <button class="mini" id="instClose">Ho capito</button>
+    </div>
     <div class="status" id="status"></div>
-    <div class="shutter">
-      <button class="ib" id="snapBtn" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+    <div class="shutter" hidden>
+      <button class="ib" id="snapBtnOld" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
     </div>
 
     <div class="start" id="start">
@@ -162,13 +185,15 @@ button{font:inherit;color:inherit}
       <button class="cta" id="goBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Prova ora</button>
       <label class="link" for="upload">oppure carica una foto<input id="upload" type="file" accept="image/*"></label>
       <span class="priv">L'immagine resta sul tuo telefono: niente viene inviato.</span>
+      <button class="link" id="instStart" hidden>Installa l'app sul telefono</button>
+      <a class="link" href="studio.html">Sei un ottico? Digitalizza le tue montature</a>
     </div>
   </div>
 
   <div class="sheet">
     <div class="prod">
       <div><div class="nm" id="pName">Etna</div><div class="sz" id="pSize">49□21-145 · panto · acetato</div></div>
-      <span class="pill good" id="pFit">Calza giusto</span>
+      <div class="rt"><span class="pill good" id="pFit"></span><button class="tog" id="sheetTog" aria-label="Mostra o nascondi le montature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button></div>
     </div>
     <div class="opts">
       <div class="sws" id="colors"></div>
@@ -485,8 +510,12 @@ FRAMES.unshift(
   {id:"sport3d", name:"Scirocco", style:"sport", lens:71, bridge:0, temple:130, h:31, n:2, rim:1, mat:"acetato", model:"models/sport.glb", front:142, sun:true}
 );
 STYLE_IT.sport = "sportivo avvolgente";
-for (const k in SHAPES) SHAPES[k].sport = SHAPES[k].sport ?? .75;
-S.frame = FRAMES[2];
+STYLE_IT.custom = "dal tuo negozio";
+for (const k in SHAPES){ SHAPES[k].sport = SHAPES[k].sport ?? .75; SHAPES[k].custom = SHAPES[k].custom ?? .8; }
+function profileFrame(p){ return {id:p.id, name:p.name, style:"custom", lens:p.calibro.lens, bridge:p.calibro.bridge, temple:p.calibro.temple, h:p.h, n:2, rim:1, mat:p.mat, profile:p, front:p.front}; }
+const customs = (() => { try { return JSON.parse(localStorage.getItem("ov_custom") || "[]"); } catch(e){ return []; } })().filter(p => p && p.outer);
+for (const p of [...customs].reverse()) FRAMES.unshift(profileFrame(p));
+S.frame = customs.length ? FRAMES[0] : FRAMES.find(f => f.id === "etna");
 
 const store = {
   get(k, d){ try { const v = localStorage.getItem("ov_" + k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
@@ -741,6 +770,7 @@ function applyMaterials(){
     const model = T.models[f.id]; if (!model) continue;
     model.traverse(o => {
       if (!o.isMesh) return;
+      if (o.userData.ownMat) return;
       const part = o.userData.part || (o.material && o.material.name) || o.name;
       const hasUV = !!o.geometry.attributes.uv;
       if (part.startsWith("lens")){ o.material = lens; o.renderOrder = 2; }
@@ -781,8 +811,22 @@ async function init3D(){
     const thumbScene = new THREE.Scene(); thumbScene.environment = env(thumbR);
     const tl = new THREE.DirectionalLight(0xffffff, 1.5); tl.position.set(.3, 1, 1.4); thumbScene.add(tl, new THREE.AmbientLight(0xffffff, .4));
     Object.assign(T, {renderer, scene, cam, glasses, head, occ, shadowMat, thumbR, thumbScene, ok:true});
-    for (const f of FRAMES) if (!f.model) T.models[f.id] = buildFrame(f);
+    const onTex = () => { drawThumbs(); if (!S.live) render(); };
+    const buildAny = f => f.profile ? OVProfile.build(THREE, Object.assign(f.profile, {onReady:onTex})) : buildFrame(f);
+    for (const f of FRAMES) if (!f.model){ try { T.models[f.id] = buildAny(f); } catch(e){ console.warn("modello", f.id, e); } }
     applyMaterials(); drawThumbs(); render();
+    try {
+      const r = await fetch("models/catalog.json", {cache:"no-cache"});
+      if (r.ok){
+        const have = new Set(FRAMES.map(f => f.id));
+        const add = (await r.json()).filter(p => p && p.outer && !have.has(p.id)).map(profileFrame);
+        if (add.length){
+          FRAMES.splice(0, 0, ...add);
+          for (const f of add){ try { T.models[f.id] = buildAny(f); } catch(e){} }
+          $("car").innerHTML = ""; applyMaterials(); updatePanel(); drawThumbs();
+        }
+      }
+    } catch(e){}
     const loader = new GLTFLoader();
     await Promise.all(FRAMES.filter(f => f.model).map(f => new Promise(res => {
       loader.load(f.model, g => { T.models[f.id] = g.scene; res(); }, undefined, () => res());
@@ -902,7 +946,7 @@ function drawThumbs(){
   for (const el of $("car").children){
     const f = FRAMES.find(x => x.id === el.dataset.id), c = el.querySelector("canvas");
     if (thumb3D(f, c)) continue;
-    if (f.model) continue;
+    if (f.model || f.profile) continue;
     const g = c.getContext("2d"); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height);
     const sc = (c.width - 16)/(frameWidth(f) + 4);
     g.translate(c.width/2, c.height/2 - lensCY(f)*sc); g.scale(sc, sc);
@@ -911,6 +955,7 @@ function drawThumbs(){
 }
 function renderColors(){
   const host = $("colors"); host.innerHTML = "";
+  if (S.frame.profile){ host.innerHTML = '<span class="real">Colori reali dalla foto</span>'; return; }
   const metal = S.frame.mat === "metallo", list = metal ? COLORS_MET : COLORS_ACE, cur = metal ? S.metalColor : S.color;
   for (const c of list){
     const b = document.createElement("button"); b.className = "sw"; b.title = c.name; b.setAttribute("aria-label", c.name);
@@ -921,7 +966,7 @@ function renderColors(){
   }
 }
 function drawHero(){
-  const c = $("hero"), g = c.getContext("2d"), flat = FRAMES.filter(f => !f.model), list = [flat[2], flat[3], flat[0]];
+  const c = $("hero"), g = c.getContext("2d"), flat = FRAMES.filter(f => !f.model && !f.profile), list = [flat[2], flat[3], flat[0]];
   g.clearRect(0,0,c.width,c.height);
   list.forEach((f,i) => {
     const x = [150, 360, 570][i], y = [110, 190, 110][i];
@@ -1040,6 +1085,29 @@ function setLens(v){
   [...$("lensMode").children].forEach(x => x.setAttribute("aria-pressed", String(x.dataset.v === v)));
   applyMaterials();
 }
+
+/* ---------- Carosello richiudibile ---------- */
+const sheet = document.querySelector(".sheet");
+if (store.get("sheetMin", false)) sheet.classList.add("min");
+$("sheetTog").addEventListener("click", () => { sheet.classList.toggle("min"); store.set("sheetMin", sheet.classList.contains("min")); });
+
+/* ---------- Installazione come app ---------- */
+let installEvt = null;
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function showInstall(){ if (standalone) return; $("instBtn").hidden = false; $("instStart").hidden = false; }
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; showInstall(); });
+window.addEventListener("appinstalled", () => { $("instBtn").hidden = true; $("instStart").hidden = true; setStatus("App installata"); });
+if (isIOS) showInstall();
+async function doInstall(){
+  if (installEvt){ installEvt.prompt(); try { await installEvt.userChoice; } catch(e){} installEvt = null; return; }
+  if (isIOS){ $("instIos").hidden = false; return; }
+  setStatus("Dal menu del browser scegli «Installa app» o «Aggiungi a schermata Home»");
+}
+$("instBtn").addEventListener("click", doInstall);
+$("instStart").addEventListener("click", doInstall);
+$("instClose").addEventListener("click", () => { $("instIos").hidden = true; });
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 
 /* ---------- Avvio ---------- */
 initMP();
