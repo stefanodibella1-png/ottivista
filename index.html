@@ -521,7 +521,7 @@ const store = {
   get(k, d){ try { const v = localStorage.getItem("ov_" + k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
   set(k, v){ try { localStorage.setItem("ov_" + k, JSON.stringify(v)); } catch(e){} }
 };
-const ADJ = Object.assign({dy:0, sc:1}, store.get("adj", {}));
+const ADJ = Object.assign({dy:0, sc:1}, store.get("adj2", {}));
 let knownPD = store.get("pd", null);
 let calPD = null;
 const pdSamples = [];
@@ -662,7 +662,12 @@ function measurePose(res, W, H, mir, t){
   const eA = P(468), eB = P(473), eyeD = eA.distanceTo(eB);
   // diametro orizzontale dell'iride (quello verticale è coperto dalle palpebre)
   const irisPx = (d2(pt(lm,469,W,H), pt(lm,471,W,H)) + d2(pt(lm,474,W,H), pt(lm,476,W,H)))/2;
-  const pdIris = eyeD/(irisPx/IRIS_MM);
+  const pdIrisRaw = eyeD/(irisPx/IRIS_MM);
+  // controllo incrociato con la larghezza del viso (adulto medio ~140 mm tra le tempie):
+  // evita che un errore sui punti dell'iride renda gli occhiali enormi o minuscoli
+  const faceD = P(234).distanceTo(P(454));
+  const pdFace = eyeD/(faceD/140);
+  const pdIris = clamp(Math.sqrt(pdIrisRaw*pdFace), 55, 72);
   // ancoraggio e scala sugli angoli degli occhi: fermi rispetto alla testa
   const cA = P(33), cAi = P(133), cBi = P(362), cB = P(263);
   const canthD = cA.distanceTo(cB);
@@ -670,7 +675,7 @@ function measurePose(res, W, H, mir, t){
   if (Math.abs(yaw0(q)) < .15) ratioSamples.push(canthD/eyeD), ratioSamples.length > 90 && ratioSamples.shift();
   const zAxis = new Vector3(0,0,1).applyQuaternion(q);
   const yaw = Math.atan2(zAxis.x, zAxis.z), pitch = Math.asin(clamp(zAxis.y, -1, 1));
-  if (!knownPD && calPD === null && Math.abs(yaw) < .12 && Math.abs(pitch) < .2 && pdIris > 48 && pdIris < 80){
+  if (!knownPD && calPD === null && Math.abs(yaw) < .12 && Math.abs(pitch) < .2){
     pdSamples.push(pdIris);
     if (pdSamples.length >= 45){ calPD = median(pdSamples); updateCalTxt(); }
     else if (pdSamples.length % 5 === 0) setStatus(`Calibrazione: guarda dritto in camera · ${Math.round(pdSamples.length/45*100)}%`);
@@ -1147,14 +1152,14 @@ function syncAdj(){
   $("oUp").textContent = `${ADJ.dy > 0 ? "+" : ""}${ADJ.dy} mm`; $("oSc").textContent = `${Math.round(ADJ.sc*100)}%`;
   $("pdIn").value = knownPD ?? ""; updateCalTxt();
 }
-$("rUp").addEventListener("input", e => { ADJ.dy = +e.target.value; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
-$("rSc").addEventListener("input", e => { ADJ.sc = e.target.value/100; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
+$("rUp").addEventListener("input", e => { ADJ.dy = +e.target.value; store.set("adj2", ADJ); syncAdj(); if (!S.live) render(); });
+$("rSc").addEventListener("input", e => { ADJ.sc = e.target.value/100; store.set("adj2", ADJ); syncAdj(); if (!S.live) render(); });
 $("pdIn").addEventListener("change", e => {
   const v = parseFloat(String(e.target.value).replace(",", "."));
   knownPD = v >= 50 && v <= 80 ? v : null; store.set("pd", knownPD); syncAdj(); updatePanel();
 });
 $("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; ratioSamples.length = 0; resetRef(); updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
-$("reset").addEventListener("click", () => { ADJ.dy = 0; ADJ.sc = 1; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
+$("reset").addEventListener("click", () => { ADJ.dy = 0; ADJ.sc = 1; store.set("adj2", ADJ); syncAdj(); if (!S.live) render(); });
 const hold = $("holdBtn");
 const setHide = v => { S.hide = v; hold.classList.toggle("on", v); if (!S.live) render(); };
 hold.addEventListener("pointerdown", e => { e.preventDefault(); setHide(true); });
