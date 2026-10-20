@@ -545,8 +545,8 @@ class OneEuro {
 }
 let FL = null;
 function resetFilters(){
-  FL = { x:new OneEuro(1.4,.012), y:new OneEuro(1.4,.012), z:new OneEuro(1,.01), s:new OneEuro(.9,.4),
-         q:[0,1,2,3].map(() => new OneEuro(1.6,.9)), prevQ:null };
+  FL = { x:new OneEuro(2.6,.025), y:new OneEuro(2.6,.025), z:new OneEuro(2,.02), s:new OneEuro(1.2,.6),
+         q:[0,1,2,3].map(() => new OneEuro(2.6,1.4)), prevQ:null };
 }
 resetFilters();
 
@@ -610,9 +610,16 @@ function measurePose(res, W, H, mir, t){
     if (r){ q = r.q; if (matrixMode === null && ++modeVotes[r.mode] > 20) matrixMode = r.mode; }
   }
   // scala: distanza 3D tra le pupille / PD in mm
+  // pupille: servono solo a misurare la PD (si muovono con lo sguardo)
   const eA = P(468), eB = P(473), eyeD = eA.distanceTo(eB);
-  const irisPx = (d2(pt(lm,469,W,H), pt(lm,471,W,H)) + d2(pt(lm,474,W,H), pt(lm,476,W,H)) + d2(pt(lm,470,W,H), pt(lm,472,W,H)) + d2(pt(lm,475,W,H), pt(lm,477,W,H)))/4;
+  // diametro orizzontale dell'iride (quello verticale è coperto dalle palpebre)
+  const irisPx = (d2(pt(lm,469,W,H), pt(lm,471,W,H)) + d2(pt(lm,474,W,H), pt(lm,476,W,H)))/2;
   const pdIris = eyeD/(irisPx/IRIS_MM);
+  // ancoraggio e scala sugli angoli degli occhi: fermi rispetto alla testa
+  const cA = P(33), cAi = P(133), cBi = P(362), cB = P(263);
+  const canthD = cA.distanceTo(cB);
+  const anchor = cA.clone().add(cAi).add(cBi).add(cB).multiplyScalar(.25);
+  if (Math.abs(yaw0(q)) < .15) ratioSamples.push(canthD/eyeD), ratioSamples.length > 90 && ratioSamples.shift();
   const zAxis = new Vector3(0,0,1).applyQuaternion(q);
   const yaw = Math.atan2(zAxis.x, zAxis.z), pitch = Math.asin(clamp(zAxis.y, -1, 1));
   if (!knownPD && calPD === null && Math.abs(yaw) < .12 && Math.abs(pitch) < .2 && pdIris > 48 && pdIris < 80){
@@ -621,8 +628,9 @@ function measurePose(res, W, H, mir, t){
     else if (pdSamples.length % 5 === 0) setStatus(`Calibrazione: guarda dritto in camera · ${Math.round(pdSamples.length/45*100)}%`);
   }
   const PD = knownPD || calPD || (pdSamples.length ? median(pdSamples) : 63);
-  const px = eyeD / PD;
-  const mid3 = eA.clone().add(eB).multiplyScalar(.5);
+  const ratio = ratioSamples.length >= 10 ? median(ratioSamples) : canthD/eyeD;
+  const px = canthD / (PD*ratio) * PERSPECTIVE;
+  const mid3 = anchor;
   const raw = {q, pos:mid3, px, yaw, pitch, PD};
   if (t === null) return raw;
   // filtri
@@ -631,6 +639,9 @@ function measurePose(res, W, H, mir, t){
   FL.prevQ = qf.clone();
   return { q:qf, pos:new Vector3(FL.x.f(mid3.x,t), FL.y.f(mid3.y,t), FL.z.f(mid3.z,t)), px:FL.s.f(px,t), yaw, pitch, PD };
 }
+const ratioSamples = [];
+const PERSPECTIVE = 1.04; // gli occhiali stanno ~12 mm più vicini alla camera del viso
+function yaw0(q){ const z = new T.THREE.Vector3(0,0,1).applyQuaternion(q); return Math.atan2(z.x, z.z); }
 function pt(lm, i, W, H){ return [lm[i].x*W, lm[i].y*H]; }
 function median(a){ const b = [...a].sort((x,y) => x-y); return b[Math.floor(b.length/2)]; }
 
@@ -1059,7 +1070,7 @@ $("pdIn").addEventListener("change", e => {
   const v = parseFloat(String(e.target.value).replace(",", "."));
   knownPD = v >= 50 && v <= 80 ? v : null; store.set("pd", knownPD); syncAdj(); updatePanel();
 });
-$("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
+$("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; ratioSamples.length = 0; updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
 $("reset").addEventListener("click", () => { ADJ.dy = 0; ADJ.sc = 1; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
 const hold = $("holdBtn");
 const setHide = v => { S.hide = v; hold.classList.toggle("on", v); if (!S.live) render(); };
