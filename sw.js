@@ -1,5 +1,5 @@
 /* OttiVista · service worker: app sempre aggiornata, file pesanti in cache */
-const CACHE = "ottivista-v14";
+const CACHE = "ottivista-v15";
 const SHELL = ["./", "index.html", "profile3d.js", "studio.html", "studio-analyze.js", "manifest.webmanifest", "icons/icon-192.png", "models/round.glb", "models/sport.glb"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
@@ -12,7 +12,7 @@ self.addEventListener("fetch", e => {
   const same = url.origin === location.origin;
   // pagine e file dell'app: prima la rete (aggiornamenti immediati), poi la cache se offline
   if (same && (req.mode === "navigate" || /\.(html|js|json|webmanifest)$/.test(url.pathname) || url.pathname.endsWith("/"))){
-    e.respondWith(fetch(req).then(r => { const c = r.clone(); caches.open(CACHE).then(k => k.put(req, c)); return r; }).catch(() => caches.match(req)));
+    e.respondWith(fetch(req, {cache:"no-store"}).then(r => { const c = r.clone(); caches.open(CACHE).then(k => k.put(req, c)); return r; }).catch(() => caches.match(req)));
     return;
   }
   // librerie, modello del viso e modelli 3D: prima la cache (avvio veloce)
