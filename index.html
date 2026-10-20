@@ -73,6 +73,7 @@ button{font:inherit;color:inherit}
 .dbg{position:absolute;z-index:3;right:max(10px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%);width:58px;height:58px;border-radius:50%;border:3px solid #fff;background:rgba(229,72,77,.85);color:#fff;font:700 12px var(--f-ui);letter-spacing:.06em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)}
 .dbg.on{background:#E5484D;animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:translateY(-50%) scale(1.08)}}
+.dbgBig{position:absolute;z-index:5;left:50%;top:38%;transform:translate(-50%,-50%);background:rgba(0,0,0,.6);color:#fff;font:700 clamp(26px,7vw,40px)/1.2 var(--f-ui);text-align:center;white-space:pre-line;padding:18px 24px;border-radius:20px;max-width:calc(100% - 40px);pointer-events:none}
 /* Schermata iniziale */
 .start{position:absolute;inset:0;z-index:4;background:var(--white);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
   padding:calc(env(safe-area-inset-top,0px) + 24px) max(24px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(24px,env(safe-area-inset-left,0px));text-align:center}
@@ -177,6 +178,7 @@ button{font:inherit;color:inherit}
       <button class="mini" id="instClose">Ho capito</button>
     </div>
     <div class="status" id="status"></div>
+    <div class="dbgBig" id="dbgBig" hidden></div>
     <button class="dbg" id="dbgBtn" type="button" aria-label="Scatti di prova per la taratura">TEST</button>
     <div class="shutter" hidden>
       <button class="ib" id="snapBtnOld" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
@@ -1261,6 +1263,36 @@ const DBG_STEPS = [
   {t:"Allontanati dalla camera", k:"lontano"}
 ];
 let dbgRunning = false;
+/* voce guida e suoni */
+let actx = null;
+function beep(freq, ms, vol = .25){
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; o.type = "sine"; g.gain.value = vol;
+    o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + ms/1000);
+    o.start(); o.stop(actx.currentTime + ms/1000);
+  } catch(e){}
+}
+let itVoice = null;
+function pickVoice(){
+  try { const vs = speechSynthesis.getVoices(); itVoice = vs.find(v => /^it/i.test(v.lang) && /google|femal|elsa|alice/i.test(v.name)) || vs.find(v => /^it/i.test(v.lang)) || null; } catch(e){}
+}
+if ("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function say(text){
+  return new Promise(res => {
+    try {
+      if (!("speechSynthesis" in window)) return res();
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text); u.lang = "it-IT"; if (itVoice) u.voice = itVoice; u.rate = 1.05;
+      let done = false; const fin = () => { if (!done){ done = true; res(); } };
+      u.onend = fin; u.onerror = fin; setTimeout(fin, 3500);
+      speechSynthesis.speak(u);
+    } catch(e){ res(); }
+  });
+}
+function bigText(txt){ const b = $("dbgBig"); b.textContent = txt; b.hidden = !txt; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function dbgFrame(step){
   const W = cv.width, H = cv.height, c = document.createElement("canvas"); c.width = W; c.height = H;
@@ -1299,11 +1331,17 @@ async function runDebugSession(){
   if (dbgRunning) return;
   if (!S.live){ setStatus("Avvia prima la fotocamera live"); return; }
   dbgRunning = true; $("dbgBtn").classList.add("on");
+  beep(660, 120);
+  await say("Inizio il test. Segui le mie istruzioni.");
   const shots = [];
   for (const step of DBG_STEPS){
-    for (let s = 3; s > 0; s--){ setStatus(`${step.t} · ${s}`); await sleep(800); }
-    shots.push(dbgFrame(step)); setStatus(`Scattata: ${step.k}`); await sleep(350);
+    bigText(step.t);
+    await say(step.t);
+    for (let s = 3; s > 0; s--){ bigText(`${step.t}\n${s}`); beep(880, 90); await sleep(750); }
+    shots.push(dbgFrame(step)); beep(1320, 160, .35); bigText("✓"); await sleep(450);
   }
+  bigText(""); beep(990, 120); setTimeout(() => beep(1320, 220), 140);
+  await say("Fatto. Grazie!");
   setStatus("Preparo il file…");
   const cols = 2, tw = 540, th = Math.round(tw*cv.height/cv.width), rows = Math.ceil(shots.length/cols);
   const sheet = document.createElement("canvas"); sheet.width = cols*tw; sheet.height = rows*th;
@@ -1320,7 +1358,7 @@ async function runDebugSession(){
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
   setStatus(shared ? "Inviato" : "Salvato nei download: allegalo in chat"); setTimeout(() => setStatus(""), 3000);
-  dbgRunning = false; $("dbgBtn").classList.remove("on");
+  dbgRunning = false; $("dbgBtn").classList.remove("on"); bigText("");
 }
 $("dbgBtn").addEventListener("click", runDebugSession);
 
