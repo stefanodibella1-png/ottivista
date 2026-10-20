@@ -935,9 +935,9 @@ function render3D(){
   const f = focalPx(W, H);
   cam.fov = 2*Math.atan((H/2)/f)*180/Math.PI; cam.aspect = W/H; cam.updateProjectionMatrix();
   glasses.clear();
-  const sctx = $("sh").getContext("2d"); sctx.clearRect(0, 0, W, H);
+  const sctx = $("sh").getContext("2d");
   const model = T.models[S.frame.id];
-  if (!(model && pose && !S.hide)){ glasses.visible = head.visible = false; renderer.render(scene, cam); return; }
+  if (!(model && pose && !S.hide)){ sctx.clearRect(0, 0, W, H); glasses.visible = head.visible = false; renderer.render(scene, cam); return; }
   glasses.add(model); glasses.visible = head.visible = true;
   const fr = S.frame;
   const R = new THREE.Matrix4().makeRotationFromQuaternion(pose.q);
@@ -970,7 +970,7 @@ function render3D(){
   model.traverse(o => { if (o.isMesh && (o.userData.part || "").startsWith("lens")) o.visible = false; });
   scene.overrideMaterial = shadowMat; head.visible = false;
   renderer.render(scene, cam);
-  sctx.drawImage(renderer.domElement, 0, 0);
+  sctx.clearRect(0, 0, W, H); sctx.drawImage(renderer.domElement, 0, 0);
   scene.overrideMaterial = null; head.visible = true;
   model.traverse(o => { if (o.isMesh) o.visible = true; });
   glasses.matrix.copy(keepM); glasses.matrixWorldNeedsUpdate = true;
