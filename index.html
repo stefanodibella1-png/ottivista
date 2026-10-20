@@ -545,7 +545,7 @@ class OneEuro {
 }
 let FL = null;
 function resetFilters(){
-  FL = { x:new OneEuro(2.6,.025), y:new OneEuro(2.6,.025), z:new OneEuro(2,.02), s:new OneEuro(1.2,.6),
+  FL = { x:new OneEuro(2.6,.06), y:new OneEuro(2.6,.06), z:new OneEuro(1.2,.03), s:new OneEuro(1.2,.6),
          q:[0,1,2,3].map(() => new OneEuro(2.6,1.4)), prevQ:null };
 }
 resetFilters();
@@ -678,7 +678,9 @@ function measurePose(res, W, H, mir, t){
   const PD = knownPD || calPD || (pdSamples.length ? median(pdSamples) : 63);
   const ratio = ratioSamples.length >= 10 ? median(ratioSamples) : canthD/eyeD;
   const px = canthD / (PD*ratio) * PERSPECTIVE;
-  const mid3 = anchor;
+  // posizione metrica della testa davanti alla camera (mm)
+  const f = focalPx(W, H), Z = f/px;
+  const mid3 = new Vector3((anchor.x - W/2)*Z/f, (anchor.y + H/2)*Z/f, -Z);
   const raw = {q, pos:mid3, px, yaw, pitch, PD};
   if (t === null) return raw;
   // filtri
@@ -688,7 +690,8 @@ function measurePose(res, W, H, mir, t){
   return { q:qf, pos:new Vector3(FL.x.f(mid3.x,t), FL.y.f(mid3.y,t), FL.z.f(mid3.z,t)), px:FL.s.f(px,t), yaw, pitch, PD };
 }
 const ratioSamples = [];
-const PERSPECTIVE = 1.04; // gli occhiali stanno ~12 mm più vicini alla camera del viso
+const PERSPECTIVE = 1; // la prospettiva ora è vera (camera 3D)
+function focalPx(W, H){ return Math.hypot(W, H) * .651; } // obiettivo frontale ~75° in diagonale
 function yaw0(q){ const z = new T.THREE.Vector3(0,0,1).applyQuaternion(q); return Math.atan2(z.x, z.z); }
 function pt(lm, i, W, H){ return [lm[i].x*W, lm[i].y*H]; }
 function median(a){ const b = [...a].sort((x,y) => x-y); return b[Math.floor(b.length/2)]; }
@@ -860,7 +863,7 @@ async function init3D(){
     const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(.35, 1, 1.3);
     const amb = new THREE.AmbientLight(0xffffff, .55);
     scene.add(key, amb);
-    const cam = new THREE.OrthographicCamera(0, 1, 0, -1, -1e6, 1e6);
+    const cam = new THREE.PerspectiveCamera(50, 1, 5, 20000);
     const glasses = new THREE.Group(); glasses.matrixAutoUpdate = false; scene.add(glasses);
     const head = new THREE.Group(); head.matrixAutoUpdate = false; scene.add(head);
     const occ = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), new THREE.MeshBasicMaterial({colorWrite:false}));
@@ -902,26 +905,27 @@ function render3D(){
   const {THREE, renderer, scene, cam, glasses, head, occ, shadowMat} = T;
   const W = cv.width, H = cv.height;
   if (renderer.domElement.width !== W || renderer.domElement.height !== H){ renderer.setSize(W, H, false); const sh = $("sh"); sh.width = W; sh.height = H; }
-  cam.left = 0; cam.right = W; cam.top = 0; cam.bottom = -H; cam.updateProjectionMatrix();
+  const f = focalPx(W, H);
+  cam.fov = 2*Math.atan((H/2)/f)*180/Math.PI; cam.aspect = W/H; cam.updateProjectionMatrix();
   glasses.clear();
   const sctx = $("sh").getContext("2d"); sctx.clearRect(0, 0, W, H);
   const model = T.models[S.frame.id];
   if (!(model && pose && !S.hide)){ glasses.visible = head.visible = false; renderer.render(scene, cam); return; }
   glasses.add(model); glasses.visible = head.visible = true;
-  const fr = S.frame, px = pose.px;
+  const fr = S.frame;
   const R = new THREE.Matrix4().makeRotationFromQuaternion(pose.q);
   const ax = new THREE.Vector3(), ay = new THREE.Vector3(), az = new THREE.Vector3(); R.extractBasis(ax, ay, az);
   const tilt = new THREE.Matrix4().makeRotationX((fr.style === "sport" ? 5 : 8)*Math.PI/180);
-  const pos = pose.pos.clone().addScaledVector(az, VERTEX_MM*px).addScaledVector(ay, (ADJ.dy + (fr.style === "sport" ? 1.5 : 0))*px);
-  const k = px*ADJ.sc;
+  const pos = pose.pos.clone().addScaledVector(az, VERTEX_MM).addScaledVector(ay, ADJ.dy + (fr.style === "sport" ? 1.5 : 0));
+  const k = ADJ.sc;
   glasses.matrix.copy(new THREE.Matrix4().makeTranslation(pos.x, pos.y, pos.z).multiply(R).multiply(tilt).multiply(new THREE.Matrix4().makeScale(k, k, k)));
   glasses.matrixWorldNeedsUpdate = true;
-  head.matrix.copy(new THREE.Matrix4().makeTranslation(pose.pos.x, pose.pos.y, pose.pos.z).multiply(R).multiply(new THREE.Matrix4().makeScale(px, px, px)));
+  head.matrix.copy(new THREE.Matrix4().makeTranslation(pose.pos.x, pose.pos.y, pose.pos.z).multiply(R));
   head.matrixWorldNeedsUpdate = true;
   const fw = S.M ? S.M.faceW : 140;
   occ.scale.set(fw/2 - 2, 122, 104); occ.position.set(0, 6, -102);
   // ombra morbida sulla pelle
-  const shift = new THREE.Matrix4().makeTranslation(0, -1.8*px, 0);
+  const shift = new THREE.Matrix4().makeTranslation(0, -1.8, 0);
   const keepM = glasses.matrix.clone();
   glasses.matrix.premultiply(shift); glasses.matrixWorldNeedsUpdate = true;
   model.traverse(o => { if (o.isMesh && (o.userData.part || "").startsWith("lens")) o.visible = false; });
