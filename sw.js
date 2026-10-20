@@ -1,5 +1,5 @@
 /* OttiVista · service worker: app sempre aggiornata, file pesanti in cache */
-const CACHE = "ottivista-v10";
+const CACHE = "ottivista-v11";
 const SHELL = ["./", "index.html", "profile3d.js", "studio.html", "studio-analyze.js", "manifest.webmanifest", "icons/icon-192.png", "models/round.glb", "models/sport.glb"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {

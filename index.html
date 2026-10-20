@@ -70,6 +70,9 @@ button{font:inherit;color:inherit}
 .pdset input{width:80px;font:inherit;font-family:var(--f-mono);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
 .row2{display:flex;gap:8px}
 .mini{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500;cursor:pointer}
+.dbg{position:absolute;z-index:3;right:max(10px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%);width:58px;height:58px;border-radius:50%;border:3px solid #fff;background:rgba(229,72,77,.85);color:#fff;font:700 12px var(--f-ui);letter-spacing:.06em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.dbg.on{background:#E5484D;animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:translateY(-50%) scale(1.08)}}
 /* Schermata iniziale */
 .start{position:absolute;inset:0;z-index:4;background:var(--white);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
   padding:calc(env(safe-area-inset-top,0px) + 24px) max(24px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(24px,env(safe-area-inset-left,0px));text-align:center}
@@ -174,6 +177,7 @@ button{font:inherit;color:inherit}
       <button class="mini" id="instClose">Ho capito</button>
     </div>
     <div class="status" id="status"></div>
+    <button class="dbg" id="dbgBtn" type="button" aria-label="Scatti di prova per la taratura">TEST</button>
     <div class="shutter" hidden>
       <button class="ib" id="snapBtnOld" aria-label="Scatta foto" title="Scatta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
     </div>
@@ -529,7 +533,7 @@ const METAL_BASE = {oro:"#D9B24C", argento:"#C8CDD3", canna:"#4C5056", rosa:"#D8
 const VERTEX_MM = 12;
 const T = {ok:false, models:{}};
 let mpReady = null, stream = null, raf = 0, lastTs = -1, frameN = 0;
-let pose = null;
+let pose = null, lastLm = null;
 
 /* ---------- Filtro One Euro ---------- */
 class OneEuro {
@@ -1037,26 +1041,38 @@ function updatePanel(){
   $("why").textContent = (SHAPES[M.shape] || SHAPES.Ovale).why;
   renderCar(M);
 }
+let carSorted = false;
 function renderCar(M){
   const host = $("car");
   if (!host.children.length){
     for (const f of FRAMES){
-      const b = document.createElement("button"); b.className = "fr"; b.dataset.id = f.id;
+      const b = document.createElement("button"); b.className = "fr"; b.dataset.id = f.id; b.type = "button";
       b.innerHTML = `<canvas width="240" height="110"></canvas><div class="t">${f.name}<small></small></div><div class="s">${f.model && !f.bridge ? "monolente " + f.front + " mm" : f.lens + "□" + f.bridge + "-" + f.temple}</div>`;
-      b.addEventListener("click", () => { S.frame = f; if (f.sun && S.lensMode === "clear") setLens("sun"); renderColors(); updatePanel(); drawThumbs(); if (!S.live) render(); });
+      b.addEventListener("click", () => {
+        if (S.frame === f) return;
+        S.frame = f; if (f.sun && S.lensMode === "clear") setLens("sun");
+        renderColors(); updatePanel(); if (!S.live) render();
+      });
       host.appendChild(b);
     }
   }
   const els = {}; [...host.children].forEach(el => els[el.dataset.id] = el);
-  const order = FRAMES.map(f => ({f, score: M ? scoreFrame(f, M).score : null}));
-  if (M) order.sort((a,b) => b.score - a.score);
-  order.forEach((it, i) => {
-    const el = els[it.f.id]; host.appendChild(el);
-    el.setAttribute("aria-pressed", String(it.f === S.frame));
-    el.querySelector("small").textContent = it.score ?? "";
-    const old = el.querySelector(".best"); if (old) old.remove();
-    if (M && i === 0){ const t = document.createElement("span"); t.className = "best"; t.textContent = "PIÙ ADATTO"; el.appendChild(t); }
-  });
+  // l'ordine per adattamento si calcola una volta sola, a calibrazione finita: poi le schede restano ferme
+  if (M && !carSorted && (calPD || knownPD)){
+    carSorted = true;
+    const order = FRAMES.map(f => ({f, score: scoreFrame(f, M).score})).sort((a, b) => b.score - a.score);
+    order.forEach((it, i) => {
+      const el = els[it.f.id]; host.appendChild(el);
+      const old = el.querySelector(".best"); if (old) old.remove();
+      if (i === 0){ const s = document.createElement("span"); s.className = "best"; s.textContent = "PIÙ ADATTO"; el.appendChild(s); }
+    });
+    host.scrollTo({left:0, behavior:"smooth"});
+  }
+  for (const f of FRAMES){
+    const el = els[f.id]; if (!el) continue;
+    el.setAttribute("aria-pressed", String(f === S.frame));
+    el.querySelector("small").textContent = M && carSorted ? scoreFrame(f, M).score : "";
+  }
 }
 function drawThumbs(){
   for (const el of $("car").children){
@@ -1114,6 +1130,7 @@ function loop(){
     lastTs = ts;
     const r = mp.detectForVideo(v, ts);
     if (r.faceLandmarks && r.faceLandmarks.length){
+      lastLm = r.faceLandmarks[0];
       pose = measurePose(r, cv.width, cv.height, true, ts);
       S.F = mpToF(r.faceLandmarks[0], cv.width, cv.height, true);
       S.F.pxPerMm = pose.px;
@@ -1181,7 +1198,7 @@ $("pdIn").addEventListener("change", e => {
   const v = parseFloat(String(e.target.value).replace(",", "."));
   knownPD = v >= 50 && v <= 80 ? v : null; store.set("pd", knownPD); syncAdj(); updatePanel();
 });
-$("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; ratioSamples.length = 0; resetRef(); updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
+$("recal").addEventListener("click", () => { carSorted = false; calPD = null; pdSamples.length = 0; ratioSamples.length = 0; resetRef(); updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
 $("reset").addEventListener("click", () => { ADJ.dy = 0; ADJ.sc = 1; store.set("adj2", ADJ); syncAdj(); if (!S.live) render(); });
 const hold = $("holdBtn");
 const setHide = v => { S.hide = v; hold.classList.toggle("on", v); if (!S.live) render(); };
@@ -1230,6 +1247,82 @@ $("instBtn").addEventListener("click", doInstall);
 $("instStart").addEventListener("click", doInstall);
 $("instClose").addEventListener("click", () => { $("instIos").hidden = true; });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+
+
+/* ---------- Sessione di scatti di prova (provvisoria, per la taratura) ---------- */
+const DBG_STEPS = [
+  {t:"Guarda dritto in camera", k:"frontale"},
+  {t:"Gira la testa a SINISTRA", k:"sinistra"},
+  {t:"Gira la testa a DESTRA", k:"destra"},
+  {t:"Guarda in ALTO", k:"alto"},
+  {t:"Guarda in BASSO", k:"basso"},
+  {t:"Inclina la testa di LATO", k:"inclinata"},
+  {t:"Avvicinati alla camera", k:"vicino"},
+  {t:"Allontanati dalla camera", k:"lontano"}
+];
+let dbgRunning = false;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function dbgFrame(step){
+  const W = cv.width, H = cv.height, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.drawImage(cv, 0, 0);
+  if (T.ok){ g.save(); g.globalAlpha = .24; g.filter = "blur(4px)"; g.drawImage($("sh"), 0, 0); g.restore(); g.drawImage($("gl"), 0, 0); }
+  const lm = lastLm;
+  const u = Math.max(2, W/320);
+  if (lm){
+    const dot = (i, col, r) => { const x = (1 - lm[i].x)*W, y = lm[i].y*H; g.fillStyle = col; g.beginPath(); g.arc(x, y, r*u, 0, Math.PI*2); g.fill(); };
+    for (const i of RIGID) dot(i, "rgba(0,255,120,.9)", 1);
+    for (const i of [33,133,362,263]) dot(i, "#00E5FF", 1.6);
+    for (const i of [468,473]) dot(i, "#FF2D55", 1.8);
+    for (const i of [168,6]) dot(i, "#FFD60A", 2);
+    for (const i of [234,454,127,356]) dot(i, "#BF5AF2", 2);
+  }
+  const p = pose, M = S.M, fr = S.frame;
+  const deg = v => (v*180/Math.PI).toFixed(1);
+  let roll = 0;
+  if (p){ const x = new T.THREE.Vector3(1,0,0).applyQuaternion(p.q); roll = Math.atan2(x.y, x.x); }
+  const lines = [
+    `${step.k.toUpperCase()}  ·  ${fr.name} ${fr.lens}/${fr.bridge}  front ${frameWidth(fr)}mm`,
+    p ? `yaw ${deg(p.yaw)}°  pitch ${deg(p.pitch)}°  roll ${deg(roll)}°` : "volto non trovato",
+    p ? `px/mm ${p.px.toFixed(3)}  Z ${(-p.pos.z).toFixed(0)}mm  PD ${p.PD.toFixed(1)}  cal ${calPD ? calPD.toFixed(1) : "-"}  nota ${knownPD || "-"}` : "",
+    p ? `off naso→occhi y ${p.off.y.toFixed(1)} z ${p.off.z.toFixed(1)}  ref ${REF.pts ? "ok" : "no"}  adj dy ${ADJ.dy} sc ${ADJ.sc}` : "",
+    M ? `viso ${M.faceW.toFixed(0)}mm  forma ${M.shape}  canto/PD ${ratioSamples.length ? median(ratioSamples).toFixed(3) : "-"}` : "",
+    `${W}x${H}  fov ${(2*Math.atan((H/2)/focalPx(W,H))*180/Math.PI).toFixed(1)}°  ${navigator.userAgent.match(/\(([^)]+)\)/)?.[1]?.slice(0,40) || ""}`
+  ].filter(Boolean);
+  const fs = Math.round(W/30);
+  g.font = `600 ${fs}px IBM Plex Mono, monospace`;
+  g.fillStyle = "rgba(0,0,0,.62)"; g.fillRect(0, 0, W, fs*1.35*lines.length + fs*.6);
+  g.fillStyle = "#fff"; lines.forEach((l, i) => g.fillText(l, fs*.5, fs*1.25*(i+1)));
+  return {canvas:c, data:{step:step.k, frame:fr.id, yaw:p&&+deg(p.yaw), pitch:p&&+deg(p.pitch), roll:+deg(roll), px:p&&p.px, Z:p&&-p.pos.z, PD:p&&p.PD, off:p&&{y:p.off.y,z:p.off.z}, faceW:M&&M.faceW, W, H}};
+}
+async function runDebugSession(){
+  if (dbgRunning) return;
+  if (!S.live){ setStatus("Avvia prima la fotocamera live"); return; }
+  dbgRunning = true; $("dbgBtn").classList.add("on");
+  const shots = [];
+  for (const step of DBG_STEPS){
+    for (let s = 3; s > 0; s--){ setStatus(`${step.t} · ${s}`); await sleep(800); }
+    shots.push(dbgFrame(step)); setStatus(`Scattata: ${step.k}`); await sleep(350);
+  }
+  setStatus("Preparo il file…");
+  const cols = 2, tw = 540, th = Math.round(tw*cv.height/cv.width), rows = Math.ceil(shots.length/cols);
+  const sheet = document.createElement("canvas"); sheet.width = cols*tw; sheet.height = rows*th;
+  const sg = sheet.getContext("2d"); sg.fillStyle = "#000"; sg.fillRect(0, 0, sheet.width, sheet.height);
+  shots.forEach((s, i) => sg.drawImage(s.canvas, (i % cols)*tw, Math.floor(i/cols)*th, tw, th));
+  const blob = await new Promise(r => sheet.toBlob(r, "image/jpeg", .88));
+  const name = `ottivista-taratura-${new Date().toISOString().slice(0,16).replace(/[:T]/g, "-")}.jpg`;
+  try { console.log("OTTIVISTA_DEBUG", JSON.stringify(shots.map(s => s.data))); } catch(e){}
+  const file = new File([blob], name, {type:"image/jpeg"});
+  let shared = false;
+  try { if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:"OttiVista taratura"}); shared = true; } } catch(e){}
+  if (!shared){
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  setStatus(shared ? "Inviato" : "Salvato nei download: allegalo in chat"); setTimeout(() => setStatus(""), 3000);
+  dbgRunning = false; $("dbgBtn").classList.remove("on");
+}
+$("dbgBtn").addEventListener("click", runDebugSession);
 
 /* ---------- Avvio ---------- */
 initMP();
