@@ -553,8 +553,8 @@ class OneEuro {
 }
 let FL = null;
 function resetFilters(){
-  FL = { x:new OneEuro(2.6,.06), y:new OneEuro(2.6,.06), z:new OneEuro(1.2,.03), s:new OneEuro(1.2,.6),
-         q:[0,1,2,3].map(() => new OneEuro(2.6,1.4)), prevQ:null };
+  FL = { x:new OneEuro(3.5,.12), y:new OneEuro(3.5,.12), z:new OneEuro(1.6,.05), s:new OneEuro(1.5,.8),
+         q:[0,1,2,3].map(() => new OneEuro(3.5,3)), prevQ:null };
 }
 resetFilters();
 
@@ -845,7 +845,7 @@ function acetateMaterial(hasUV){
   }
   const pc = parseCol(S.color);
   return new THREE.MeshPhysicalMaterial({color: new THREE.Color(pc.hex), roughness:.2, clearcoat:1, clearcoatRoughness:.04, sheen:.2, sheenRoughness:.4,
-    transparent: pc.op < 1, opacity: pc.op, transmission: pc.op < 1 ? .35 : 0, thickness: 3, side:THREE.DoubleSide});
+    transparent: pc.op < 1, opacity: pc.op, side:THREE.DoubleSide});
 }
 function metalMaterial(id){
   return new T.THREE.MeshStandardMaterial({color: new T.THREE.Color(METAL_BASE[id] || "#D9B24C"), metalness:1, roughness:.24, side:T.THREE.DoubleSide});
@@ -926,6 +926,7 @@ async function init3D(){
     setStatus("Grafica 3D non disponibile su questo dispositivo");
   }
 }
+let shadowTick = 0, dbgCapture = false;
 function render3D(){
   if (!T.ok) return;
   const {THREE, renderer, scene, cam, glasses, head, occ, shadowMat} = T;
@@ -960,7 +961,9 @@ function render3D(){
   const wPos = wFront + ((side > 0 ? wNear : wFar) - wFront)*tt;
   const wNeg = wFront + ((side < 0 ? wNear : wFar) - wFront)*tt;
   occ.scale.set((wPos + wNeg)/2, 120, 98); occ.position.set((wPos - wNeg)/2, 6, -88);
-  // ombra morbida sulla pelle
+  // ombra morbida sulla pelle (dal vivo ogni 3 fotogrammi: richiede una lettura dalla GPU)
+  shadowTick = (shadowTick + 1) % 3;
+  if (S.live && shadowTick !== 0 && !dbgCapture){ renderer.render(scene, cam); return; }
   const shift = new THREE.Matrix4().makeTranslation(0, -1.8, 0);
   const keepM = glasses.matrix.clone();
   glasses.matrix.premultiply(shift); glasses.matrixWorldNeedsUpdate = true;
@@ -1127,12 +1130,17 @@ async function startLive(){
   setStatus(currentPD() && (knownPD || calPD) ? "" : "Calibrazione: guarda dritto in camera");
   loop();
 }
+let lastVT = -1;
+const PERF = {fps:0, det:0, n:0, t0:0};
 function loop(){
   if (!S.live) return;
   const v = $("vid"), ts = performance.now();
-  if (mp && T.ok && v.readyState >= 2 && ts !== lastTs){
-    lastTs = ts;
+  if (mp && T.ok && v.readyState >= 2 && v.currentTime !== lastVT){
+    lastVT = v.currentTime; lastTs = ts;
+    const t0 = performance.now();
     const r = mp.detectForVideo(v, ts);
+    PERF.det = PERF.det*.9 + (performance.now() - t0)*.1;
+    PERF.n++; if (ts - PERF.t0 > 1000){ PERF.fps = PERF.n*1000/(ts - PERF.t0); PERF.n = 0; PERF.t0 = ts; }
     if (r.faceLandmarks && r.faceLandmarks.length){
       lastLm = r.faceLandmarks[0];
       pose = measurePose(r, cv.width, cv.height, true, ts);
@@ -1297,6 +1305,7 @@ function say(text){
 function bigText(txt){ const b = $("dbgBig"); b.textContent = txt; b.hidden = !txt; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function dbgFrame(step){
+  dbgCapture = true; render(); dbgCapture = false;
   const W = cv.width, H = cv.height, c = document.createElement("canvas"); c.width = W; c.height = H;
   const g = c.getContext("2d");
   g.drawImage(cv, 0, 0);
@@ -1321,6 +1330,7 @@ function dbgFrame(step){
     p ? `px/mm ${p.px.toFixed(3)}  Z ${(-p.pos.z).toFixed(0)}mm  PD ${p.PD.toFixed(1)}  cal ${calPD ? calPD.toFixed(1) : "-"}  nota ${knownPD || "-"}` : "",
     p ? `off naso→occhi y ${p.off.y.toFixed(1)} z ${p.off.z.toFixed(1)}  ref ${REF.pts ? "ok" : "no"}  adj dy ${ADJ.dy} sc ${ADJ.sc}` : "",
     M ? `viso ${M.faceW.toFixed(0)}mm  forma ${M.shape}  canto/PD ${ratioSamples.length ? median(ratioSamples).toFixed(3) : "-"}` : "",
+    `fps ${PERF.fps.toFixed(0)}  rilevamento ${PERF.det.toFixed(0)}ms`,
     `${W}x${H}  fov ${(2*Math.atan((H/2)/focalPx(W,H))*180/Math.PI).toFixed(1)}°  ${navigator.userAgent.match(/\(([^)]+)\)/)?.[1]?.slice(0,40) || ""}`
   ].filter(Boolean);
   const fs = Math.round(W/30);
