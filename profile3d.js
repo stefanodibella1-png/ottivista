@@ -72,9 +72,9 @@
       const k = tlen/145;
       const path = new THREE.CatmullRomCurve3([
         new THREE.Vector3(hp[0], hp[1], zx - 6),
-        new THREE.Vector3(hp[0] + s*1.8, hp[1], zx - 45*k),
-        new THREE.Vector3(hp[0] + s*1.2, hp[1] - 1.5, zx - 98*k),
-        new THREE.Vector3(hp[0] - s*3, hp[1] - 20, zx - 124*k)]);
+        new THREE.Vector3(hp[0] + s*3.5, hp[1], zx - 45*k),
+        new THREE.Vector3(hp[0] + s*6, hp[1] - 1.5, zx - 98*k),
+        new THREE.Vector3(hp[0] + s*3, hp[1] - 20, zx - 124*k)]);
       const tg = new THREE.TubeGeometry(path, 48, metal ? .95 : 1.7, 10, false);
       if (!metal){ tg.translate(-hp[0], -hp[1], 0); tg.scale(.75, 1.6, 1); tg.translate(hp[0], hp[1], 0); }
       g.add(mark(new THREE.Mesh(tg, templeMat), "temple", true));

@@ -35,10 +35,10 @@ button{font:inherit;color:inherit}
 .cam{position:absolute;inset:0;background:var(--cam);overflow:hidden}
 #cv,#gl,#sh{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 #gl,#sh{pointer-events:none}
-#sh{filter:blur(5px);opacity:.42}
+#sh{filter:blur(4px);opacity:.24}
 .top{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;gap:10px;
   padding:calc(env(safe-area-inset-top,0px) + 12px) max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px));
-  background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,0));z-index:3}
+  background:linear-gradient(rgba(0,0,0,.28),rgba(0,0,0,0));z-index:3}
 .logo{color:#fff;font-weight:700;font-size:19px;letter-spacing:-.02em}
 .logo span{font-weight:500;opacity:.7;font-size:13px;margin-left:6px}
 @media (max-width:440px){.logo span{display:none}}
@@ -85,7 +85,7 @@ button{font:inherit;color:inherit}
 /* Pannello prodotto: sovrapposto e trasparente */
 .sheet{position:absolute;left:0;right:0;bottom:0;z-index:2;display:grid;gap:8px;color:#fff;
   padding:28px max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 10px) max(12px,env(safe-area-inset-left,0px));
-  background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.38) 40%,rgba(0,0,0,.5))}
+  background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.2) 45%,rgba(0,0,0,.3))}
 .sheet.min .opts,.sheet.min .car,.sheet.min .credit{display:none}
 .prod{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .prod .nm{font-weight:700;font-size:16px;letter-spacing:-.01em;text-shadow:0 1px 4px rgba(0,0,0,.5)}
@@ -598,16 +598,64 @@ function quatFromMatrix(arr, mir, qRef){
   if (q.angleTo(qRef) > .6) return null;
   return {q, mode:best};
 }
+/* ---------- Rotazione rigida della testa (metodo di Horn) ---------- */
+// punti rigidi: fronte, naso, angoli degli occhi, zigomi (niente bocca/mascella/sopracciglia)
+const RIGID = [10,151,9,8,168,6,197,195,5,4,1,33,133,263,362,234,454,127,356,93,323,116,345,50,280,108,337,67,297];
+function rigidPts(lm, W, H, mir){
+  const out = new Float64Array(RIGID.length*3); let cx = 0, cy = 0, cz = 0;
+  RIGID.forEach((i, k) => {
+    const x = (mir ? 1-lm[i].x : lm[i].x)*W, y = -lm[i].y*H, z = -lm[i].z*W;
+    out[k*3] = x; out[k*3+1] = y; out[k*3+2] = z; cx += x; cy += y; cz += z;
+  });
+  const n = RIGID.length; cx /= n; cy /= n; cz /= n;
+  for (let k = 0; k < n; k++){ out[k*3] -= cx; out[k*3+1] -= cy; out[k*3+2] -= cz; }
+  return out;
+}
+// quaternione [x,y,z,w] che ruota A su B (insiemi centrati)
+function hornQuat(A, B, q0){
+  let Sxx=0,Sxy=0,Sxz=0,Syx=0,Syy=0,Syz=0,Szx=0,Szy=0,Szz=0;
+  for (let k = 0; k < A.length; k += 3){
+    const ax=A[k], ay=A[k+1], az=A[k+2], bx=B[k], by=B[k+1], bz=B[k+2];
+    Sxx+=ax*bx; Sxy+=ax*by; Sxz+=ax*bz; Syx+=ay*bx; Syy+=ay*by; Syz+=ay*bz; Szx+=az*bx; Szy+=az*by; Szz+=az*bz;
+  }
+  const N = [
+    [Sxx+Syy+Szz, Syz-Szy, Szx-Sxz, Sxy-Syx],
+    [Syz-Szy, Sxx-Syy-Szz, Sxy+Syx, Szx+Sxz],
+    [Szx-Sxz, Sxy+Syx, -Sxx+Syy-Szz, Syz+Szy],
+    [Sxy-Syx, Szx+Sxz, Syz+Szy, -Sxx-Syy+Szz]];
+  let c = 0; for (const r of N) for (const v of r) c += v*v; c = Math.sqrt(c);
+  for (let i = 0; i < 4; i++) N[i][i] += c;
+  let v = q0 ? [q0[3], q0[0], q0[1], q0[2]] : [1, 0, 0, 0];
+  for (let it = 0; it < 60; it++){
+    const w = [0,0,0,0];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) w[i] += N[i][j]*v[j];
+    const l = Math.hypot(w[0], w[1], w[2], w[3]) || 1;
+    const nv = w.map(x => x/l);
+    const d = Math.abs(nv[0]-v[0]) + Math.abs(nv[1]-v[1]) + Math.abs(nv[2]-v[2]) + Math.abs(nv[3]-v[3]);
+    v = nv; if (d < 1e-9) break;
+  }
+  return [v[1], v[2], v[3], v[0]];
+}
+
+const REF = {pts:null, q:null, last:null, sum:null, n:0, lost:0};
+function resetRef(){ REF.pts = null; REF.q = null; REF.last = null; REF.sum = null; REF.n = 0; }
 let modeVotes = [0, 0];
 function measurePose(res, W, H, mir, t){
   const lm = res.faceLandmarks[0];
   const {Vector3, Quaternion} = T.THREE, P = i => lmP(lm, i, W, H, mir);
   const qL = basisFromLandmarks(lm, W, H, mir);
   let q = qL;
-  const mats = res.facialTransformationMatrixes;
-  if (mats && mats[0] && mats[0].data){
-    const r = quatFromMatrix(mats[0].data, mir, qL);
-    if (r){ q = r.q; if (matrixMode === null && ++modeVotes[r.mode] > 20) matrixMode = r.mode; }
+  const cur = rigidPts(lm, W, H, mir);
+  if (REF.pts){
+    // rotazione rigida rispetto al volto di riferimento: usa 29 punti fermi della testa
+    const qh = hornQuat(REF.pts, cur, REF.last); REF.last = qh;
+    q = new Quaternion(qh[0], qh[1], qh[2], qh[3]).multiply(REF.q);
+  } else if (t !== null && Math.abs(yaw0(qL)) < .09){
+    // riferimento: media di 12 fotogrammi frontali
+    if (!REF.sum){ REF.sum = new Float64Array(cur.length); REF.q = qL.clone(); }
+    for (let k = 0; k < cur.length; k++) REF.sum[k] += cur[k];
+    REF.q.slerp(qL, 1/(REF.n + 1)); REF.n++;
+    if (REF.n >= 12){ REF.pts = REF.sum.map(v => v/REF.n); }
   }
   // scala: distanza 3D tra le pupille / PD in mm
   // pupille: servono solo a misurare la PD (si muovono con lo sguardo)
@@ -707,8 +755,8 @@ function buildFrame(fr){
     // asta
     const zx = -(xh*xh)/(2*wrap);
     const path = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(xh, yh, zx - 6), new THREE.Vector3(xh + s*1.8, yh, zx - 45),
-      new THREE.Vector3(xh + s*1.2, yh - 1.5, zx - 98), new THREE.Vector3(xh - s*3, yh - 20, zx - 124)]);
+      new THREE.Vector3(xh, yh, zx - 6), new THREE.Vector3(xh + s*3.5, yh, zx - 45),
+      new THREE.Vector3(xh + s*6, yh - 1.5, zx - 98), new THREE.Vector3(xh + s*3, yh - 20, zx - 124)]);
     const tg = new THREE.TubeGeometry(path, 48, metal || mixed ? .95 : 1.7, 10, false);
     if (!metal && !mixed) tg.scale(.75, 1.6, 1);
     g.add(named(new THREE.Mesh(tg, tmp), mixed ? "metal" : "frame"));
@@ -751,9 +799,9 @@ function lensMaterial(){
   const clear = S.lensMode === "clear";
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(clear ? "#E4ECF0" : `rgb(${S.tint.rgb.join(",")})`), transparent:true,
-    opacity: clear ? .1 : Math.min(.93, a + .1), roughness:.03,
+    opacity: clear ? .045 : Math.min(.9, a + .08), roughness:.02,
     metalness: S.tint.mirror && !clear ? .6 : .02, clearcoat:1, clearcoatRoughness:.03,
-    envMapIntensity: S.polar ? .3 : (S.ar && clear ? .35 : 1.2),
+    envMapIntensity: S.polar ? .3 : (S.ar && clear ? .25 : .9),
     iridescence: clear && S.ar ? .6 : 0, iridescenceIOR: 1.6, iridescenceThicknessRange:[260, 420],
     depthWrite:false, side:THREE.DoubleSide });
 }
@@ -767,7 +815,7 @@ function acetateMaterial(hasUV){
     return new THREE.MeshPhysicalMaterial({color:"#6E3D16", roughness:.3, clearcoat:1, clearcoatRoughness:.06, side:THREE.DoubleSide});
   }
   const pc = parseCol(S.color);
-  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(pc.hex), roughness:.26, clearcoat:1, clearcoatRoughness:.06,
+  return new THREE.MeshPhysicalMaterial({color: new THREE.Color(pc.hex), roughness:.2, clearcoat:1, clearcoatRoughness:.04, sheen:.2, sheenRoughness:.4,
     transparent: pc.op < 1, opacity: pc.op, transmission: pc.op < 1 ? .35 : 0, thickness: 3, side:THREE.DoubleSide});
 }
 function metalMaterial(id){
@@ -802,15 +850,16 @@ async function init3D(){
     const {RoomEnvironment} = await import("three/addons/environments/RoomEnvironment.js");
     const mk = canvas => {
       const r = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true, preserveDrawingBuffer:true});
-      r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+      r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.AgXToneMapping; r.toneMappingExposure = 1.1;
       r.setClearColor(0x000000, 0); return r;
     };
     T.THREE = THREE;
     const renderer = mk($("gl"));
     const env = s => new THREE.PMREMGenerator(s).fromScene(new RoomEnvironment(), .04).texture;
     const scene = new THREE.Scene(); scene.environment = env(renderer);
-    const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(.35, 1, 1.3);
-    scene.add(key, new THREE.AmbientLight(0xffffff, .3));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(.35, 1, 1.3);
+    const amb = new THREE.AmbientLight(0xffffff, .55);
+    scene.add(key, amb);
     const cam = new THREE.OrthographicCamera(0, 1, 0, -1, -1e6, 1e6);
     const glasses = new THREE.Group(); glasses.matrixAutoUpdate = false; scene.add(glasses);
     const head = new THREE.Group(); head.matrixAutoUpdate = false; scene.add(head);
@@ -821,7 +870,7 @@ async function init3D(){
     const thumbR = mk(thumbCanvas);
     const thumbScene = new THREE.Scene(); thumbScene.environment = env(thumbR);
     const tl = new THREE.DirectionalLight(0xffffff, 1.5); tl.position.set(.3, 1, 1.4); thumbScene.add(tl, new THREE.AmbientLight(0xffffff, .4));
-    Object.assign(T, {renderer, scene, cam, glasses, head, occ, shadowMat, thumbR, thumbScene, ok:true});
+    Object.assign(T, {renderer, scene, cam, glasses, head, occ, shadowMat, thumbR, thumbScene, key, amb, ok:true});
     const onTex = () => { drawThumbs(); if (!S.live) render(); };
     const buildAny = f => f.profile ? OVProfile.build(THREE, Object.assign(f.profile, {onReady:onTex})) : buildFrame(f);
     for (const f of FRAMES) if (!f.model){ try { T.models[f.id] = buildAny(f); } catch(e){ console.warn("modello", f.id, e); } }
@@ -872,11 +921,10 @@ function render3D(){
   const fw = S.M ? S.M.faceW : 140;
   occ.scale.set(fw/2 - 2, 122, 104); occ.position.set(0, 6, -102);
   // ombra morbida sulla pelle
-  const shift = new THREE.Matrix4().makeTranslation(0, -2.6*px, 0);
+  const shift = new THREE.Matrix4().makeTranslation(0, -1.8*px, 0);
   const keepM = glasses.matrix.clone();
   glasses.matrix.premultiply(shift); glasses.matrixWorldNeedsUpdate = true;
-  const hideLens = S.lensMode === "clear";
-  model.traverse(o => { if (o.isMesh && hideLens && o.userData.part.startsWith("lens")) o.visible = false; });
+  model.traverse(o => { if (o.isMesh && (o.userData.part || "").startsWith("lens")) o.visible = false; });
   scene.overrideMaterial = shadowMat; head.visible = false;
   renderer.render(scene, cam);
   sctx.drawImage(renderer.domElement, 0, 0);
@@ -895,6 +943,31 @@ function thumb3D(f, c){
   thumbR.render(thumbScene, cam); thumbScene.remove(model); if (parent) parent.add(model);
   const g = c.getContext("2d"); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height); g.drawImage(thumbR.domElement, 0, 0, c.width, c.height);
   return true;
+}
+
+/* ---------- Luce della stanza stimata dal video ---------- */
+const lightC = document.createElement("canvas"); lightC.width = lightC.height = 12;
+const lightG = lightC.getContext("2d", {willReadFrequently:true});
+let lightL = .6, lightCol = [1,1,1];
+function estimateLight(){
+  if (!T.ok || !S.F) return;
+  const F = S.F, w = Math.abs(F.edgeB[0]-F.edgeA[0]), x0 = Math.min(F.edgeA[0], F.edgeB[0]), y0 = F.eyeA[1] - w*.5;
+  try {
+    // il video è specchiato: la x va ribaltata per leggere il fotogramma originale
+    const sx = S.live ? cv.width - (x0 + w) : x0;
+    lightG.drawImage(S.live ? $("vid") : S.base, Math.max(0, sx), Math.max(0, y0), w, w*1.2, 0, 0, 12, 12);
+    const d = lightG.getImageData(0, 0, 12, 12).data; let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4){ r += d[i]; g += d[i+1]; b += d[i+2]; }
+    const n = d.length/4; r /= n*255; g /= n*255; b /= n*255;
+    const L = .2126*r + .7152*g + .0722*b;
+    lightL += (L - lightL)*.3;
+    const m = Math.max(r, g, b, .01); lightCol = [r/m, g/m, b/m];
+  } catch(e){}
+  const {key, amb, renderer} = T;
+  const tint = new T.THREE.Color(.55 + .45*lightCol[0], .55 + .45*lightCol[1], .55 + .45*lightCol[2]);
+  key.color.copy(tint); amb.color.copy(tint);
+  key.intensity = .5 + lightL*1.6; amb.intensity = .25 + lightL*.7;
+  renderer.toneMappingExposure = .65 + lightL*.75;
 }
 
 /* ---------- Rendering ---------- */
@@ -1014,8 +1087,14 @@ function loop(){
       S.F.pxPerMm = pose.px;
       S.M = computeMeasures();
       if (++frameN % 15 === 0) updatePanel();
+      if (frameN % 6 === 0) estimateLight();
+      REF.lost = 0;
       if ($("status").textContent === "Inquadra il viso") setStatus("");
-    } else { pose = null; S.F = null; resetFilters(); setStatus("Inquadra il viso"); }
+    } else {
+      pose = null; S.F = null; resetFilters(); setStatus("Inquadra il viso");
+      // nuovo cliente davanti allo specchio: ricalibra
+      if (++REF.lost === 45){ resetRef(); if (!knownPD){ calPD = null; pdSamples.length = 0; ratioSamples.length = 0; updateCalTxt(); } }
+    }
   }
   render();
   raf = requestAnimationFrame(loop);
@@ -1070,7 +1149,7 @@ $("pdIn").addEventListener("change", e => {
   const v = parseFloat(String(e.target.value).replace(",", "."));
   knownPD = v >= 50 && v <= 80 ? v : null; store.set("pd", knownPD); syncAdj(); updatePanel();
 });
-$("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; ratioSamples.length = 0; updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
+$("recal").addEventListener("click", () => { calPD = null; pdSamples.length = 0; ratioSamples.length = 0; resetRef(); updateCalTxt(); setStatus("Calibrazione: guarda dritto in camera"); });
 $("reset").addEventListener("click", () => { ADJ.dy = 0; ADJ.sc = 1; store.set("adj", ADJ); syncAdj(); if (!S.live) render(); });
 const hold = $("holdBtn");
 const setHide = v => { S.hide = v; hold.classList.toggle("on", v); if (!S.live) render(); };
@@ -1080,7 +1159,7 @@ $("snapBtn").addEventListener("click", () => {
   render();
   const out = document.createElement("canvas"); out.width = cv.width; out.height = cv.height;
   const og = out.getContext("2d"); og.drawImage(cv, 0, 0);
-  if (T.ok){ og.save(); og.globalAlpha = .42; og.filter = "blur(5px)"; og.drawImage($("sh"), 0, 0); og.restore(); og.drawImage($("gl"), 0, 0); }
+  if (T.ok){ og.save(); og.globalAlpha = .24; og.filter = "blur(4px)"; og.drawImage($("sh"), 0, 0); og.restore(); og.drawImage($("gl"), 0, 0); }
   out.toBlob(blob => {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ottivista-${S.frame.id}.jpg`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
