@@ -942,8 +942,16 @@ function render3D(){
   const eyeC = pose.pos.clone().add(new THREE.Vector3(0, pose.off.y, pose.off.z).applyQuaternion(pose.q));
   head.matrix.copy(new THREE.Matrix4().makeTranslation(eyeC.x, eyeC.y, eyeC.z).multiply(R));
   head.matrixWorldNeedsUpdate = true;
-  const fw = S.M ? S.M.faceW : 140;
-  occ.scale.set(fw/2 - 2, 122, 104); occ.position.set(0, 6, -102);
+  // volume invisibile della testa: nasconde le aste dietro tempie e capelli.
+  // Di fronte copre entrambe le aste dopo ~3 cm; girando il viso lascia vedere l'asta
+  // dal lato della camera e nasconde quella dal lato opposto.
+  const fh = frameWidth(fr)/2;
+  const toCam = eyeC.clone().negate().applyQuaternion(pose.q.clone().invert()).normalize();
+  const side = clamp(toCam.x*4, -1, 1), tt = Math.abs(side);
+  const wFront = fh + 14, wNear = fh - 4, wFar = fh + 16;
+  const wPos = wFront + ((side > 0 ? wNear : wFar) - wFront)*tt;
+  const wNeg = wFront + ((side < 0 ? wNear : wFar) - wFront)*tt;
+  occ.scale.set((wPos + wNeg)/2, 120, 98); occ.position.set((wPos - wNeg)/2, 6, -88);
   // ombra morbida sulla pelle
   const shift = new THREE.Matrix4().makeTranslation(0, -1.8, 0);
   const keepM = glasses.matrix.clone();
