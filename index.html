@@ -571,12 +571,15 @@ function lmP(lm, i, W, H, mir){ return new T.THREE.Vector3((mir ? 1-lm[i].x : lm
 function basisFromLandmarks(lm, W, H, mir){
   const {Vector3, Matrix4} = T.THREE, P = i => lmP(lm, i, W, H, mir);
   const x = new Vector3();
-  for (const [a,b] of [[33,263],[133,362],[234,454],[127,356],[70,300],[61,291]]){
+  for (const [a,b] of [[33,263],[133,362],[234,454],[127,356]]){
     const v = P(b).sub(P(a)); if (v.x < 0) v.negate(); x.add(v.normalize());
   }
   x.normalize();
-  const yr = P(10).sub(P(152)).normalize().add(P(9).sub(P(200)).normalize());
-  const z = new Vector3().crossVectors(x, yr).normalize();
+  // le aste vanno dalla radice del naso alle orecchie: è questa la direzione "indietro" degli occhiali
+  const ears = P(234).add(P(454)).add(P(127)).add(P(356)).multiplyScalar(.25);
+  const back = ears.sub(P(168));
+  back.addScaledVector(x, -back.dot(x)).normalize();
+  const z = back.negate();
   const y = new Vector3().crossVectors(z, x).normalize();
   return new T.THREE.Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z));
 }
@@ -638,7 +641,7 @@ function hornQuat(A, B, q0){
 }
 
 const REF = {pts:null, q:null, last:null, sum:null, n:0, lost:0};
-function resetRef(){ REF.pts = null; REF.q = null; REF.last = null; REF.sum = null; REF.n = 0; }
+function resetRef(){ REF.pts = null; REF.q = null; REF.last = null; REF.sum = null; REF.n = 0; REF.off = null; REF.offSum = null; REF.pendingOff = false; }
 let modeVotes = [0, 0];
 function measurePose(res, W, H, mir, t){
   const lm = res.faceLandmarks[0];
@@ -652,9 +655,10 @@ function measurePose(res, W, H, mir, t){
     q = new Quaternion(qh[0], qh[1], qh[2], qh[3]).multiply(REF.q);
   } else if (t !== null && Math.abs(yaw0(qL)) < .09){
     // riferimento: media di 12 fotogrammi frontali
-    if (!REF.sum){ REF.sum = new Float64Array(cur.length); REF.q = qL.clone(); }
+    if (!REF.sum){ REF.sum = new Float64Array(cur.length); REF.q = qL.clone(); REF.offSum = new Vector3(); }
     for (let k = 0; k < cur.length; k++) REF.sum[k] += cur[k];
     REF.q.slerp(qL, 1/(REF.n + 1)); REF.n++;
+    REF.pendingOff = true;
     if (REF.n >= 12){ REF.pts = REF.sum.map(v => v/REF.n); }
   }
   // scala: distanza 3D tra le pupille / PD in mm
@@ -671,7 +675,9 @@ function measurePose(res, W, H, mir, t){
   // ancoraggio e scala sugli angoli degli occhi: fermi rispetto alla testa
   const cA = P(33), cAi = P(133), cBi = P(362), cB = P(263);
   const canthD = cA.distanceTo(cB);
-  const anchor = cA.clone().add(cAi).add(cBi).add(cB).multiplyScalar(.25);
+  const eyesMid = cA.clone().add(cAi).add(cBi).add(cB).multiplyScalar(.25);
+  // ancoraggio sulla radice del naso: è lì che poggia il ponte degli occhiali
+  const anchor = P(168).add(P(6)).multiplyScalar(.5);
   if (Math.abs(yaw0(q)) < .15) ratioSamples.push(canthD/eyeD), ratioSamples.length > 90 && ratioSamples.shift();
   const zAxis = new Vector3(0,0,1).applyQuaternion(q);
   const yaw = Math.atan2(zAxis.x, zAxis.z), pitch = Math.asin(clamp(zAxis.y, -1, 1));
@@ -683,16 +689,23 @@ function measurePose(res, W, H, mir, t){
   const PD = knownPD || calPD || (pdSamples.length ? median(pdSamples) : 63);
   const ratio = ratioSamples.length >= 10 ? median(ratioSamples) : canthD/eyeD;
   const px = canthD / (PD*ratio) * PERSPECTIVE;
+  // distanza naso→occhi nel sistema della testa (mm), misurata in calibrazione
+  if (REF.pendingOff){
+    const d = eyesMid.clone().sub(anchor).divideScalar(px).applyQuaternion(qL.clone().invert());
+    REF.offSum.add(d); REF.pendingOff = false;
+    if (REF.pts) REF.off = REF.offSum.clone().divideScalar(REF.n);
+  }
+  const off = REF.off || new Vector3(0, -7, -9);
   // posizione metrica della testa davanti alla camera (mm)
   const f = focalPx(W, H), Z = f/px;
   const mid3 = new Vector3((anchor.x - W/2)*Z/f, (anchor.y + H/2)*Z/f, -Z);
-  const raw = {q, pos:mid3, px, yaw, pitch, PD};
+  const raw = {q, pos:mid3, px, yaw, pitch, PD, off};
   if (t === null) return raw;
   // filtri
   if (FL.prevQ && FL.prevQ.dot(q) < 0) q.set(-q.x, -q.y, -q.z, -q.w);
   const qf = new Quaternion(FL.q[0].f(q.x,t), FL.q[1].f(q.y,t), FL.q[2].f(q.z,t), FL.q[3].f(q.w,t)).normalize();
   FL.prevQ = qf.clone();
-  return { q:qf, pos:new Vector3(FL.x.f(mid3.x,t), FL.y.f(mid3.y,t), FL.z.f(mid3.z,t)), px:FL.s.f(px,t), yaw, pitch, PD };
+  return { q:qf, pos:new Vector3(FL.x.f(mid3.x,t), FL.y.f(mid3.y,t), FL.z.f(mid3.z,t)), px:FL.s.f(px,t), yaw, pitch, PD, off };
 }
 const ratioSamples = [];
 const PERSPECTIVE = 1; // la prospettiva ora è vera (camera 3D)
@@ -920,12 +933,14 @@ function render3D(){
   const fr = S.frame;
   const R = new THREE.Matrix4().makeRotationFromQuaternion(pose.q);
   const ax = new THREE.Vector3(), ay = new THREE.Vector3(), az = new THREE.Vector3(); R.extractBasis(ax, ay, az);
-  const tilt = new THREE.Matrix4().makeRotationX((fr.style === "sport" ? 5 : 8)*Math.PI/180);
-  const pos = pose.pos.clone().addScaledVector(az, VERTEX_MM).addScaledVector(ay, ADJ.dy + (fr.style === "sport" ? 1.5 : 0));
+  const tilt = new THREE.Matrix4().makeRotationX(3*Math.PI/180);
+  const local = new THREE.Vector3(0, pose.off.y + ADJ.dy + (fr.style === "sport" ? 1.5 : 0), pose.off.z + VERTEX_MM);
+  const pos = pose.pos.clone().add(local.applyQuaternion(pose.q));
   const k = ADJ.sc;
   glasses.matrix.copy(new THREE.Matrix4().makeTranslation(pos.x, pos.y, pos.z).multiply(R).multiply(tilt).multiply(new THREE.Matrix4().makeScale(k, k, k)));
   glasses.matrixWorldNeedsUpdate = true;
-  head.matrix.copy(new THREE.Matrix4().makeTranslation(pose.pos.x, pose.pos.y, pose.pos.z).multiply(R));
+  const eyeC = pose.pos.clone().add(new THREE.Vector3(0, pose.off.y, pose.off.z).applyQuaternion(pose.q));
+  head.matrix.copy(new THREE.Matrix4().makeTranslation(eyeC.x, eyeC.y, eyeC.z).multiply(R));
   head.matrixWorldNeedsUpdate = true;
   const fw = S.M ? S.M.faceW : 140;
   occ.scale.set(fw/2 - 2, 122, 104); occ.position.set(0, 6, -102);
