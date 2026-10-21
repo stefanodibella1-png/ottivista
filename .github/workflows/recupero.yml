@@ -32,4 +32,16 @@ jobs:
           find recupero -type f -size +40M -delete
           git add -A recupero recupero-log.txt 2>add.err || echo "::error::add $(tail -c 600 add.err | tr '\n' ' ')"
           git commit -qm "Risultati recupero siti" 2>commit.err || echo "::warning::commit $(tail -c 400 commit.err | tr '\n' ' ')"
-          if ! git push origin HEAD:refs/heads/recupero-dati 2>push.err; then echo "::error::push $(tail -c 900 push.err | tr '\n' ' ')"; exit 1; fi
+          if ! git push origin HEAD:refs/heads/recupero-dati 2>push.err; then
+            # se GitHub trova ancora un segreto, toglie solo quei file e riprova
+            grep -oE 'path: [^:]+' push.err | sed 's/path: //' | sort -u > blocked.txt || true
+            echo "::warning::file esclusi per segreti: $(tr '\n' ' ' < blocked.txt)"
+            if [ -s blocked.txt ]; then
+              xargs -a blocked.txt git rm -q --cached
+              xargs -a blocked.txt rm -f
+              git commit -q --amend -m "Risultati recupero siti"
+              git push origin HEAD:refs/heads/recupero-dati 2>push2.err || { echo "::error::push2 $(tail -c 900 push2.err | tr '\n' ' ')"; exit 1; }
+            else
+              echo "::error::push $(tail -c 900 push.err | tr '\n' ' ')"; exit 1
+            fi
+          fi
