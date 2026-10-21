@@ -1,0 +1,38 @@
+name: Aggiorna catalogo occhialesubito
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/import-catalog.mjs"
+      - "studio-analyze.js"
+      - ".github/workflows/catalog.yml"
+permissions:
+  contents: write
+concurrency:
+  group: catalog
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: Importa catalogo e prepara AR
+        run: node scripts/import-catalog.mjs 2>&1 | tee shop/import-log.txt
+        continue-on-error: true
+      - name: Salva risultati
+        if: always()
+        run: |
+          git config user.name "occhialesubito-bot"
+          git config user.email "bot@occhialesubito.com"
+          git add shop
+          git commit -m "Catalogo aggiornato $(date -u +%F)" || echo "nessuna modifica"
+          git push origin HEAD:main
+          git push -f origin HEAD:gh-pages

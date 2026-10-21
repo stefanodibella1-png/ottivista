@@ -1,0 +1,7 @@
+{
+  "name": "occhialesubito",
+  "private": true,
+  "type": "module",
+  "scripts": { "import": "node scripts/import-catalog.mjs" },
+  "dependencies": { "sharp": "0.33.5" }
+}
