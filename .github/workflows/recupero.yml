@@ -1,0 +1,23 @@
+name: Recupero vecchi siti
+on:
+  workflow_dispatch:
+  push:
+    branches: [recupero]
+    paths: ["scripts/recupero.py", ".github/workflows/recupero.yml"]
+permissions:
+  contents: write
+jobs:
+  recupero:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y whois >/dev/null
+      - run: python3 scripts/recupero.py 2>&1 | tee recupero-log.txt
+        continue-on-error: true
+      - if: always()
+        run: |
+          git config user.name "recupero-bot"; git config user.email "bot@occhialesubito.com"
+          git add recupero recupero-log.txt
+          git commit -m "Risultati recupero siti" || true
+          git push origin HEAD:recupero
