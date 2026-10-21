@@ -11,6 +11,8 @@ const AR_DIR = path.join(OUT, "ar");
 const IMG_DIR = path.join(OUT, "img");
 const GBP_EUR = Number(process.env.GBP_EUR || 1.17);
 const MAX_PRODUCTS = Number(process.env.MAX_PRODUCTS || 100000);
+const BUDGET_MS = Number(process.env.BUDGET_MIN || 35)*60000; // oltre questo tempo i modelli AR mancanti si preparano nei giorni seguenti
+const T0 = Date.now();
 fs.mkdirSync(AR_DIR, {recursive: true});
 fs.mkdirSync(IMG_DIR, {recursive: true});
 
@@ -69,12 +71,12 @@ function colorOf(p){
 }
 
 async function tryAR(p, size){
-  for (const im of (p.images || []).slice(0, 5)){
+  for (const im of (p.images || []).slice(0, 3)){
     try {
-      const buf = await get(im.src.replace(/\?.*$/, "") + "?width=1100", "buf");
-      const {data, info} = await sharp(buf).flatten({background: "#ffffff"}).resize({width: 1100, height: 1100, fit: "inside", withoutEnlargement: true}).ensureAlpha().raw().toBuffer({resolveWithObject: true});
+      const buf = await get(im.src.replace(/\?.*$/, "") + "?width=900", "buf");
+      const {data, info} = await sharp(buf).flatten({background: "#ffffff"}).resize({width: 900, height: 900, fit: "inside", withoutEnlargement: true}).ensureAlpha().raw().toBuffer({resolveWithObject: true});
       const img = {width: info.width, height: info.height, data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.length)};
-      for (const thr of [60, 45, 80]){
+      for (const thr of [60, 45]){
         const res = analyze(img, {threshold: thr, lens: size.lens, bridge: size.bridge});
         if (!res.ok) continue;
         const sym = res.checks[1].ok, bridgeOk = res.checks[2].ok;
@@ -126,7 +128,11 @@ async function main(){
     if (old && old.ar && old.updated === item.updated && fs.existsSync(path.join(AR_DIR, `${p.handle}.jpg`))){
       item.ar = old.ar; arOk++; items.push(item); continue;
     }
+    if (old && old.arTried === item.updated){ items.push(item); continue; }
+    if (Date.now() - T0 > BUDGET_MS){ items.push(item); continue; }
     const ar = await tryAR(p, size);
+    item.arTried = item.updated;
+    if (items.length % 40 === 0) console.log(`… ${items.length} elaborate, ${arOk} con AR, ${Math.round((Date.now()-T0)/60000)} min`);
     if (ar){
       arOk++;
       item.ar = Object.assign(ar.profile, {calibro: {lens: size.lens, bridge: size.bridge, temple: size.temple || 145},
