@@ -75,6 +75,7 @@ button{font:inherit;color:inherit}
 .dbg.on{background:#E5484D;animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:translateY(-50%) scale(1.08)}}
 .dbgBig{position:absolute;z-index:5;left:50%;top:34%;transform:translate(-50%,-50%);background:rgba(0,0,0,.66);color:#fff;font:700 clamp(24px,6.5vw,38px)/1.25 var(--f-ui);text-align:center;white-space:pre-line;padding:18px 24px;border-radius:20px;max-width:calc(100% - 40px);pointer-events:none}
+.shopback{position:absolute;z-index:4;left:max(12px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 64px);background:#fff;color:var(--ink);text-decoration:none;font-weight:600;font-size:14px;padding:8px 14px;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 /* Schermata iniziale */
 .start{position:absolute;inset:0;z-index:4;background:var(--white);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
   padding:calc(env(safe-area-inset-top,0px) + 24px) max(24px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(24px,env(safe-area-inset-left,0px));text-align:center}
@@ -138,6 +139,7 @@ button{font:inherit;color:inherit}
     <canvas id="gl" width="1280" height="960" aria-hidden="true"></canvas>
     <video id="vid" playsinline muted hidden></video>
 
+    <a class="shopback" id="shopBack" hidden href="shop/">‹ Torna al prodotto</a>
     <div class="top">
       <div class="logo">OttiVista<span id="engineTxt">avvio…</span><i id="engine" hidden></i></div>
       <div class="icons">
@@ -1404,10 +1406,36 @@ async function dbgNext(){
 $("nextBtn").addEventListener("click", dbgNext);
 $("dbgBtn").addEventListener("click", runDebugSession);
 
+/* ---------- Modalità negozio (occhialesubito) ---------- */
+const SHOP = new URLSearchParams(location.search).get("shop");
+async function loadShop(){
+  try {
+    const r = await fetch("shop/catalog.json", {cache:"no-cache"});
+    if (!r.ok) return false;
+    const cat = await r.json();
+    const list = cat.items.filter(i => i.ar);
+    if (!list.length) return false;
+    FRAMES.length = 0;
+    for (const i of list) FRAMES.push(profileFrame(Object.assign(i.ar, {id:i.handle, name:i.name})));
+    const want = FRAMES.find(f => f.id === SHOP);
+    S.frame = want || FRAMES[0];
+    const back = $("shopBack");
+    back.href = `shop/#/p/${encodeURIComponent(S.frame.id)}`; back.hidden = false;
+    document.querySelector(".logo").firstChild.textContent = "occhialesubito";
+    document.querySelector(".credit").hidden = true;
+    return true;
+  } catch(e){ return false; }
+}
+function syncShopBack(){ if (SHOP) $("shopBack").href = `shop/#/p/${encodeURIComponent(S.frame.id)}`; }
+document.addEventListener("click", e => { if (SHOP && e.target.closest && e.target.closest(".fr")) setTimeout(syncShopBack, 0); });
+
 /* ---------- Avvio ---------- */
-initMP();
-init3D();
-renderColors(); updatePanel(); drawThumbs(); drawHero(); syncAdj();
+(async () => {
+  if (SHOP){ await loadShop(); $("start").querySelector("h1").innerHTML = "Provali addosso,<br>poi ordinali."; }
+  initMP();
+  init3D();
+  renderColors(); updatePanel(); drawThumbs(); drawHero(); syncAdj();
+})();
 })();
 </script>
 </body>
