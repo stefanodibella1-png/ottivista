@@ -13,11 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get install -y whois >/dev/null
-      - run: python3 scripts/recupero.py 2>&1 | tee recupero-log.txt
+      - run: python3 scripts/recupero.py > recupero-log.txt 2>&1
         continue-on-error: true
-      - if: always()
+      - name: Riepilogo
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          r = json.load(open("recupero/report.json"))
+          for d, v in r.items():
+              print(f"::notice title={d}::pagine {v.get('pagine_archiviate')} · dal {v.get('prima')} al {v.get('ultima')} · scaricati {v.get('file_scaricati')} · home {len(v.get('istantanee_home', []))} · whois {' | '.join(v.get('whois', []))[:300]}")
+          PY
+          du -sh recupero; find recupero -type f | wc -l; find recupero -size +40M
+      - name: Salva risultati
+        if: always()
         run: |
           git config user.name "recupero-bot"; git config user.email "bot@occhialesubito.com"
-          git add recupero recupero-log.txt
-          git commit -m "Risultati recupero siti" || true
-          git push origin HEAD:recupero
+          find recupero -type f -size +40M -delete
+          git add -A recupero recupero-log.txt 2>add.err || echo "::error::add $(tail -c 600 add.err | tr '\n' ' ')"
+          git commit -qm "Risultati recupero siti" 2>commit.err || echo "::warning::commit $(tail -c 400 commit.err | tr '\n' ' ')"
+          if ! git push origin HEAD:refs/heads/recupero-dati 2>push.err; then echo "::error::push $(tail -c 900 push.err | tr '\n' ' ')"; exit 1; fi
