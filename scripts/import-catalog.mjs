@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import sharp from "sharp";
+import {slimProfile, summary} from "./slim.mjs";
 
 const SOURCE = process.env.SOURCE_URL || "https://lowcostglasses.co.uk";
 const OUT = "shop";
@@ -125,7 +126,7 @@ async function main(){
     };
     if (!size){ noSize++; items.push(item); continue; }
     const old = prevById.get(item.id);
-    if (old && old.ar && old.updated === item.updated && fs.existsSync(path.join(AR_DIR, `${p.handle}.jpg`))){
+    if (old && old.ar && old.updated === item.updated && fs.existsSync(path.join(AR_DIR, `${p.handle}.json`))){
       item.ar = old.ar; arOk++; items.push(item); continue;
     }
     if (old && old.arTried === item.updated){ items.push(item); continue; }
@@ -135,8 +136,10 @@ async function main(){
     if (items.length % 40 === 0) console.log(`… ${items.length} elaborate, ${arOk} con AR, ${Math.round((Date.now()-T0)/60000)} min`);
     if (ar){
       arOk++;
-      item.ar = Object.assign(ar.profile, {calibro: {lens: size.lens, bridge: size.bridge, temple: size.temple || 145},
-        mat: /metal|titanium/i.test(tagStr) ? "metallo" : "acetato"});
+      const full = slimProfile(Object.assign(ar.profile, {calibro: {lens: size.lens, bridge: size.bridge, temple: size.temple || 145},
+        mat: /metal|titanium/i.test(tagStr) ? "metallo" : "acetato"}));
+      fs.writeFileSync(path.join(AR_DIR, `${p.handle}.json`), JSON.stringify(full));
+      item.ar = summary(full);
       item.arImage = ar.image;
     }
     items.push(item);

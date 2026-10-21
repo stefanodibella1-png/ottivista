@@ -521,6 +521,7 @@ FRAMES.unshift(
 );
 STYLE_IT.sport = "sportivo avvolgente";
 STYLE_IT.custom = "dal tuo negozio";
+const BUILTIN = FRAMES.slice();
 for (const k in SHAPES){ SHAPES[k].sport = SHAPES[k].sport ?? .75; SHAPES[k].custom = SHAPES[k].custom ?? .8; }
 function profileFrame(p){ return {id:p.id, name:p.name, style:"custom", lens:p.calibro.lens, bridge:p.calibro.bridge, temple:p.calibro.temple, h:p.h, n:2, rim:1, mat:p.mat, profile:p, front:p.front}; }
 const customs = (() => { try { return JSON.parse(localStorage.getItem("ov_custom") || "[]"); } catch(e){ return []; } })().filter(p => p && p.outer);
@@ -907,7 +908,8 @@ async function init3D(){
     Object.assign(T, {renderer, scene, cam, glasses, head, occ, shadowMat, thumbR, thumbScene, key, amb, ok:true});
     const onTex = () => { drawThumbs(); if (!S.live) render(); };
     const buildAny = f => f.profile ? OVProfile.build(THREE, Object.assign(f.profile, {onReady:onTex})) : buildFrame(f);
-    for (const f of FRAMES) if (!f.model){ try { T.models[f.id] = buildAny(f); } catch(e){ console.warn("modello", f.id, e); } }
+    T.buildAny = buildAny;
+    for (const f of FRAMES) if (!f.model && !(f.profile && f.profile.lazy)){ try { T.models[f.id] = buildAny(f); } catch(e){ console.warn("modello", f.id, e); } }
     applyMaterials(); drawThumbs(); render();
     try {
       const r = await fetch("models/catalog.json", {cache:"no-cache"});
@@ -942,6 +944,7 @@ function render3D(){
   glasses.clear();
   const sctx = $("sh").getContext("2d");
   const model = T.models[S.frame.id];
+  if (!model) ensureModel(S.frame);
   if (!(model && pose && !S.hide)){ sctx.clearRect(0, 0, W, H); glasses.visible = head.visible = false; renderer.render(scene, cam); return; }
   glasses.add(model); glasses.visible = head.visible = true;
   const fr = S.frame;
@@ -1088,9 +1091,28 @@ function renderCar(M){
     el.querySelector("small").textContent = M && carSorted ? scoreFrame(f, M).score : "";
   }
 }
+const loading = new Set();
+async function ensureModel(f){
+  if (!T.ok || !f.profile || !f.profile.lazy || loading.has(f.id)) return;
+  loading.add(f.id);
+  try {
+    const r = await fetch(f.profile.url); const full = await r.json();
+    Object.assign(f.profile, full); f.profile.lazy = false;
+    T.models[f.id] = T.buildAny(f); applyMaterials();
+    if (!S.live) render();
+  } catch(e){ console.warn("modello AR non caricato", f.id, e); }
+  loading.delete(f.id);
+}
+const thumbCache = {};
 function drawThumbs(){
   for (const el of $("car").children){
     const f = FRAMES.find(x => x.id === el.dataset.id), c = el.querySelector("canvas");
+    if (f.thumbImg){
+      const g = c.getContext("2d"), im = thumbCache[f.id] || (thumbCache[f.id] = new Image());
+      const paint = () => { g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height); const k = Math.min(c.width/im.naturalWidth, c.height/im.naturalHeight); const w = im.naturalWidth*k, h = im.naturalHeight*k; g.drawImage(im, (c.width-w)/2, (c.height-h)/2, w, h); };
+      if (im.complete && im.naturalWidth) paint(); else { im.onload = paint; if (!im.src) im.src = f.thumbImg; }
+      continue;
+    }
     if (thumb3D(f, c)) continue;
     if (f.model || f.profile) continue;
     const g = c.getContext("2d"); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,c.width,c.height);
@@ -1112,7 +1134,7 @@ function renderColors(){
   }
 }
 function drawHero(){
-  const c = $("hero"), g = c.getContext("2d"), flat = FRAMES.filter(f => !f.model && !f.profile), list = [flat[2], flat[3], flat[0]];
+  const c = $("hero"), g = c.getContext("2d"), flat = BUILTIN.filter(f => !f.model && !f.profile), list = [flat[2], flat[3], flat[0]];
   g.clearRect(0,0,c.width,c.height);
   list.forEach((f,i) => {
     const x = [150, 360, 570][i], y = [110, 190, 110][i];
@@ -1413,10 +1435,19 @@ async function loadShop(){
     const r = await fetch("shop/catalog.json", {cache:"no-cache"});
     if (!r.ok) return false;
     const cat = await r.json();
-    const list = cat.items.filter(i => i.ar);
+    let list = cat.items.filter(i => i.ar);
     if (!list.length) return false;
+    // carosello: la montatura scelta + altre 39 dello stesso genere
+    const sel = list.find(i => i.handle === SHOP) || list[0];
+    const same = list.filter(i => i !== sel && i.cats.some(c => sel.cats.includes(c) && /Uomo|Donna|Sole/.test(c)));
+    const rest = list.filter(i => i !== sel && !same.includes(i));
+    list = [sel, ...same, ...rest].slice(0, 40);
     FRAMES.length = 0;
-    for (const i of list) FRAMES.push(profileFrame(Object.assign(i.ar, {id:i.handle, name:i.name})));
+    for (const i of list){
+      const f = profileFrame(Object.assign({}, i.ar, {id:i.handle, name:i.name, lazy:true, url:`shop/ar/${encodeURIComponent(i.handle)}.json`}));
+      f.thumbImg = i.images[0] ? i.images[0] + (i.images[0].includes("?") ? "&" : "?") + "width=240" : null;
+      FRAMES.push(f);
+    }
     const want = FRAMES.find(f => f.id === SHOP);
     S.frame = want || FRAMES[0];
     const back = $("shopBack");
