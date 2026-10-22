@@ -18,10 +18,15 @@ jobs:
       PROJECT: socialglass
     steps:
       - uses: actions/checkout@v4
+      - name: Pulizia segreti (spazi e a capo incollati per errore)
+        run: |
+          K=$(printf '%s' "$STRIPE_SECRET_KEY" | tr -d '[:space:]'); echo "::add-mask::$K"; echo "STRIPE_SECRET_KEY=$K" >> $GITHUB_ENV
+          T=$(printf '%s' "$VERCEL_TOKEN" | tr -d '[:space:]'); echo "::add-mask::$T"; echo "VERCEL_TOKEN=$T" >> $GITHUB_ENV
+          echo "Stripe inizia con: $(printf '%s' "$K" | cut -c1-8) · lunghezza ${#K}"
       - name: Controllo segreti
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then echo "::error::Manca il segreto VERCEL_TOKEN"; exit 1; fi
-          case "$STRIPE_SECRET_KEY" in sk_test_*|rk_test_*) ;; "") echo "::warning::STRIPE_SECRET_KEY assente: pagamento simulato";; *) echo "::error::Usa una chiave Stripe di TEST (sk_test_...)"; exit 1;; esac
+          case "$STRIPE_SECRET_KEY" in sk_test_*|rk_test_*) ;; "") echo "::warning::STRIPE_SECRET_KEY assente: pagamento simulato";; sk_live_*|rk_live_*) echo "::error::Questa è una chiave LIVE: usa quella di TEST (sk_test_...)"; exit 1;; *) echo "::error::La chiave Stripe non inizia con sk_test_ (inizia con: $(printf '%s' "$STRIPE_SECRET_KEY" | cut -c1-5))"; exit 1;; esac
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - name: Database Firestore (crea se manca)
