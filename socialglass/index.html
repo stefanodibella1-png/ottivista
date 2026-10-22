@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SocialGlass – Visione condivisa</title>
+<title>Social Glasses – Visione condivisa</title>
 <meta name="description" content="SocialGlass: occhiali nuovi ogni anno con mini rate mensili, tramite il tuo CAF e l'ottico convenzionato.">
 <meta name="theme-color" content="#f4f4f4">
-<link rel="icon" href="assets/simbolo.png">
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <style>
 /* Ricostruzione fedele dello stile del sito originale (WordPress + CSS personalizzato del 2023-2025) */
 :root{
@@ -20,12 +21,12 @@ body{
   margin:0;min-height:100%;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:var(--testo);
   background-color:var(--fondo);
   /* sfondo originale per computer; se manca resta la sfumatura */
-  background-image:url("assets/sfondo-socialglass.jpg"), linear-gradient(160deg,#eef3f0 0%,#dfe9e4 45%,#cfdcd6 100%);
+  background-image:url("assets/sfondo-socialglass.jpg"), linear-gradient(160deg,#f5f8fc 0%,#e6edf6 45%,#d6e1ef 100%);
   background-size:cover;background-repeat:no-repeat;background-position:center center;background-attachment:fixed;
   position:relative;overflow-x:hidden;
 }
 @media (max-width:768px){
-  body{background-image:url("assets/sfondo-mobile-socialglass.jpg"), linear-gradient(170deg,#eef3f0 0%,#dfe9e4 50%,#cfdcd6 100%);background-size:100% 100%;min-height:100vh}
+  body{background-image:url("assets/sfondo-mobile-socialglass.jpg"), linear-gradient(170deg,#f5f8fc 0%,#e6edf6 50%,#d6e1ef 100%);background-size:100% 100%;min-height:100vh}
 }
 h2{font-size:20px;line-height:1.4;margin:0 0 14px}
 
@@ -48,13 +49,13 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 @media (max-width:768px){ .area-mobile{display:block} }
 
 /* logo cadente (computer) e logo fisso (telefono) */
-#immagineCadente1{position:absolute;top:-600px;left:84%;transform:translateX(-50%);width:min(600px,40vw);height:auto;z-index:2}
+#immagineCadente1{position:absolute;top:-600px;left:78%;transform:translateX(-50%);width:min(560px,40vw);height:auto;z-index:2;filter:drop-shadow(0 6px 18px rgba(10,31,92,.12))}
 #immagineCadente2{position:absolute;width:min(260px,18vw);height:auto;z-index:2;animation:ruota 6s linear infinite;left:84%;transform:translateX(-50%)}
 @keyframes ruota{0%{transform:translateX(-50%) rotateY(0deg)}100%{transform:translateX(-50%) rotateY(360deg)}}
 #mobile-image{display:none}
 @media (max-width:768px){
   #immagineCadente1,#immagineCadente2{display:none}
-  #mobile-image{display:block;width:min(78vw,340px);height:auto;margin:calc(env(safe-area-inset-top,0px) + 40px) auto 0}
+  #mobile-image{display:block;width:min(84vw,360px);height:auto;margin:calc(env(safe-area-inset-top,0px) + 40px) auto 0}
 }
 @media (prefers-reduced-motion:reduce){ #immagineCadente2{animation:none} }
 
@@ -115,8 +116,8 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 <body>
   <!-- logo -->
   <img id="mobile-image" src="assets/logo-social-glass.png" alt="SocialGlass" data-fallback="logo">
-  <img id="immagineCadente1" src="assets/solo-scritto.png" alt="SocialGlass" data-fallback="scritta">
-  <img id="immagineCadente2" src="assets/simbolo.png" alt="" data-fallback="simbolo" hidden>
+  <img id="immagineCadente1" src="assets/logo-social-glass.png" alt="Social Glasses" data-fallback="logo">
+  <img id="immagineCadente2" src="assets/simbolo.png" alt="" data-fallback="simbolo" hidden data-off>
 
   <!-- accesso riservato -->
   <div class="area"><button id="loginButton" type="button">LOGIN CAF</button><button id="otticoButton" type="button">OTTICO</button></div>

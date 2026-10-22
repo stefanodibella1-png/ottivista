@@ -7,9 +7,9 @@ const par = k => P.get(k) || P.get(k.toLowerCase()) || "";
 
 /* ---------- immagini mancanti: segnaposto nello stesso spirito ---------- */
 const SVG = {
-  scritta: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 120"><text x="300" y="82" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="78" font-weight="700" fill="#2f6b55">Social<tspan fill="#1f2a26">Glass</tspan></text><text x="300" y="112" text-anchor="middle" font-family="Arial" font-size="20" letter-spacing="6" fill="#5f7d70">VISIONE CONDIVISA</text></svg>`,
-  simbolo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 120"><g fill="none" stroke="#2f6b55" stroke-width="12" stroke-linecap="round"><circle cx="70" cy="66" r="42"/><circle cx="190" cy="66" r="42"/><path d="M112 60q18-14 36 0M28 56L8 40M232 56l20-16"/></g></svg>`,
-  logo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 170"><g fill="none" stroke="#2f6b55" stroke-width="9" stroke-linecap="round"><circle cx="120" cy="52" r="30"/><circle cx="220" cy="52" r="30"/><path d="M150 48q20-12 40 0"/></g><text x="170" y="132" text-anchor="middle" font-family="Arial" font-size="46" font-weight="700" fill="#2f6b55">Social<tspan fill="#1f2a26">Glass</tspan></text><text x="170" y="160" text-anchor="middle" font-family="Arial" font-size="14" letter-spacing="5" fill="#5f7d70">VISIONE CONDIVISA</text></svg>`
+  scritta: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 120"><text x="300" y="82" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="78" font-weight="700" fill="#0A1F5C">Social<tspan fill="#0A1F5C">Glass</tspan></text><text x="300" y="112" text-anchor="middle" font-family="Arial" font-size="20" letter-spacing="6" fill="#8a8f98">VISIONE CONDIVISA</text></svg>`,
+  simbolo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 120"><g fill="none" stroke="#0A1F5C" stroke-width="12" stroke-linecap="round"><circle cx="70" cy="66" r="42"/><circle cx="190" cy="66" r="42"/><path d="M112 60q18-14 36 0M28 56L8 40M232 56l20-16"/></g></svg>`,
+  logo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 170"><g fill="none" stroke="#0A1F5C" stroke-width="9" stroke-linecap="round"><circle cx="120" cy="52" r="30"/><circle cx="220" cy="52" r="30"/><path d="M150 48q20-12 40 0"/></g><text x="170" y="132" text-anchor="middle" font-family="Arial" font-size="46" font-weight="700" fill="#0A1F5C">Social<tspan fill="#0A1F5C">Glass</tspan></text><text x="170" y="160" text-anchor="middle" font-family="Arial" font-size="14" letter-spacing="5" fill="#8a8f98">VISIONE CONDIVISA</text></svg>`
 };
 document.querySelectorAll("img[data-fallback]").forEach(img => {
   const swap = () => { img.onerror = null; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(SVG[img.dataset.fallback]); };
@@ -27,7 +27,7 @@ window.addEventListener("load", () => {
   const t = $("immagineCadente1"), s = $("immagineCadente2");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const end = 140;
-  const show2 = () => { s.hidden = false; s.style.top = (end + t.offsetHeight + 10) + "px"; };
+  const show2 = () => { if (!s.hasAttribute("data-off")){ s.hidden = false; s.style.top = (end + t.offsetHeight + 10) + "px"; } };
   if (reduce){ t.style.top = end + "px"; show2(); } else dropImage(t, -200, end, show2);
 });
 
