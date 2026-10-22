@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SocialGlass – Visione condivisa</title>
+<meta name="description" content="SocialGlass: occhiali nuovi ogni anno con mini rate mensili, tramite il tuo CAF e l'ottico convenzionato.">
+<meta name="theme-color" content="#f4f4f4">
+<link rel="icon" href="assets/simbolo.png">
+<style>
+/* Ricostruzione fedele dello stile del sito originale (WordPress + CSS personalizzato del 2023-2025) */
+:root{
+  --blu:#007BFF; --blu-scuro:#0056b3; --verde:#4CAF50; --verde-scuro:#45a049; --salvia:#89a596; --grigio:#cccfd4;
+  --rosso:#f44336; --fondo:#f4f4f4; --testo:#333333; --campo:#E8F0FE; --bordo:#dcdcdc;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{height:100%}
+body{
+  margin:0;min-height:100%;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:var(--testo);
+  background-color:var(--fondo);
+  /* sfondo originale per computer; se manca resta la sfumatura */
+  background-image:url("assets/sfondo-socialglass.jpg"), linear-gradient(160deg,#eef3f0 0%,#dfe9e4 45%,#cfdcd6 100%);
+  background-size:cover;background-repeat:no-repeat;background-position:center center;background-attachment:fixed;
+  position:relative;overflow-x:hidden;
+}
+@media (max-width:768px){
+  body{background-image:url("assets/sfondo-mobile-socialglass.jpg"), linear-gradient(170deg,#eef3f0 0%,#dfe9e4 50%,#cfdcd6 100%);background-size:100% 100%;min-height:100vh}
+}
+h2{font-size:20px;line-height:1.4;margin:0 0 14px}
+
+/* pulsanti e campi: identici all'originale */
+button,input,select{border:1px solid var(--bordo);padding:10px 20px;border-radius:5px;margin-bottom:10px;transition:all .3s;background:#fff;box-shadow:0 4px 15px rgba(0,0,0,.05);font:inherit;font-size:14px;color:var(--testo);max-width:100%}
+button{background-color:var(--blu);color:#fff;cursor:pointer}
+button:hover{background-color:var(--blu-scuro);transform:scale(1.05)}
+button:disabled{opacity:.5;cursor:default;transform:none}
+input:focus,select:focus{border-color:var(--blu);box-shadow:0 0 10px rgba(0,123,255,.5);outline:none}
+button:focus-visible{outline:3px solid #0056b3;outline-offset:2px}
+select:valid{background-color:var(--campo)}
+input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
+
+/* pulsanti CAF / OTTICO in alto a sinistra */
+.area{position:absolute;top:calc(env(safe-area-inset-top,0px) + 20px);left:max(20px,env(safe-area-inset-left,0px));display:flex;gap:10px;z-index:5}
+.area button{margin:0}
+@media (max-width:768px){ .area{display:none} }
+.area-mobile{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:5;background:none;color:#555;box-shadow:none;border:0;font-size:12px;text-decoration:underline;padding:6px 10px}
+.area-mobile:hover{background:none;transform:translateX(-50%)}
+@media (max-width:768px){ .area-mobile{display:block} }
+
+/* logo cadente (computer) e logo fisso (telefono) */
+#immagineCadente1{position:absolute;top:-600px;left:84%;transform:translateX(-50%);width:min(600px,40vw);height:auto;z-index:2}
+#immagineCadente2{position:absolute;width:min(260px,18vw);height:auto;z-index:2;animation:ruota 6s linear infinite;left:84%;transform:translateX(-50%)}
+@keyframes ruota{0%{transform:translateX(-50%) rotateY(0deg)}100%{transform:translateX(-50%) rotateY(360deg)}}
+#mobile-image{display:none}
+@media (max-width:768px){
+  #immagineCadente1,#immagineCadente2{display:none}
+  #mobile-image{display:block;width:min(78vw,340px);height:auto;margin:calc(env(safe-area-inset-top,0px) + 40px) auto 0}
+}
+@media (prefers-reduced-motion:reduce){ #immagineCadente2{animation:none} }
+
+/* pulsanti arrotondati a destra */
+#scan-btn,#come-funziona{position:absolute;border-radius:30%;color:#fff;width:100px;height:100px;font-size:16px;padding:5px 2px;line-height:1.25;right:max(20px,env(safe-area-inset-right,0px));z-index:4}
+#scan-btn{top:350px;background-color:var(--salvia)}
+#come-funziona{top:460px;background-color:var(--grigio)}
+
+/* popup con sfocatura ed effetto 3D */
+.popup{position:fixed;inset:0;background-color:rgba(0,0,0,.5);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);perspective:1500px;z-index:20;overflow:auto}
+.popup-content{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotateX(10deg);padding:20px;background-color:#fff;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.1);width:90%;max-width:500px;border:1px solid rgba(0,123,255,.2);transition:transform .3s;max-height:calc(100% - 30px);overflow:auto}
+.popup-content:hover{transform:translate(-50%,-50%) rotateX(0deg)}
+.popup-content.alto{top:15px;transform:translate(-50%,0) rotateX(0deg)}
+.close-btn{position:absolute;right:10px;top:5px;cursor:pointer;font-size:24px;color:#aaa;transition:color .3s;background:none;border:0;box-shadow:none;padding:0 6px;margin:0;line-height:1.2}
+.close-btn:hover{color:var(--blu);background:none;transform:none}
+.popup-content .full{display:block;width:100%}
+.popup-content input[type=text],.popup-content input[type=password],.popup-content input[type=date],.popup-content input[type=tel]{width:100%}
+.riga{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.riga > input{flex:1;min-width:0;margin-bottom:10px}
+#segnoDiSpunta{color:lightgreen;font-size:24px}
+#prefisso{width:100px;height:40px;padding-left:30px;background-repeat:no-repeat;background-size:20px 15px;background-position:5px center}
+#sesso{height:40px;width:64px;padding:0 4px}
+#ottica{width:100%;height:50px}
+.gdpr{display:flex;gap:8px;align-items:center;font-size:13px}
+.gdpr input{width:18px;height:18px;margin:0;box-shadow:none}
+.esito{border-radius:6px;padding:8px 10px;margin:4px 0 10px;font-size:14px;line-height:1.45}
+.esito.ok{background:#e8f5e9;color:#2e7d32}
+.esito.err{background:#fdecea;color:#c62828}
+.esito.info{background:var(--campo);color:#174ea6}
+.link-box{background:#f4f4f4;border-radius:6px;padding:8px 10px;word-break:break-all;font-size:12.5px;line-height:1.5;margin-bottom:10px}
+.codice-grande{font:700 26px/1.2 "Courier New",monospace;letter-spacing:.08em;text-align:center;color:#2e7d32;border:2px dashed #4CAF50;border-radius:8px;padding:8px;margin:8px 0 12px}
+.btn-link{flex:1;display:inline-block;text-align:center;text-decoration:none;background:var(--verde);color:#fff;border-radius:5px;padding:10px 20px;margin-bottom:10px;box-shadow:0 4px 15px rgba(0,0,0,.05)}
+.btn-link:hover{background:var(--verde-scuro)}
+.verde{background-color:var(--verde)} .verde:hover{background-color:var(--verde-scuro)}
+.grigio{background:#e9ecef;color:#333} .grigio:hover{background:#dde1e5}
+
+/* popup di benvenuto del cliente */
+.my-popup-class{position:fixed;inset:0;z-index:15;overflow:auto;background-color:rgba(0,0,0,.5)}
+.my-popup-content{background-color:#fff;margin:5% auto;padding:20px;border:1px solid #888;width:95%;max-width:600px;text-align:center}
+.continue-button{padding:10px 20px;background-color:var(--verde);color:#fff;border:none;border-radius:5px;cursor:pointer;margin-top:20px}
+.continue-button:hover{background-color:var(--verde-scuro)}
+.passi{text-align:justify;font-size:14px;line-height:1.6}
+
+/* scanner */
+#video-container{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:16px}
+#video-container .riquadro{position:relative;width:min(340px,92vw)}
+#preview{width:100%;border-radius:12px;background:#000;display:block}
+#video-container .mirino{position:absolute;inset:16%;border:3px solid rgba(255,255,255,.85);border-radius:14px;pointer-events:none}
+#video-container p{color:#fff;text-align:center;margin:10px 0 0}
+.rosso{position:absolute;top:-12px;right:-12px;border-radius:50%;background-color:var(--rosso);color:#fff;width:34px;height:34px;font-size:18px;line-height:1;padding:0;margin:0}
+.manuale{display:flex;gap:8px;margin-top:12px}
+.manuale input{flex:1;margin:0}
+.manuale button{margin:0}
+.demo-nota{position:fixed;left:max(10px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:6;background:#fff8d6;color:#5b4a00;border:1px solid #f2d96b;border-radius:8px;font-size:12px;line-height:1.4;padding:6px 10px;max-width:min(92vw,520px)}
+@media (max-width:768px){ .demo-nota{bottom:calc(env(safe-area-inset-bottom,0px) + 44px)} }
+</style>
+</head>
+<body>
+  <!-- logo -->
+  <img id="mobile-image" src="assets/logo-social-glass.png" alt="SocialGlass" data-fallback="logo">
+  <img id="immagineCadente1" src="assets/solo-scritto.png" alt="SocialGlass" data-fallback="scritta">
+  <img id="immagineCadente2" src="assets/simbolo.png" alt="" data-fallback="simbolo" hidden>
+
+  <!-- accesso riservato -->
+  <div class="area"><button id="loginButton" type="button">LOGIN CAF</button><button id="otticoButton" type="button">OTTICO</button></div>
+  <button class="area-mobile" id="areaMobile" type="button">Area CAF e ottici</button>
+
+  <!-- pulsanti a destra -->
+  <button id="scan-btn" type="button" hidden>Ho scelto la<br>montatura</button>
+  <button id="come-funziona" type="button">Come<br>funziona</button>
+
+  <!-- benvenuto cliente -->
+  <div id="my-popup" class="my-popup-class" hidden>
+    <div class="my-popup-content">
+      <h2 id="welcome-message">Benvenuto</h2>
+      <button id="continue-button" class="continue-button" type="button">Continua</button>
+    </div>
+  </div>
+
+  <!-- accesso CAF -->
+  <div class="popup" id="passwordPopup" hidden><div class="popup-content">
+    <h2>Inserisci Codice CAF e Password:</h2>
+    <form data-login="caf">
+      <input type="text" id="codice" placeholder="Codice" autocomplete="username" required>
+      <input type="password" id="inputPassword" placeholder="Password" autocomplete="current-password" required>
+      <div class="esito err" data-err hidden></div>
+      <button type="submit">Invia</button>
+    </form>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- accesso ottico -->
+  <div class="popup" id="otticoPopup" hidden><div class="popup-content">
+    <h2>Inserisci Codice OTTICO e Password:</h2>
+    <form data-login="ottico">
+      <input type="text" id="codiceOttico" placeholder="Codice" autocomplete="username" required>
+      <input type="password" id="inputPasswordOttico" placeholder="Password" autocomplete="current-password" required>
+      <div class="esito err" data-err hidden></div>
+      <button type="submit">Invia</button>
+    </form>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- menu CAF -->
+  <div class="popup" id="optionsPopup" hidden><div class="popup-content">
+    <h2>Scegli una delle seguenti opzioni:</h2>
+    <p style="margin:-8px 0 12px;font-size:13px;color:#777" id="cafNome"></p>
+    <button class="full" type="button" data-open="popupForm">INSERISCI NUOVO UTENTE</button>
+    <button class="full" type="button" data-open="codiceFiscalePopup">VERIFICA CODICE FISCALE</button>
+    <button class="full" type="button" data-open="rinnovoPopup">RINNOVO OCCHIALE</button>
+    <button class="full grigio" type="button" data-logout>Esci</button>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- menu ottico -->
+  <div class="popup" id="optionsOtticoPopup" hidden><div class="popup-content">
+    <h2>Scegli una delle seguenti opzioni:</h2>
+    <p style="margin:-8px 0 12px;font-size:13px;color:#777" id="ottNome"></p>
+    <button class="full" type="button" data-open="popupAssistenza">ASSISTENZA UTENTE</button>
+    <button class="full grigio" type="button" data-logout>Esci</button>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- nuovo utente -->
+  <div class="popup" id="popupForm" hidden><div class="popup-content alto">
+    <h2>Inserisci i dati del cliente:</h2>
+    <form id="formCliente" novalidate>
+      <div class="riga"><input type="text" id="codiceFiscale" placeholder="codice fiscale" maxlength="16" autocomplete="off" style="text-transform:uppercase"><button type="button" id="attivaCodiceFiscale">Attiva</button><span id="segnoDiSpunta" hidden>✔</span></div>
+      <div class="esito" id="cfEsito" hidden></div>
+      <input type="text" id="nome" placeholder="Nome" disabled style="text-transform:uppercase">
+      <input type="text" id="cognome" placeholder="Cognome" disabled style="text-transform:uppercase">
+      <input type="text" id="nato" placeholder="Nato a" disabled style="text-transform:uppercase">
+      <div class="riga"><input type="date" id="datanascita" disabled aria-label="Data di nascita"><select id="sesso" disabled aria-label="Sesso"><option value=""></option><option value="M">M</option><option value="F">F</option></select></div>
+      <div class="riga" style="flex-wrap:nowrap">
+        <select id="prefisso" disabled aria-label="Prefisso">
+          <option value="+39" data-flag="it" selected>+39</option><option value="+34" data-flag="es">+34</option><option value="+44" data-flag="gb">+44</option><option value="+41" data-flag="ch">+41</option><option value="+33" data-flag="fr">+33</option><option value="+30" data-flag="gr">+30</option>
+        </select>
+        <input type="tel" id="cellulare" placeholder="Cellulare" disabled inputmode="tel">
+      </div>
+      <select id="ottica" disabled required><option value="">Seleziona un'ottica convenzionata per la tua nuova montatura</option></select>
+      <input type="text" id="listinoTextBox" placeholder="Convenzione Ottico" readonly disabled>
+      <label class="gdpr" for="gdprAcceptance"><input type="checkbox" id="gdprAcceptance" disabled>Accetto il GDPR sulla privacy</label>
+      <div class="esito err" id="formErr" hidden></div>
+      <button type="submit" id="inviaLink" disabled style="margin-top:12px">Invia Link</button>
+    </form>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- link inviato -->
+  <div class="popup" id="inviatoPopup" hidden><div class="popup-content">
+    <h2>Cliente registrato</h2>
+    <p style="margin:0 0 6px" id="inviatoTesto"></p>
+    <div class="codice-grande" id="inviatoCodice"></div>
+    <div class="link-box" id="inviatoLink"></div>
+    <div class="riga">
+      <a id="inviatoWa" class="btn-link" target="_blank" rel="noopener">Invia su WhatsApp</a>
+      <button type="button" id="copiaLink" class="grigio" style="flex:1">Copia link</button>
+    </div>
+    <button type="button" class="full" data-open="popupForm" data-reset-form>Inserisci un altro utente</button>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- verifica codice fiscale -->
+  <div class="popup" id="codiceFiscalePopup" hidden><div class="popup-content">
+    <h2>Verifica codice fiscale:</h2>
+    <form id="formVerifica"><input type="text" id="cfVerifica" placeholder="codice fiscale" maxlength="16" style="text-transform:uppercase" autocomplete="off">
+    <div class="esito" id="verificaEsito" hidden></div><button type="submit">Verifica</button></form>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- rinnovo -->
+  <div class="popup" id="rinnovoPopup" hidden><div class="popup-content">
+    <h2>Rinnovo occhiale</h2>
+    <form id="formRinnovo"><input type="text" id="cfRinnovo" placeholder="codice fiscale del cliente" maxlength="16" style="text-transform:uppercase" autocomplete="off">
+    <div class="esito" id="rinnovoEsito" hidden></div><button type="submit">Cerca</button></form>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- assistenza ottico -->
+  <div class="popup" id="popupAssistenza" hidden><div class="popup-content">
+    <h2>Assistenza utente</h2>
+    <form id="formCerca"><input type="text" id="utenteCodice" placeholder="Codice utente" autocomplete="off" style="text-transform:uppercase">
+    <div class="esito" id="risultatoRicerca" hidden></div><button type="submit">Cerca</button></form>
+    <div id="codiceUnivocoContainer" style="text-align:right;font-size:12px;color:#777"></div>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- come funziona -->
+  <div class="popup" id="comePopup" hidden><div class="popup-content">
+    <h2>Come funziona</h2>
+    <ol class="passi" style="padding-left:20px;margin:0 0 12px">
+      <li>Il tuo <b>CAF</b> ti registra e ti invia un link personale sul cellulare.</li>
+      <li>Vai dall'<b>ottico convenzionato</b> indicato nel link.</li>
+      <li>Mostra il tuo <b>codice</b> e scegli la montatura: premi <b>«Ho scelto la montatura»</b> e inquadra il QR code sull'espositore.</li>
+      <li>Scegli le lenti e attiva le <b>mini rate mensili</b>.</li>
+      <li>Paga solo la <b>spedizione</b>. Ogni anno cambi gli occhiali.</li>
+    </ol>
+    <button type="button" class="verde full" data-close>Ho capito</button>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- esito QR -->
+  <div class="popup" id="popup" hidden><div class="popup-content">
+    <p id="qr-text" style="font-size:15px;line-height:1.6;margin:0 0 12px"></p>
+    <button id="qr-btn" type="button" class="verde full" hidden>CONTINUA</button>
+    <button type="button" class="grigio full" id="qr-riprova">Scansiona un altro QR</button>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
+  <!-- scanner -->
+  <div id="video-container" hidden>
+    <div class="riquadro">
+      <video id="preview" playsinline muted></video>
+      <div class="mirino"></div>
+      <button id="close-video-btn" class="rosso" type="button" aria-label="Chiudi">×</button>
+      <p>Inquadra il QR code sulla montatura</p>
+      <form class="manuale" id="formManuale"><input type="text" id="codiceManuale" placeholder="oppure scrivi il codice" autocomplete="off"><button type="submit" class="verde">OK</button></form>
+    </div>
+  </div>
+
+  <div class="demo-nota" id="demoNota" hidden></div>
+
+<script src="cf.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
