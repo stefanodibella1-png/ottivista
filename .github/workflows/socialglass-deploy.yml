@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Pulizia segreti (spazi e a capo incollati per errore)
         run: |
-          K=$(printf '%s' "$STRIPE_SECRET_KEY" | tr -d '[:space:]'); echo "::add-mask::$K"; echo "STRIPE_SECRET_KEY=$K" >> $GITHUB_ENV
+          K=$(printf '%s' "$STRIPE_SECRET_KEY" | tr -d '[:space:]'); X=$(printf '%s' "$K" | grep -oE '(sk|rk)_test_[A-Za-z0-9]+' | head -1); [ -z "$X" ] || K="$X"; echo "::add-mask::$K"; echo "STRIPE_SECRET_KEY=$K" >> $GITHUB_ENV
           T=$(printf '%s' "$VERCEL_TOKEN" | tr -d '[:space:]'); echo "::add-mask::$T"; echo "VERCEL_TOKEN=$T" >> $GITHUB_ENV
           echo "Stripe inizia con: $(printf '%s' "$K" | cut -c1-8) · lunghezza ${#K}"
       - name: Controllo segreti
