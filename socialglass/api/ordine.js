@@ -21,7 +21,9 @@ module.exports = L.wrap(async (req, res) => {
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});
     ord.aggiornato = new Date().toISOString(); ord[b.azione === "pronto" ? "prontoIl" : "consegnatoIl"] = ord.aggiornato;
     await L.DB.aggiorna(u, {Stato: b.azione === "pronto" ? L.STATI.PRONTO : L.STATI.CONSEGNATO, Ordine: JSON.stringify(ord)});
-    return L.send(res, 200, {ok: true, stato: u.f.Stato});
+    const link = L.linkCliente(u.f.Univoco, s.id);
+    const av = b.azione === "pronto" ? await L.avvisa(u, `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`) : null;
+    return L.send(res, 200, {ok: true, stato: u.f.Stato, avviso: av});
   }
   if (![L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato) || !ord.montatura) return L.send(res, 409, {errore: "Il cliente deve prima scegliere la montatura con il QR."});
   const r = b.ricetta || {};
@@ -36,8 +38,9 @@ module.exports = L.wrap(async (req, res) => {
   if (b.lente === "prog" && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
   const prev = L.PREZZI.preventivo(u.f.Listino, b.lente, b.trattamenti, ord.montatura.prezzo);
   if (!prev) return L.send(res, 400, {errore: "Scegli il tipo di lenti."});
-  Object.assign(ord, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione},
+  Object.assign(ord, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione, riscatto: prev.riscatto, modello: prev.modello},
     ottico: s.id, aggiornato: new Date().toISOString()});
   await L.DB.aggiorna(u, {Stato: L.STATI.PAGAMENTO, Ordine: JSON.stringify(ord)});
-  L.send(res, 200, {ok: true, prezzi: ord.prezzi});
+  const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, il tuo occhiale è pronto per l'ordine: ${prev.mesi} mesi a ${prev.rata.toFixed(2).replace(".", ",")} €/mese. Apri il link, controlla il riepilogo e attiva l'abbonamento: ${L.linkCliente(u.f.Univoco, s.id)}`);
+  L.send(res, 200, {ok: true, prezzi: ord.prezzi, avviso: av});
 });

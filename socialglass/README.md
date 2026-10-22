@@ -36,3 +36,9 @@ La vecchia chiave Airtable era scritta nelle pagine pubbliche: va revocata. Ora 
 ## Airtable: campo da aggiungere
 Nella tabella **Utenti** aggiungi un campo **Ordine** (tipo *Testo lungo*): contiene montatura, lenti, ricetta, prezzi e pagamento.
 Nella tabella **Ottici** puoi aggiungere **Telefono**. Nella tabella montature puoi aggiungere **Prezzo** (se manca vale il prezzo montatura del listino).
+
+## Modello abbonamento (B)
+L'occhiale resta dell'ottica ed è dato in uso al cliente: canone mensile (60% del valore all'anno, minimo 9,90 €), durata minima 12 mesi, poi il cliente sceglie rinnovo, riscatto (15% del valore) o restituzione (`api/fine-periodo`). Parametri in `listini.js` → `abbonamento`.
+
+## Pubblicazione automatica con Stripe test
+Nel repo GitHub → Settings → Secrets and variables → Actions aggiungi `VERCEL_TOKEN` e `STRIPE_SECRET_KEY` (solo `sk_test_…`), facoltativo `AIRTABLE_TOKEN`. Poi Actions → **socialglass-deploy** → Run workflow. Il workflow pubblica su Vercel, crea il webhook Stripe, imposta le variabili e scrive l'indirizzo nel riepilogo. Carta di prova: 4242 4242 4242 4242, scadenza futura, CVC qualsiasi. Carta che fallisce: 4000 0000 0000 0341.

@@ -16,10 +16,7 @@ module.exports = L.wrap(async (req, res) => {
     const u = uv && await L.DB.utente("Univoco", uv);
     if (u){
       const ord = L.parseOrdine(u.f.Ordine), mesi = (ord.prezzi && ord.prezzi.mesi) || 12;
-      if (s.subscription){
-        const fine = Math.floor(Date.now()/1000) + mesi*30.44*86400;
-        await fetch(`https://api.stripe.com/v1/subscriptions/${s.subscription}`, {method: "POST", headers: {Authorization: `Bearer ${L.CFG.stripeKey}`, "Content-Type": "application/x-www-form-urlencoded"}, body: new URLSearchParams({cancel_at: String(Math.round(fine))})});
-      }
+      void mesi; // abbonamento: continua mese per mese finché il cliente non disdice dopo la durata minima
       ord.pagamento = {stato: "ATTIVO", sessione: s.id, abbonamento: s.subscription || "", cliente: s.customer || "", attivatoIl: new Date().toISOString()};
       ord.aggiornato = ord.pagamento.attivatoIl;
       await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
@@ -43,7 +40,7 @@ module.exports = L.wrap(async (req, res) => {
       }
       if (ev.type === "customer.subscription.deleted"){
         const mesi = (ord.prezzi && ord.prezzi.mesi) || 12;
-        pg.chiuso = ora; pg.esito = (pg.ratePagate || 0) >= mesi ? "COMPLETATO" : "INTERROTTO";
+        pg.chiuso = ora; pg.esito = (pg.ratePagate || 0) >= mesi ? "CHIUSO DOPO LA DURATA MINIMA" : "INTERROTTO PRIMA DELLA DURATA MINIMA";
       }
       ord.aggiornato = ora;
       await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});

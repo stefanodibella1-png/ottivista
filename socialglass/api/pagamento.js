@@ -13,7 +13,7 @@ module.exports = L.wrap(async (req, res) => {
   const u = await L.DB.utente("Univoco", String(b.univoco || "").trim());
   if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
   if (u.f.Stato !== L.STATI.PAGAMENTO) return L.send(res, 409, {errore: "Non c'è un ordine da attivare."});
-  if (!b.consensoContratto || !b.consensoAddebito) return L.send(res, 400, {errore: "Per attivare le rate servono entrambe le conferme."});
+  if (!b.consensoContratto || !b.consensoAddebito) return L.send(res, 400, {errore: "Per attivare l'abbonamento servono entrambe le conferme."});
   const ord = L.parseOrdine(u.f.Ordine), p = ord.prezzi;
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
   if (!L.CFG.stripeKey){
@@ -22,20 +22,28 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {simulato: true});
   }
-  const descr = `Occhiali ${ord.montatura.modello} ${ord.montatura.colore} con lenti ${ord.lenti.nome}`;
-  const session = await stripe("checkout/sessions", {
+  const descr = `Abbonamento occhiale ${ord.montatura.modello} ${ord.montatura.colore} con lenti ${ord.lenti.nome} (durata minima ${p.mesi} mesi)`;
+  const params = {
     mode: "subscription",
     locale: "it",
     client_reference_id: u.f.Univoco,
     success_url: `${back}&pagamento=ok`,
     cancel_url: `${back}&pagamento=annullato`,
     line_items: [
-      {price_data: {currency: "eur", unit_amount: Math.round(p.rata*100), recurring: {interval: "month"}, product_data: {name: `SocialGlass · rata mensile (${p.mesi} rate)`, description: descr}}, quantity: 1},
+      {price_data: {currency: "eur", unit_amount: Math.round(p.rata*100), recurring: {interval: "month"}, product_data: {name: "SocialGlass · canone mensile abbonamento occhiale", description: descr}}, quantity: 1},
       {price_data: {currency: "eur", unit_amount: Math.round(p.spedizione*100), product_data: {name: "Spedizione"}}, quantity: 1}
     ],
+    payment_method_types: ["card", "sepa_debit"],
+    custom_text: {submit: {message: `Abbonamento: ${p.rata.toFixed(2).replace(".", ",")} € al mese, durata minima ${p.mesi} mesi. Oggi paghi il primo canone e la spedizione.`}},
     subscription_data: {metadata: {univoco: u.f.Univoco, mesi: p.mesi}, description: descr},
     metadata: {univoco: u.f.Univoco}
-  });
+  };
+  let session;
+  try { session = await stripe("checkout/sessions", params); }
+  catch(e){ // se l'addebito SEPA non è attivo sull'account Stripe, si usa solo la carta
+    if (!/sepa|payment method type/i.test(e.message)) throw e;
+    params.payment_method_types = ["card"]; session = await stripe("checkout/sessions", params);
+  }
   ord.pagamento = {stato: "IN CORSO", sessione: session.id}; ord.aggiornato = new Date().toISOString();
   await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
   L.send(res, 200, {url: session.url});

@@ -51,13 +51,13 @@ function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (
 
 /* ---------- stati ---------- */
 const STATI = {REGISTRATO: "IN ATTESA SCELTA MONTATURA", MONTATURA: "MONTATURA SCELTA", PAGAMENTO: "IN ATTESA PAGAMENTO",
-  ATTIVO: "RATE ATTIVE - IN LAVORAZIONE", PRONTO: "PRONTO PER IL RITIRO", CONSEGNATO: "CONSEGNATO"};
+  ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE", PRONTO: "PRONTO PER IL RITIRO", CONSEGNATO: "CONSEGNATO"};
 const ORDINE_STATI = [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO, STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO];
 const chip = s => { const i = ORDINE_STATI.indexOf(s); return `<span class="chip s${i < 0 ? 6 : i + 1}">${esc(s || "—")}</span>`; };
 
 /* ---------- server o dati di prova ---------- */
-let DEMO = false;
-const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
+let DEMO = false, STRIPE = false;
+const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; STRIPE = !!j.stripe; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
   .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottici: OTT07 (Demo Centro) o OTT12 (Demo Mare) / demo · Montature: SG-1042, SG-1043, SG-1044"); });
 function notaDemo(t){ const n = $("demoNota"); n.textContent = t; n.hidden = false; }
 ready.then(() => {
@@ -122,14 +122,14 @@ const local = {
     if (name === "clienti"){
       const rows = s.utenti.filter(u => sess.ruolo === "caf" ? u.CAF === sess.id : String(u.Ottica1).startsWith(sess.id + " "));
       return ok({clienti: rows.map(u => { const o = ord(u); return {univoco: u.Univoco, nome: u.Nome, cognome: u.Cognome, stato: u.Stato, cf: sess.ruolo === "caf" ? u["Codice Fiscale"] : undefined, cellulare: u.Cellulare,
-        montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null, rata: o.prezzi ? o.prezzi.rata : null, aggiornato: o.aggiornato || u.Creato}; })
+        montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null, rata: o.prezzi ? o.prezzi.rata : null, finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || u.Creato}; })
         .sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)))});
     }
     if (name === "benvenuto"){
       const u = s.utenti.find(x => x.Univoco === q("univoco")); if (!u) return ko(404, "Link non valido o scaduto.");
       const o = ottOf(u), od = ord(u);
       return ok({nome: u.Nome, cognome: u.Cognome, stato: u.Stato, ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo, citta: o.Citta} : null,
-        ordine: {montatura: od.montatura || null, lenti: od.lenti || null, trattamenti: od.trattamenti || [], prezzi: od.prezzi || null, pagamento: od.pagamento || null}});
+        ordine: {montatura: od.montatura || null, lenti: od.lenti || null, trattamenti: od.trattamenti || [], prezzi: od.prezzi || null, pagamento: od.pagamento || null, finePeriodo: od.finePeriodo || null}});
     }
     if (name === "montatura"){
       if (post){
@@ -150,18 +150,29 @@ const local = {
       if (!u || !String(u.Ottica1).startsWith(sess.id + " ")) return ko(404, "Cliente non trovato tra i clienti della tua ottica.");
       const od = ord(u), conv = LISTINI.conv(u.Listino);
       if (!post) return ok({nome: u.Nome, cognome: u.Cognome, stato: u.Stato, ordine: od, listino: {lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: LISTINI.LISTINI.mesi, spedizione: LISTINI.LISTINI.spedizione}});
-      if (b.azione === "pronto" || b.azione === "consegnato"){ u.Stato = b.azione === "pronto" ? STATI.PRONTO : STATI.CONSEGNATO; od.aggiornato = new Date().toISOString(); u.Ordine = JSON.stringify(od); return done({ok: true, stato: u.Stato}); }
+      if (b.azione === "pronto" || b.azione === "consegnato"){
+        u.Stato = b.azione === "pronto" ? STATI.PRONTO : STATI.CONSEGNATO; od.aggiornato = new Date().toISOString(); u.Ordine = JSON.stringify(od);
+        const lk = this.link(u, ottOf(u), u.CAF);
+        return done({ok: true, stato: u.Stato, avviso: b.azione === "pronto" ? {sms: false, whatsapp: `https://wa.me/39${u.Cellulare}?text=${encodeURIComponent(`SocialGlass: ${u.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.Univoco}. ${lk}`)}`} : null});
+      }
       if (![STATI.MONTATURA, STATI.PAGAMENTO].includes(u.Stato) || !od.montatura) return ko(409, "Il cliente deve prima scegliere la montatura con il QR.");
       const r = b.ricetta; if (!r.pd) return ko(400, "Inserisci la distanza pupillare (45-80 mm).");
       const prev = LISTINI.preventivo(u.Listino, b.lente, b.trattamenti); if (!prev) return ko(400, "Scegli il tipo di lenti.");
-      Object.assign(od, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta: r, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione}, aggiornato: new Date().toISOString()});
+      Object.assign(od, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta: r, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione, riscatto: prev.riscatto, modello: prev.modello}, aggiornato: new Date().toISOString()});
       u.Stato = STATI.PAGAMENTO; u.Ordine = JSON.stringify(od);
-      return done({ok: true, prezzi: od.prezzi});
+      const lk = this.link(u, ottOf(u), u.CAF);
+      return done({ok: true, prezzi: od.prezzi, avviso: {sms: false, whatsapp: `https://wa.me/39${u.Cellulare}?text=${encodeURIComponent(`SocialGlass: ${u.Nome}, il tuo occhiale è pronto per l'ordine: ${prev.mesi} mesi a ${euro(prev.rata)}/mese. Apri il link, controlla il riepilogo e attiva l'abbonamento: ${lk}`)}`}});
     }
     if (name === "pagamento"){
       const u = s.utenti.find(x => x.Univoco === b.univoco); if (!u || u.Stato !== STATI.PAGAMENTO) return ko(409, "Non c'è un ordine da attivare.");
-      const od = ord(u); od.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString()}; od.aggiornato = od.pagamento.attivatoIl; u.Stato = STATI.ATTIVO; u.Ordine = JSON.stringify(od);
+      const od = ord(u); od.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString(), ratePagate: 1}; od.aggiornato = od.pagamento.attivatoIl; u.Stato = STATI.ATTIVO; u.Ordine = JSON.stringify(od);
       return done({simulato: true});
+    }
+    if (name === "fine-periodo"){
+      const u = s.utenti.find(x => x.Univoco === b.univoco); if (!u) return ko(404, "Cliente non trovato.");
+      const D = {rinnova: "Rinnovo con occhiale nuovo", riscatta: "Riscatto: tiene l'occhiale", restituisci: "Restituzione e chiusura"};
+      const od = ord(u); od.finePeriodo = {scelta: b.scelta, descrizione: D[b.scelta], il: new Date().toISOString()}; u.Ordine = JSON.stringify(od);
+      return done({ok: true, descrizione: D[b.scelta]});
     }
     return ko(404, "Non trovato");
   }
@@ -287,7 +298,8 @@ function disegnaClienti(){
   const l = clienti.filter(c => (!st || c.stato === st) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
   $("clientiLista").innerHTML = l.length ? l.map(c => `<div class="cli">
       <div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div><div>${chip(c.stato)}${c.insoluto ? ' <span class="chip s3">RATA INSOLUTA</span>' : ""}</div></div>
-      ${c.montatura ? `<div>Montatura: ${esc(c.montatura)}${c.totale ? ` · ${euro(c.totale)} in ${12} rate da ${euro(c.rata)}` : ""}</div>` : ""}
+      ${c.montatura ? `<div>Montatura: ${esc(c.montatura)}${c.totale ? ` · valore ${euro(c.totale)} · canone ${euro(c.rata)}/mese` : ""}</div>` : ""}
+      ${c.finePeriodo ? `<div><span class="chip s2">FINE PERIODO: ${esc(c.finePeriodo)}</span></div>` : ""}
       <div class="az">${isOtt
         ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
           + (c.stato === STATI.ATTIVO ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
@@ -301,10 +313,23 @@ $("filtroStato").addEventListener("change", disegnaClienti);
 $("clientiLista").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.ord){ open("ordinePopup"); resetOrdine(); $("ordineCodice").value = b.dataset.ord; caricaOrdine(b.dataset.ord); return; }
-  if (b.dataset.azione){ b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.u, azione: b.dataset.azione}); if (scaduta(r)) return; if (!r.ok) alertBox(r.data.errore); apriClienti(); return; }
+  if (b.dataset.azione){
+    b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.u, azione: b.dataset.azione}); if (scaduta(r)) return;
+    if (!r.ok) alertBox(r.data.errore);
+    await apriClienti();
+    if (r.ok && r.data.avviso) avvisoCliente(r.data.avviso, "Occhiali segnati come pronti.");
+    return;
+  }
   if (b.dataset.rinnovo){ b.disabled = true; const x = await post("api/utenti", {azione: "rinnovo", cf: b.dataset.rinnovo}); if (scaduta(x)) return; if (x.ok) mostraLink(x.data, ""); }
 });
 function alertBox(t){ notaDemo(t); }
+// avviso al cliente dopo un'azione dell'ottico: SMS automatico oppure WhatsApp con un tocco
+function avvisoCliente(av, titolo){
+  const box = document.createElement("div"); box.className = "esito ok";
+  box.innerHTML = `${esc(titolo)} ${av.sms ? "Il cliente ha ricevuto un SMS." : `Avvisa il cliente: <a class="btn-link" style="display:inline-block;margin:6px 0 0" target="_blank" rel="noopener" href="${esc(av.whatsapp)}">Invia su WhatsApp</a>`}`;
+  const host = $("clientiPopup").hidden ? $("ordineEsito") : $("clientiLista");
+  if (host === $("ordineEsito")){ host.hidden = false; host.className = "esito ok"; host.innerHTML = box.innerHTML; } else host.prepend(box);
+}
 
 /* ---------- ordine cliente (ottico) ---------- */
 let ordCorrente = null;
@@ -339,7 +364,8 @@ function calcolaOrdine(){
   const lente = L.lenti[s.lente]; if (!lente) return;
   const tot = L.montatura + lente.prezzo + s.trattamenti.reduce((a, t) => a + L.trattamenti[t].prezzo, 0);
   const rata = Math.ceil(tot / L.mesi * 100) / 100;
-  $("ordineTotale").innerHTML = `Montatura ${euro(L.montatura)} + lenti ${euro(lente.prezzo)}${s.trattamenti.length ? " + trattamenti" : ""}<br>Totale <b>${euro(tot)}</b> · ${L.mesi} rate da <b>${euro(rata)}</b> + spedizione ${euro(L.spedizione)}`;
+  const canone = Math.max(LISTINI.LISTINI.abbonamento.minimoMensile, Math.ceil(tot * LISTINI.LISTINI.abbonamento.quotaAnnua / 12 * 10) / 10);
+  $("ordineTotale").innerHTML = `Valore occhiale <b>${euro(tot)}</b> (montatura ${euro(L.montatura)} + lenti ${euro(lente.prezzo)}${s.trattamenti.length ? " + trattamenti" : ""})<br>Abbonamento <b>${euro(canone)}/mese</b> · durata minima ${L.mesi} mesi · spedizione ${euro(L.spedizione)}`;
   $("formOrdine").querySelectorAll("[name$=_add]").forEach(x => { x.disabled = s.lente !== "prog"; if (x.disabled) x.value = ""; });
 }
 $("formOrdine").addEventListener("change", calcolaOrdine);
@@ -356,7 +382,7 @@ $("formOrdine").addEventListener("submit", async e => {
   if (scaduta(r)) return;
   if (!r.ok){ esito($("ordineErr"), r.data.errore, "err"); return; }
   f.hidden = true;
-  esito($("ordineEsito"), `Ordine inviato a ${ordCorrente.nome}: ${euro(r.data.prezzi.totale)} in ${r.data.prezzi.mesi} rate da ${euro(r.data.prezzi.rata)}. Il cliente vede il riepilogo sul suo link e attiva le rate dal telefono.`, "ok");
+  avvisoCliente(r.data.avviso || {sms: false, whatsapp: ""}, `Ordine inviato a ${ordCorrente.nome}: abbonamento ${euro(r.data.prezzi.rata)}/mese (valore occhiale ${euro(r.data.prezzi.totale)}). Il cliente vede il riepilogo sul suo link e attiva l'abbonamento dal telefono.`);
 });
 
 /* ---------- pagina personale del cliente ---------- */
@@ -367,7 +393,7 @@ const TAPPE = [
   ["Registrato dal CAF", STATI.REGISTRATO],
   ["Montatura scelta", STATI.MONTATURA],
   ["Lenti e ricetta inserite", STATI.PAGAMENTO],
-  ["Rate attivate · occhiali in lavorazione", STATI.ATTIVO],
+  ["Abbonamento attivato · occhiali in lavorazione", STATI.ATTIVO],
   ["Pronti per il ritiro", STATI.PRONTO],
   ["Consegnati", STATI.CONSEGNATO]
 ];
@@ -386,55 +412,116 @@ function disegnaMio(){
     a = `<div class="scheda">1) Vai dall'ottico:<br>${dove}<br>2) Mostra il tuo codice <b>${esc(UNIVOCO)}</b><br>3) Scegli la montatura e premi <b>«Ho scelto la montatura»</b> per inquadrare il QR sull'espositore.</div>
       <button type="button" class="verde full" id="mpScan">Ho scelto la montatura</button>`;
   } else if (u.stato === STATI.MONTATURA){
-    a = `<div class="esito ok">Montatura scelta: <b>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</b>.</div><p style="margin:0 0 10px">Ora l'ottico inserisce le lenti e la tua ricetta. Questa pagina si aggiorna da sola: tra poco vedrai il riepilogo con la rata mensile.</p>
+    a = `<div class="esito ok">Montatura scelta: <b>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</b>.</div><p style="margin:0 0 10px">Ora l'ottico inserisce le lenti e la tua ricetta. Questa pagina si aggiorna da sola e ti mandiamo un messaggio: tra poco vedrai il riepilogo con il canone mensile.</p>
       <button type="button" class="grigio full" id="mpScan">Ho cambiato idea: scansiona un'altra montatura</button>`;
   } else if (u.stato === STATI.PAGAMENTO){
     const p = od.prezzi;
-    a = `<div class="rata">${p.mesi} rate mensili da<b>${euro(p.rata)}</b>senza interessi</div>
+    a = `<div class="rata">Abbonamento occhiale<b>${euro(p.rata)}/mese</b>durata minima ${p.mesi} mesi · niente interessi</div>
+      <div class="scheda"><b>Cosa è incluso</b><ul class="servizi">${LISTINI.LISTINI.abbonamento.servizi.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
       <div class="riepilogo">
         <div class="r"><span>Montatura ${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</span><span>${euro(p.montatura)}</span></div>
         <div class="r"><span>Lenti ${esc(od.lenti.nome)}</span><span>${euro(od.lenti.prezzo)}</span></div>
         ${(od.trattamenti || []).map(t => `<div class="r"><span>${esc(t.nome)}</span><span>${euro(t.prezzo)}</span></div>`).join("")}
-        <div class="r tot"><span>Totale occhiale</span><span>${euro(p.totale)}</span></div>
-        <div class="r"><span>Oggi paghi: prima rata + spedizione</span><span>${euro(p.rata + p.spedizione)}</span></div>
+        <div class="r tot"><span>Valore dell'occhiale</span><span>${euro(p.totale)}</span></div>
+        <div class="r"><span>Oggi paghi: primo mese + spedizione</span><span>${euro(p.rata + p.spedizione)}</span></div>
+        <div class="r"><span>Poi ogni mese</span><span>${euro(p.rata)}</span></div>
+        ${p.riscatto ? `<div class="r"><span>Dopo ${p.mesi} mesi, se vuoi tenerlo</span><span>${euro(p.riscatto)}</span></div>` : ""}
       </div>
-      <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni</button>: ${p.mesi} rate da ${euro(p.rata)}, la prima oggi insieme alla spedizione (${euro(p.spedizione)}).</span></label>
-      <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Autorizzo l'addebito mensile automatico su carta o conto (SEPA) per ${p.mesi} mesi.</span></label>
+      <div class="scheda"><b>Cosa succede adesso</b><ol class="passi-ora">
+        <li>Premi il pulsante: si apre la pagina sicura di pagamento (Stripe).</li>
+        <li>Inserisci carta o IBAN: paghi il primo mese e la spedizione.</li>
+        <li>L'ottico riceve la conferma e prepara gli occhiali. Ti avvisiamo quando sono pronti.</li>
+        <li>Dopo ${p.mesi} mesi scegli tu: occhiale nuovo, tenerlo o restituirlo.</li></ol></div>
+      <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni dell'abbonamento</button>: ${euro(p.rata)} al mese, durata minima ${p.mesi} mesi. L'occhiale resta dell'ottica finché non lo riscatto.</span></label>
+      <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Autorizzo l'addebito mensile automatico su carta o conto (SEPA).</span></label>
       <div class="esito err" id="mpErr" hidden></div>
-      <button type="button" class="verde full" id="mpPaga">Attiva le rate</button>`;
+      <button type="button" class="verde full" id="mpPaga">Attiva l'abbonamento</button>
+      <p class="nota-sicura">Pagamento gestito da Stripe. SocialGlass e l'ottico non vedono i dati della carta.</p>`;
   } else if (u.stato === STATI.ATTIVO){
-    a = `<div class="esito ok">Rate attive${od.pagamento && od.pagamento.attivatoIl ? " dal " + new Date(od.pagamento.attivatoIl).toLocaleDateString("it-IT") : ""}. I tuoi occhiali sono in lavorazione: ti avvisiamo quando sono pronti.</div>${o ? `<div class="scheda">Ritiro presso ${dove}</div>` : ""}`;
+    a = `<div class="esito ok"><b>Abbonamento attivo</b>${od.pagamento && od.pagamento.attivatoIl ? " dal " + new Date(od.pagamento.attivatoIl).toLocaleDateString("it-IT") : ""}. Pagamento ricevuto.</div>
+      <div class="scheda"><b>Cosa succede adesso</b><br>L'ottico ha ricevuto la conferma e sta preparando i tuoi occhiali (di solito 5-10 giorni). Quando sono pronti ti arriva un messaggio e questa pagina cambia.${o ? `<br><br>Ritiro presso ${dove}` : ""}</div>`;
   } else if (u.stato === STATI.PRONTO){
-    a = `<div class="esito ok"><b>I tuoi occhiali sono pronti!</b> Passa a ritirarli mostrando il codice ${esc(UNIVOCO)}.</div>${o ? `<div class="scheda">${dove}</div>` : ""}`;
+    a = `<div class="esito ok"><b>I tuoi occhiali sono pronti!</b> Passa a ritirarli mostrando il codice <b>${esc(UNIVOCO)}</b>. L'ottico li regola sul tuo viso.</div>${o ? `<div class="scheda">${dove}</div>` : ""}`;
   } else if (u.stato === STATI.CONSEGNATO){
-    a = `<div class="esito ok">Occhiali consegnati. Buona visione! Tra 12 mesi potrai cambiarli: il tuo CAF ti invierà il nuovo link.</div>`;
+    const fp = od.finePeriodo, p = od.prezzi || {};
+    a = `<div class="esito ok">Occhiali consegnati. Buona visione!</div>
+      <div class="scheda"><b>Il tuo abbonamento</b><br>${p.rata ? `${euro(p.rata)} al mese, ` : ""}durata minima ${p.mesi || 12} mesi. Se si rompono, l'ottico li sostituisce una volta l'anno.</div>
+      <div class="scheda"><b>Alla fine dei ${p.mesi || 12} mesi</b>${fp ? `<div class="esito ok" style="margin-top:8px">Hai scelto: <b>${esc(fp.descrizione)}</b>. Puoi cambiare idea fino alla scadenza.</div>` : `<br>Scegli adesso o più avanti, ti ricordiamo noi un mese prima:`}
+        <div class="scelte">
+          <button type="button" class="verde full" data-fine="rinnova">Occhiale nuovo, continuo l'abbonamento</button>
+          <button type="button" class="grigio full" data-fine="riscatta">Tengo questo occhiale${p.riscatto ? ` (${euro(p.riscatto)})` : ""}</button>
+          <button type="button" class="grigio full" data-fine="restituisci">Lo restituisco e chiudo</button>
+        </div></div>`;
   }
   const ins = od.pagamento && od.pagamento.insoluto;
-  if (ins) a = `<div class="esito err"><b>Rata non riuscita</b> (${euro(ins.importo)}). Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.link ? `<br><a href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia metodo di pagamento</a>` : ""}</div>` + a;
-  if (od.pagamento && od.pagamento.ratePagate && od.prezzi) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Rate pagate: ${od.pagamento.ratePagate} di ${od.prezzi.mesi}</p>`;
+  if (ins) a = `<div class="esito err"><b>Pagamento del mese non riuscito</b> (${euro(ins.importo)}). Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.link ? `<br><a href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia metodo di pagamento</a>` : ""}</div>` + a;
+  if (od.pagamento && od.pagamento.ratePagate && od.prezzi) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Mesi pagati: ${od.pagamento.ratePagate} (minimo ${od.prezzi.mesi})</p>`;
   $("mpAzione").innerHTML = a;
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
   const pc = $("mpPaga"); if (pc) pc.onclick = attivaRate;
   const cc = $("mpCond"); if (cc) cc.onclick = mostraCondizioni;
+  $("mpAzione").querySelectorAll("[data-fine]").forEach(b => b.onclick = async () => {
+    b.disabled = true; const r = await post("api/fine-periodo", {univoco: UNIVOCO, scelta: b.dataset.fine});
+    if (!r.ok){ b.disabled = false; notaDemo(r.data.errore || "Riprova."); return; }
+    await caricaMio(false); disegnaMio();
+  });
   clearTimeout(pollT);
   if (u.stato === STATI.MONTATURA || (u.stato === STATI.PAGAMENTO && od.pagamento && od.pagamento.stato === "IN CORSO")) pollT = setTimeout(async () => { const prima = mio && mio.stato; await caricaMio(false); if (mio && mio.stato !== prima && $("miaPagina").hidden === false) disegnaMio(); }, 15000);
 }
 async function attivaRate(){
-  if (!$("c1").checked || !$("c2").checked){ esito($("mpErr"), "Per attivare le rate spunta entrambe le conferme.", "err"); return; }
-  $("mpPaga").disabled = true; $("mpPaga").textContent = "Attendi…";
+  if (!$("c1").checked || !$("c2").checked){ esito($("mpErr"), "Per attivare l'abbonamento spunta entrambe le conferme.", "err"); return; }
+  if (DEMO === "browser" || (DEMO && !STRIPE)){ if (!(await checkoutProva())) return; }
+  $("mpPaga").disabled = true; $("mpPaga").textContent = "Apro la pagina di pagamento…";
   const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true});
   if (r.ok && r.data.url){ location.href = r.data.url; return; }
-  $("mpPaga").disabled = false; $("mpPaga").textContent = "Attiva le rate";
+  $("mpPaga").disabled = false; $("mpPaga").textContent = "Attiva l'abbonamento";
   if (!r.ok){ esito($("mpErr"), r.data.errore || "Pagamento non riuscito. Riprova.", "err"); return; }
   await caricaMio(false); open("miaPagina");
 }
+// Pagina di pagamento di prova (stessi passaggi di Stripe Checkout) quando Stripe non è collegato
+function checkoutProva(){
+  return new Promise(res => {
+    const p = mio.ordine.prezzi, d = document.createElement("div");
+    d.className = "stripe-sim";
+    d.innerHTML = `<div class="ss-box">
+      <div class="ss-top"><span>← SocialGlass</span><span class="ss-test">MODALITÀ PROVA</span></div>
+      <div class="ss-cols"><div class="ss-sx">
+        <div class="ss-l">Abbonamento occhiale SocialGlass</div>
+        <div class="ss-big">${euro(p.rata)} <small>al mese</small></div>
+        <div class="ss-r"><span>Abbonamento mensile</span><span>${euro(p.rata)}</span></div>
+        <div class="ss-r"><span>Spedizione (una volta)</span><span>${euro(p.spedizione)}</span></div>
+        <div class="ss-r ss-t"><span>Totale dovuto oggi</span><span>${euro(p.rata + p.spedizione)}</span></div>
+        <p class="ss-n">Durata minima ${p.mesi} mesi. Poi rinnovi, riscatti o restituisci.</p>
+      </div><div class="ss-dx">
+        <label>Email<input value="cliente@esempio.it"></label>
+        <div class="ss-tab"><button type="button" class="on" data-m="card">Carta</button><button type="button" data-m="sepa">Addebito SEPA</button></div>
+        <div data-p="card"><label>Dati della carta<input value="4242 4242 4242 4242" inputmode="numeric"></label>
+          <div class="ss-2"><input value="12 / 34"><input value="123"></div></div>
+        <div data-p="sepa" hidden><label>IBAN<input value="IT60 X054 2811 1010 0000 0123 456"></label>
+          <p class="ss-n">Autorizzi SocialGlass e Stripe ad addebitare il conto secondo il mandato SEPA. Puoi chiedere il rimborso alla banca entro 8 settimane.</p></div>
+        <label>Nome<input value="${esc(mio.nome)} ${esc(mio.cognome || "")}"></label>
+        <button type="button" class="ss-pay">Abbonati</button>
+        <button type="button" class="ss-ann">Annulla</button>
+        <p class="ss-n">Questa è una simulazione: nessun addebito reale. Con Stripe collegato si apre la vera pagina di Stripe con gli stessi campi.</p>
+      </div></div></div>`;
+    document.body.appendChild(d);
+    d.querySelectorAll(".ss-tab button").forEach(b => b.onclick = () => { d.querySelectorAll(".ss-tab button").forEach(x => x.classList.toggle("on", x === b)); d.querySelectorAll("[data-p]").forEach(x => x.hidden = x.dataset.p !== b.dataset.m); });
+    d.querySelector(".ss-ann").onclick = () => { d.remove(); res(false); };
+    d.querySelector(".ss-pay").onclick = e => { e.target.disabled = true; e.target.textContent = "Elaborazione…"; setTimeout(() => { e.target.textContent = "✓ Pagamento riuscito"; setTimeout(() => { d.remove(); res(true); }, 900); }, 1300); };
+  });
+}
 function mostraCondizioni(){
   const p = mio.ordine.prezzi;
+  const o = mio.ottico;
   $("condizioniTesto").innerHTML = `<p><b>Bozza da far verificare a un consulente legale.</b></p>
-    <p>Il prezzo totale dell'occhiale è ${euro(p.totale)}, suddiviso in ${p.mesi} rate mensili da ${euro(p.rata)}, senza interessi né costi aggiuntivi. Alla conferma vengono addebitati la prima rata e la spedizione (${euro(p.spedizione)}); le rate successive ogni mese, nello stesso giorno, per ${p.mesi - 1} mesi, poi l'addebito si ferma da solo.</p>
-    <p>Puoi pagare con carta o con addebito sul conto (SEPA). Se una rata non va a buon fine riceverai un avviso e il sistema riproverà l'addebito.</p>
-    <p>Dopo ${p.mesi} mesi puoi chiedere al tuo CAF un nuovo occhiale con le stesse modalità.</p>
-    <p>Diritto di recesso, garanzia legale e trattamento dei dati personali: vedi l'informativa completa del servizio.</p>`;
+    <p><b>1. Cosa ricevi.</b> ${o ? esc(o.nome) : "L'ottica"} ti dà in uso un occhiale da vista con le tue lenti (valore ${euro(p.totale)}). L'occhiale resta di proprietà dell'ottica: non lo stai comprando a rate e non c'è nessun obbligo di acquisto.</p>
+    <p><b>2. Quanto paghi.</b> ${euro(p.rata)} al mese, senza interessi né altri costi, più la spedizione (${euro(p.spedizione)}) una sola volta. Il primo mese si paga alla conferma, poi ogni mese nello stesso giorno con addebito automatico su carta o conto (SEPA).</p>
+    <p><b>3. Durata.</b> Minimo ${p.mesi} mesi. Dopo puoi: avere un occhiale nuovo e continuare; tenere questo pagando ${euro(p.riscatto || 0)}; oppure restituirlo e chiudere senza altri costi.</p>
+    <p><b>4. Servizi inclusi.</b> Controllo della vista ogni anno, una sostituzione all'anno in caso di rottura (escluso smarrimento), cambio occhiale ogni ${p.mesi} mesi.</p>
+    <p><b>5. Se un pagamento non riesce.</b> Ti avvisiamo e riproviamo in automatico per circa 2 settimane. Puoi pagare subito dal link che ricevi. Se il pagamento resta non saldato per oltre 30 giorni, l'abbonamento si chiude e l'occhiale va restituito all'ottica (o riscattato pagando la differenza).</p>
+    <p><b>6. Recesso.</b> Puoi ripensarci entro 14 giorni dalla conferma: restituisci l'occhiale integro e ti rimborsiamo quanto pagato, tranne la spedizione e le lenti già fatte su misura.</p>
+    <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo l'ottica e SocialGlass per preparare l'occhiale. I dati di pagamento li gestisce Stripe.</p>
+    <p><b>8. Detrazione.</b> Per la detrazione fiscale chiedi all'ottica il documento fiscale dei canoni pagati (da verificare con il tuo CAF).</p>`;
   open("condizioniPopup");
 }
 $("mio-ordine").addEventListener("click", async () => { await caricaMio(true); open("miaPagina"); });
@@ -447,7 +534,7 @@ if (UNIVOCO){
       $("welcome-message").innerHTML = `Benvenuto da SocialGlass<br><span style="font-size:16px;color:darkgreen">${esc(u.nome)} ${esc(u.cognome)}</span><br><br>
         <div class="passi">1) Vai dall'ottico:<br><br><span style="color:darkgreen">${o ? esc(o.nome) + "<br>" + esc(o.indirizzo) + esc(o.citta) : ""}</span><br><br>2) Mostra questo codice:</div>
         <div class="codice-grande">${esc(UNIVOCO)}</div>
-        <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva le mini rate mensili<br>5) Paga il costo della spedizione<br>6) Cambia gli occhiali ogni anno</div>`;
+        <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva l'abbonamento mensile dal telefono<br>5) Paga solo il primo mese e la spedizione<br>6) Ogni anno un occhiale nuovo</div>`;
       setTimeout(() => { $("my-popup").hidden = false; }, 1200);
     } else setTimeout(() => open("miaPagina"), 600);
   });

@@ -110,6 +110,15 @@ const DB = {
     await at(CFG.baseMont, CFG.tMont, {method: "PATCH", id: m.id, body: {fields, typecast: true}});
   }
 };
+/* avvisi al cliente: SMS se configurato, altrimenti link WhatsApp da far inviare a CAF/ottico */
+async function avvisa(u, testo){
+  const numero = String(u.f.Prefisso || "+39") + String(u.f.Cellulare || "");
+  let sms = false;
+  if (CFG.smsWebhook && u.f.Cellulare){
+    try { const r = await fetch(CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to: numero, text: testo})}); sms = r.ok; } catch(e){}
+  }
+  return {sms, whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
+}
 function nuovoUnivoco(){ return "SG" + crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 7); }
 
 /* ---------- stati del percorso ---------- */
@@ -117,7 +126,7 @@ const STATI = {
   REGISTRATO: "IN ATTESA SCELTA MONTATURA",
   MONTATURA: "MONTATURA SCELTA",
   PAGAMENTO: "IN ATTESA PAGAMENTO",
-  ATTIVO: "RATE ATTIVE - IN LAVORAZIONE",
+  ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE",
   PRONTO: "PRONTO PER IL RITIRO",
   CONSEGNATO: "CONSEGNATO"
 };
@@ -169,4 +178,4 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
-module.exports = {CFG, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {avvisa, CFG, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

@@ -2,8 +2,16 @@
    Modifica qui i valori: ogni ottica ha la sua convenzione (Listino A, B, ...). */
 (function (root) {
   const LISTINI = {
-    mesi: 12,            // numero di rate mensili
-    spedizione: 9.90,    // pagata subito all'attivazione
+    // Modello "abbonamento": l'occhiale resta della ottica ed è dato in uso al cliente.
+    // Canone mensile = valore dell'occhiale × quota annua ÷ 12 (+ servizi), con un minimo.
+    mesi: 12,              // durata minima e periodo dopo cui si cambia occhiale
+    spedizione: 9.90,      // pagata con il primo canone (0 se il ritiro è in ottica)
+    abbonamento: {
+      quotaAnnua: 0.60,    // 60% del valore dell'occhiale all'anno
+      minimoMensile: 9.90,
+      riscatto: 0.15,      // per tenere l'occhiale a fine periodo: 15% del valore
+      servizi: ["Occhiale nuovo in uso, con le tue lenti", "Controllo della vista ogni anno", "Copertura rottura: 1 sostituzione all'anno", "Cambio occhiale ogni 12 mesi"]
+    },
     convenzioni: {
       A: {
         montatura: 60,
@@ -43,8 +51,11 @@
     const tr = (trattamenti || []).filter(t => c.trattamenti[t]).map(t => ({id: t, nome: c.trattamenti[t].nome, prezzo: c.trattamenti[t].prezzo}));
     const montatura = Number(prezzoMontatura) > 0 ? Number(prezzoMontatura) : c.montatura;
     const totale = r2(montatura + l.prezzo + tr.reduce((s, t) => s + t.prezzo, 0));
+    const A = LISTINI.abbonamento;
+    // canone arrotondato in su ai 10 centesimi
+    const canone = r2(Math.max(A.minimoMensile, Math.ceil(totale * A.quotaAnnua / 12 * 10) / 10));
     return {montatura, lenti: {id: lente, nome: l.nome, prezzo: l.prezzo}, trattamenti: tr, totale,
-      mesi: LISTINI.mesi, rata: r2(Math.ceil(totale / LISTINI.mesi * 100) / 100), spedizione: LISTINI.spedizione};
+      mesi: LISTINI.mesi, rata: canone, spedizione: LISTINI.spedizione, riscatto: r2(Math.ceil(totale * A.riscatto)), modello: "abbonamento"};
   }
   const api = {LISTINI, conv, preventivo};
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.LISTINI = api;
