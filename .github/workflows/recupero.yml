@@ -9,7 +9,7 @@ permissions:
 jobs:
   recupero:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get install -y whois >/dev/null
@@ -22,7 +22,8 @@ jobs:
           import json
           r = json.load(open("recupero/report.json"))
           for d, v in r.items():
-              print(f"::notice title={d}::pagine {v.get('pagine_archiviate')} · dal {v.get('prima')} al {v.get('ultima')} · scaricati {v.get('file_scaricati')} · home {len(v.get('istantanee_home', []))} · whois {' | '.join(v.get('whois', []))[:300]}")
+              if d.startswith("_"): continue
+              print(f"::notice title={d}::indice {v.get('file_archiviati')} · pagine {v.get('pagine_recuperate')} · file {v.get('file_recuperati')} · home {len(v.get('istantanee_home', []))} · err {v.get('errore_indice','')[:80]} {v.get('errore_istantanee','')[:80]}")
           PY
           du -sh recupero; find recupero -type f | wc -l; find recupero -size +40M
       - name: Salva risultati
