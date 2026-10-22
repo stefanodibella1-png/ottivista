@@ -1,0 +1,93 @@
+[
+{
+"domain": "socialglass.it",
+"kind": "home",
+"url": "http://socialglass.it/",
+"ts": "20240501175741",
+"file": "socialglass.it/home-20240501175741.html"
+},
+{
+"domain": "socialglass.it",
+"kind": "home",
+"url": "http://socialglass.it/",
+"ts": "20241228171038",
+"file": "socialglass.it/home-20241228171038.html"
+},
+{
+"domain": "socialglass.it",
+"kind": "home",
+"url": "http://socialglass.it/",
+"ts": "20250227180313",
+"file": "socialglass.it/home-20250227180313.html"
+},
+{
+"domain": "biottica.it",
+"kind": "home",
+"url": "http://biottica.it/",
+"ts": "20240419105413",
+"file": "biottica.it/home-20240419105413.html"
+},
+{
+"domain": "biottica.it",
+"kind": "home",
+"url": "http://biottica.it/",
+"ts": "20240817015349",
+"file": "biottica.it/home-20240817015349.html"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "home",
+"url": "http://occhialesubito.com/",
+"ts": "20240715100113",
+"file": "occhialesubito.com/home-20240715100113.html"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "home",
+"url": "http://occhialesubito.com/",
+"ts": "20240920191205",
+"file": "occhialesubito.com/home-20240920191205.html"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "home",
+"url": "http://occhialesubito.com/",
+"ts": "20241120200931",
+"file": "occhialesubito.com/home-20241120200931.html"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "home",
+"url": "http://occhialesubito.com/",
+"ts": "20250121134637",
+"file": "occhialesubito.com/home-20250121134637.html"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "home",
+"url": "http://occhialesubito.com/",
+"ts": "20250323003702",
+"file": "occhialesubito.com/home-20250323003702.html"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "asset",
+"url": "https://whm.occhialesubito.com/cPanel_magic_revision_1648610195/unprotected/cpanel/fonts/open_sans/open_sans.min.css",
+"ts": "20250122212600",
+"file": "occhialesubito.com/whm.occhialesubito.com_cPanel_magic_revision_1648610195_unprotected_cpanel_fonts_open_sans_open_sans.min.css"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "asset",
+"url": "https://whm.occhialesubito.com/cPanel_magic_revision_1696277153/unprotected/cpanel/images/whm-logo_white.svg",
+"ts": "20250122212600",
+"file": "occhialesubito.com/whm.occhialesubito.com_cPanel_magic_revision_1696277153_unprotected_cpanel_images_whm-logo_white.svg"
+},
+{
+"domain": "occhialesubito.com",
+"kind": "asset",
+"url": "https://whm.occhialesubito.com/cPanel_magic_revision_1696278722/unprotected/cpanel/style_v2_optimized.css",
+"ts": "20250122212600",
+"file": "occhialesubito.com/whm.occhialesubito.com_cPanel_magic_revision_1696278722_unprotected_cpanel_style_v2_optimized.css"
+}
+]
