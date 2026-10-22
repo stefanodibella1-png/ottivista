@@ -35,7 +35,11 @@ jobs:
           setenv(){ K="$1" V="$2" node -e 'process.stdout.write(JSON.stringify({key:process.env.K,value:process.env.V,type:"encrypted",target:["production"]}))' > "$RUNNER_TEMP/e.json"
             api -o /dev/null -w "$1 %{http_code}\n" -X POST "https://api.vercel.com/v10/projects/$PID/env?upsert=true&$Q" --data-binary @"$RUNNER_TEMP/e.json"; rm -f "$RUNNER_TEMP/e.json"; }
           envid(){ api "https://api.vercel.com/v9/projects/$PID/env?$Q" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const e=(JSON.parse(s).envs||[]).find(x=>x.key==='$1');console.log(e?e.id:'')})"; }
-          if [ "$MODO" = "genera" ]; then
+          if [ "$MODO" = "scollega" ]; then
+            for k in FIREBASE_SERVICE_ACCOUNT SG_TRANSFER_PRIV; do ID=$(envid $k); [ -z "$ID" ] || api -o /dev/null -w "rimossa $k %{http_code}\n" -X DELETE "https://api.vercel.com/v9/projects/$PID/env/$ID?$Q"; done
+            vercel deploy --prod --yes --token "$VERCEL_TOKEN" >/dev/null
+            sleep 8; echo "::notice title=SocialGlass::$(curl -s https://socialglass.vercel.app/api/health)"
+          elif [ "$MODO" = "genera" ]; then
             openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$RUNNER_TEMP/priv.pem" 2>/dev/null
             setenv SG_TRANSFER_PRIV "$(cat "$RUNNER_TEMP/priv.pem")"
             PUB=$(openssl pkey -in "$RUNNER_TEMP/priv.pem" -pubout | base64 -w0); rm -f "$RUNNER_TEMP/priv.pem"
