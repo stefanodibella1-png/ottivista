@@ -22,7 +22,9 @@ jobs:
         run: |
           K=$(printf '%s' "$STRIPE_SECRET_KEY" | tr -d '[:space:]'); X=$(printf '%s' "$K" | grep -oE '(sk|rk)_test_[A-Za-z0-9]+' | head -1); [ -z "$X" ] || K="$X"; echo "::add-mask::$K"; echo "STRIPE_SECRET_KEY=$K" >> $GITHUB_ENV
           T=$(printf '%s' "$VERCEL_TOKEN" | tr -d '[:space:]'); echo "::add-mask::$T"; echo "VERCEL_TOKEN=$T" >> $GITHUB_ENV
-          echo "Stripe inizia con: $(printf '%s' "$K" | cut -c1-8) · lunghezza ${#K}"
+          W=$(printf '%s' "$STRIPE_SECRET_KEY" | head -c 40 | grep -oE '^[A-Za-z ]{1,20}' || true)
+          echo "::notice title=Diagnosi segreti::Stripe lunghezza ${#K}, contiene sk_: $(printf '%s' "$K" | grep -c 'sk_' || true), testo iniziale: '$W' · Vercel lunghezza ${#T} · Firebase presente: $([ -n "$FIREBASE_SERVICE_ACCOUNT" ] && echo si || echo no)"
+          case "$K" in sk_test_*|rk_test_*) ;; *) echo "::warning title=Stripe::chiave non valida, pubblico con pagamento simulato"; echo "STRIPE_SECRET_KEY=" >> $GITHUB_ENV;; esac
       - name: Controllo segreti
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then echo "::error::Manca il segreto VERCEL_TOKEN"; exit 1; fi
