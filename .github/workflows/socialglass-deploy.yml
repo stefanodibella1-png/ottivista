@@ -1,5 +1,5 @@
 # Pubblica SocialGlass su Vercel e collega Stripe (modalità test).
-# Segreti richiesti nel repo: VERCEL_TOKEN, STRIPE_SECRET_KEY (sk_test_...). Facoltativo: AIRTABLE_TOKEN.
+# Segreti richiesti nel repo: VERCEL_TOKEN, STRIPE_SECRET_KEY (sk_test_...), FIREBASE_SERVICE_ACCOUNT (json). Facoltativo: AIRTABLE_TOKEN.
 name: socialglass-deploy
 on:
   workflow_dispatch:
@@ -14,6 +14,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       PROJECT: socialglass
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +24,17 @@ jobs:
           case "$STRIPE_SECRET_KEY" in sk_test_*|rk_test_*) ;; "") echo "::warning::STRIPE_SECRET_KEY assente: pagamento simulato";; *) echo "::error::Usa una chiave Stripe di TEST (sk_test_...)"; exit 1;; esac
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: Database Firestore (crea se manca)
+        if: env.FIREBASE_SERVICE_ACCOUNT != ''
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          PID=$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/sa.json','utf8')).project_id")
+          echo "::notice title=Firebase progetto::$PID"
+          npm i -g firebase-tools@14 --no-audit --no-fund >/dev/null
+          if firebase firestore:databases:list --project "$PID" --json 2>/dev/null | grep -q '(default)'; then echo "database presente"
+          else firebase firestore:databases:create '(default)' --location eur3 --project "$PID" --non-interactive || echo "::warning title=Firestore::crea il database dalla console (eur3)"; fi
+          rm -f "$RUNNER_TEMP/sa.json"
       - name: Primo deploy
         working-directory: socialglass
         run: |
@@ -38,13 +50,15 @@ jobs:
           DOM=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/domains?$Q" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const d=(JSON.parse(s).domains||[]).map(x=>x.name);const c=d.find(x=>!x.endsWith('.vercel.app'))||d[0]||'';console.log(c)})")
           [ -n "$DOM" ] || DOM=$(sed 's#https://##' ../url1.txt)
           URL="https://$DOM"; echo "URL=$URL" >> $GITHUB_ENV
-          setenv(){ curl -s -o /dev/null -w "$1 %{http_code}\n" -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
-            "https://api.vercel.com/v10/projects/$PID/env?upsert=true&$Q" -d "{\"key\":\"$1\",\"value\":\"$2\",\"type\":\"encrypted\",\"target\":[\"production\",\"preview\"]}"; }
+          setenv(){ K="$1" V="$2" node -e 'process.stdout.write(JSON.stringify({key:process.env.K,value:process.env.V,type:"encrypted",target:["production","preview"]}))' > "$RUNNER_TEMP/env.json"
+            curl -s -o /dev/null -w "$1 %{http_code}\n" -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+            "https://api.vercel.com/v10/projects/$PID/env?upsert=true&$Q" --data-binary @"$RUNNER_TEMP/env.json"; rm -f "$RUNNER_TEMP/env.json"; }
           # SESSION_SECRET: generato una volta sola
           HAS=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/env?$Q" | grep -c '"key":"SESSION_SECRET"' || true)
           [ "$HAS" != "0" ] || setenv SESSION_SECRET "$(openssl rand -hex 32)"
           setenv SITE_URL "$URL"
           [ -z "$AIRTABLE_TOKEN" ] || setenv AIRTABLE_TOKEN "$AIRTABLE_TOKEN"
+          [ -z "$FIREBASE_SERVICE_ACCOUNT" ] || setenv FIREBASE_SERVICE_ACCOUNT "$FIREBASE_SERVICE_ACCOUNT"
           if [ -n "$STRIPE_SECRET_KEY" ]; then
             setenv STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
             HOOK="$URL/api/stripe-webhook"

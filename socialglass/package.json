@@ -1,1 +1,1 @@
-{ "name": "socialglass", "private": true, "engines": { "node": ">=18" } }
+{ "name": "socialglass", "private": true, "engines": { "node": ">=18" }, "dependencies": { "firebase-admin": "^12.7.0" } }

@@ -17,9 +17,12 @@ const CFG = {
   site: (E.SITE_URL || "https://www.socialglass.it").replace(/\/$/, ""),
   smsWebhook: E.SMS_WEBHOOK_URL || "",
   stripeKey: E.STRIPE_SECRET_KEY || "",
-  stripeWebhook: E.STRIPE_WEBHOOK_SECRET || ""
+  stripeWebhook: E.STRIPE_WEBHOOK_SECRET || "",
+  firebase: E.FIREBASE_SERVICE_ACCOUNT || ""
 };
-const DEMO = !CFG.token;
+// Database: Firestore se c'è la chiave Firebase, altrimenti Airtable, altrimenti dati di prova
+const MODO = CFG.firebase ? "firestore" : CFG.token ? "airtable" : "demo";
+const DEMO = MODO === "demo";
 
 /* ---------- dati di prova (quando Airtable non è collegato) ---------- */
 const demo = global.__sgDemo || (global.__sgDemo = {
@@ -36,6 +39,66 @@ const demo = global.__sgDemo || (global.__sgDemo = {
     {Codice: "SG-1044", Modello: "Brezza", Colore: "Blu", Calibro: "54-17", Asse: "145", Stato: "DISPONIBILE"}
   ]
 });
+
+/* ---------- Firestore ---------- */
+let fsDb = null, seeded = null;
+function fs(){
+  if (fsDb) return fsDb;
+  const {initializeApp, cert, getApps} = require("firebase-admin/app");
+  const {getFirestore} = require("firebase-admin/firestore");
+  const sa = JSON.parse(CFG.firebase);
+  const app = getApps()[0] || initializeApp({credential: cert(sa), projectId: sa.project_id});
+  fsDb = getFirestore(app);
+  return fsDb;
+}
+const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta"};
+// al primo avvio carica CAF, ottici e montature di prova (poi si gestiscono dalla console Firebase)
+function seed(db){
+  if (seeded) return seeded;
+  seeded = (async () => {
+    const m = db.collection(COL.meta).doc("seed");
+    if ((await m.get()).exists) return;
+    const b = db.batch();
+    demo.caf.forEach(x => b.set(db.collection(COL.caf).doc(x.ID), x));
+    demo.ottLogin.forEach(x => b.set(db.collection(COL.ottLogin).doc(x.ID), x));
+    demo.ottici.forEach(x => b.set(db.collection(COL.ottici).doc(x.ID), x));
+    demo.montature.forEach(x => b.set(db.collection(COL.mont).doc(x.Codice), x));
+    b.set(m, {il: new Date().toISOString()});
+    await b.commit();
+  })().catch(e => { seeded = null; throw e; });
+  return seeded;
+}
+async function fdb(){ const db = fs(); await seed(db); return db; }
+const FS = {
+  async login(ruolo, id){ const d = await (await fdb()).collection(ruolo === "caf" ? COL.caf : COL.ottLogin).doc(String(id).toUpperCase()).get(); return d.exists ? d.data() : null; },
+  async ottici(){ return (await (await fdb()).collection(COL.ottici).get()).docs.map(d => d.data()); },
+  async ottico(id){ if (!id) return null; const d = await (await fdb()).collection(COL.ottici).doc(id).get(); return d.exists ? d.data() : null; },
+  async utente(by, val){
+    const db = await fdb();
+    if (by === "Univoco"){ const d = await db.collection(COL.utenti).doc(String(val)).get(); return d.exists ? {id: d.id, f: d.data()} : null; }
+    const {FieldPath} = require("firebase-admin/firestore");
+    const r = await db.collection(COL.utenti).where(new FieldPath(by), "==", val).limit(1).get();
+    return r.empty ? null : {id: r.docs[0].id, f: r.docs[0].data()};
+  },
+  async utenti(filtro){
+    const c = (await fdb()).collection(COL.utenti);
+    const r = filtro.caf ? await c.where("CAF", "==", filtro.caf).get()
+      : await c.where("Ottica1", ">=", filtro.ottico + " ").where("Ottica1", "<", filtro.ottico + " \uf8ff").get();
+    return r.docs.map(d => ({id: d.id, f: d.data()})).sort((a, b) => String(b.f.Creato || "").localeCompare(String(a.f.Creato || "")));
+  },
+  async creaUtente(fields){
+    const c = (await fdb()).collection(COL.utenti);
+    for (let i = 0; i < 5; i++){
+      const uv = nuovoUnivoco();
+      try { await c.doc(uv).create(Object.assign({Univoco: uv, Creato: new Date().toISOString()}, fields)); return uv; }
+      catch(e){ if (e.code !== 6) throw e; } // 6 = esiste già
+    }
+    throw new Error("Impossibile creare il codice cliente");
+  },
+  async aggiorna(u, fields){ await (await fdb()).collection(COL.utenti).doc(u.id).update(fields); Object.assign(u.f, fields); },
+  async montatura(codice){ const d = await (await fdb()).collection(COL.mont).doc(String(codice)).get(); return d.exists ? {id: d.id, f: d.data()} : null; },
+  async aggiornaMontatura(m, fields){ await (await fdb()).collection(COL.mont).doc(m.id).update(fields); Object.assign(m.f, fields); }
+};
 
 /* ---------- Airtable ---------- */
 const q = v => String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -62,7 +125,7 @@ async function find(base, table, formula, max = 1){
 
 /* ---------- archivio: stesse funzioni con Airtable o con i dati di prova ---------- */
 const parseOrdine = s => { try { return s ? JSON.parse(s) : {}; } catch(e){ return {}; } };
-const DB = {
+const AT = {
   async login(ruolo, id){
     if (DEMO) return (ruolo === "caf" ? demo.caf : demo.ottLogin).find(r => r.ID === id) || null;
     const r = await find(CFG.baseMain, ruolo === "caf" ? CFG.tCaf : CFG.tOttLogin, `UPPER({ID})="${q(id)}"`, 1);
@@ -110,6 +173,7 @@ const DB = {
     await at(CFG.baseMont, CFG.tMont, {method: "PATCH", id: m.id, body: {fields, typecast: true}});
   }
 };
+const DB = MODO === "firestore" ? FS : AT;
 /* avvisi al cliente: SMS se configurato, altrimenti link WhatsApp da far inviare a CAF/ottico */
 async function avvisa(u, testo){
   const numero = String(u.f.Prefisso || "+39") + String(u.f.Cellulare || "");
@@ -178,4 +242,4 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
-module.exports = {avvisa, CFG, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {avvisa, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
