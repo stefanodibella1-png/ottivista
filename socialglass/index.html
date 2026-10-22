@@ -159,7 +159,7 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 .manuale input{flex:1;margin:0}
 .manuale button{margin:0}
 .demo-nota{position:fixed;left:max(10px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:6;background:#fff8d6;color:#5b4a00;border:1px solid #f2d96b;border-radius:8px;font-size:12px;line-height:1.4;padding:6px 10px;max-width:min(92vw,520px)}
-@media (max-width:768px){ .demo-nota{bottom:calc(env(safe-area-inset-bottom,0px) + 44px)} }
+@media (max-width:768px){ .demo-nota{bottom:calc(env(safe-area-inset-bottom,0px) + 56px)} }
 </style>
 </head>
 <body>
@@ -188,8 +188,8 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
   <div class="popup" id="passwordPopup" hidden><div class="popup-content">
     <h2>Inserisci Codice CAF e Password:</h2>
     <form data-login="caf">
-      <input type="text" id="codice" placeholder="Codice" autocomplete="username" required>
-      <input type="password" id="inputPassword" placeholder="Password" autocomplete="current-password" required>
+      <input type="text" id="codice" placeholder="Codice" autocomplete="username" autocapitalize="characters" spellcheck="false" required>
+      <input type="password" id="inputPassword" placeholder="Password" autocomplete="current-password" autocapitalize="none" required>
       <div class="esito err" data-err hidden></div>
       <button type="submit">Invia</button>
     </form>
@@ -200,8 +200,8 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
   <div class="popup" id="otticoPopup" hidden><div class="popup-content">
     <h2>Inserisci Codice OTTICO e Password:</h2>
     <form data-login="ottico">
-      <input type="text" id="codiceOttico" placeholder="Codice" autocomplete="username" required>
-      <input type="password" id="inputPasswordOttico" placeholder="Password" autocomplete="current-password" required>
+      <input type="text" id="codiceOttico" placeholder="Codice" autocomplete="username" autocapitalize="characters" spellcheck="false" required>
+      <input type="password" id="inputPasswordOttico" placeholder="Password" autocomplete="current-password" autocapitalize="none" required>
       <div class="esito err" data-err hidden></div>
       <button type="submit">Invia</button>
     </form>

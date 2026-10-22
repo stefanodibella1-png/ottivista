@@ -60,6 +60,15 @@ let DEMO = false;
 const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
   .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottico: OTT07 / demo · Montature: SG-1042, SG-1043, SG-1044"); });
 function notaDemo(t){ const n = $("demoNota"); n.textContent = t; n.hidden = false; }
+ready.then(() => {
+  if (DEMO !== "browser") return;
+  for (const [form, cod] of [["passwordPopup", "CAF001"], ["otticoPopup", "OTT07"]]){
+    const f = $(form).querySelector("form"), b = document.createElement("button");
+    b.type = "button"; b.className = "grigio full"; b.textContent = `Entra con i dati di prova (${cod})`;
+    b.onclick = () => { const [c, p] = f.querySelectorAll("input"); c.value = cod; p.value = "demo"; f.requestSubmit(); };
+    f.appendChild(b);
+  }
+});
 
 /* anteprima senza server: stesse regole del server, dati nel browser */
 const local = {
@@ -81,8 +90,9 @@ const local = {
     const ottOf = u => s.ottici.find(o => String(u.Ottica1).startsWith(o.ID + " "));
     const done = d => { this.save(s); return ok(d); };
     if (name === "login"){
-      const rec = (b.ruolo === "caf" ? s.caf : s.ottLogin).find(r => r.ID === String(b.codice).trim().toUpperCase());
-      if (!rec || rec.Password !== b.password) return ko(401, "Codice o password non valida.");
+      const norm = c => String(c).toUpperCase().replace(/\s+/g, "").replace(/(?<=\D)O(?=\d)|(?<=\d)O/g, "0");
+      const rec = (b.ruolo === "caf" ? s.caf : s.ottLogin).find(r => r.ID === norm(b.codice));
+      if (!rec || rec.Password.toLowerCase() !== String(b.password).trim().toLowerCase()) return ko(401, `Codice o password non valida. Per la prova usa ${b.ruolo === "caf" ? "CAF001" : "OTT07"} e demo.`);
       const o = s.ottici.find(x => x.ID === rec.ID);
       return ok({token: btoa(JSON.stringify({ruolo: b.ruolo, id: rec.ID})), nome: b.ruolo === "ottico" ? (o ? o.Intestatario : rec.ID) : rec.Nome, id: rec.ID});
     }
