@@ -1,0 +1,60 @@
+# Trasferisce in modo cifrato la chiave Firebase dal repo parcheggio-app al progetto Vercel "socialglass".
+# socialglass/.chiave = "genera"  -> crea una coppia di chiavi (privata salvata solo su Vercel), pubblica nell'annotazione
+# socialglass/.chiave = "ricevi <run_id>" -> scarica l'artefatto cifrato da parcheggio-app, decifra, imposta FIREBASE_SERVICE_ACCOUNT
+name: socialglass-chiave
+on:
+  push:
+    branches: [main]
+    paths: ["socialglass/.chiave"]
+permissions: { contents: read, actions: read }
+jobs:
+  chiave:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Vercel
+        working-directory: socialglass
+        env: { VT: "${{ secrets.VERCEL_TOKEN }}" }
+        run: |
+          T=$(printf '%s' "$VT" | tr -d '[:space:]'); echo "::add-mask::$T"; echo "VERCEL_TOKEN=$T" >> $GITHUB_ENV
+          npm i -g vercel@latest >/dev/null
+          vercel link --yes --project socialglass --token "$T" >/dev/null
+          PID=$(node -p "require('./.vercel/project.json').projectId"); TEAM=$(node -p "require('./.vercel/project.json').orgId")
+          Q="teamId=$TEAM"; case "$TEAM" in team_*) ;; *) Q="";; esac
+          echo "PID=$PID" >> $GITHUB_ENV; echo "Q=$Q" >> $GITHUB_ENV
+      - name: Esegui
+        working-directory: socialglass
+        run: |
+          set -e
+          MODO=$(cut -d' ' -f1 .chiave); RUN=$(cut -s -d' ' -f2 .chiave)
+          api(){ curl -s -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" "$@"; }
+          setenv(){ K="$1" V="$2" node -e 'process.stdout.write(JSON.stringify({key:process.env.K,value:process.env.V,type:"encrypted",target:["production"]}))' > "$RUNNER_TEMP/e.json"
+            api -o /dev/null -w "$1 %{http_code}\n" -X POST "https://api.vercel.com/v10/projects/$PID/env?upsert=true&$Q" --data-binary @"$RUNNER_TEMP/e.json"; rm -f "$RUNNER_TEMP/e.json"; }
+          envid(){ api "https://api.vercel.com/v9/projects/$PID/env?$Q" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const e=(JSON.parse(s).envs||[]).find(x=>x.key==='$1');console.log(e?e.id:'')})"; }
+          if [ "$MODO" = "genera" ]; then
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$RUNNER_TEMP/priv.pem" 2>/dev/null
+            setenv SG_TRANSFER_PRIV "$(cat "$RUNNER_TEMP/priv.pem")"
+            PUB=$(openssl pkey -in "$RUNNER_TEMP/priv.pem" -pubout | base64 -w0); rm -f "$RUNNER_TEMP/priv.pem"
+            echo "::notice title=CHIAVE_PUBBLICA::$PUB"
+          else
+            ID=$(envid SG_TRANSFER_PRIV); [ -n "$ID" ] || { echo "::error::chiave privata assente"; exit 1; }
+            api "https://api.vercel.com/v1/projects/$PID/env/$ID?$Q" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).value))" > "$RUNNER_TEMP/priv.pem"
+            AID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/stefanodibella1-png/parcheggio-app/actions/runs/$RUN/artifacts" | node -p "JSON.parse(require('fs').readFileSync(0)).artifacts.find(a=>a.name==='sg-sa').id")
+            curl -sL -H "Authorization: Bearer $GH_TOKEN" -o "$RUNNER_TEMP/a.zip" "https://api.github.com/repos/stefanodibella1-png/parcheggio-app/actions/artifacts/$AID/zip"
+            mkdir -p "$RUNNER_TEMP/a" && unzip -q -o "$RUNNER_TEMP/a.zip" -d "$RUNNER_TEMP/a"
+            openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/priv.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$RUNNER_TEMP/a/k.bin" -out "$RUNNER_TEMP/k"
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:"$RUNNER_TEMP/k" -in "$RUNNER_TEMP/a/sa.enc" -out "$RUNNER_TEMP/sa.json"
+            node -e "const j=JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/sa.json','utf8'));if(j.type!=='service_account')process.exit(1);console.log('::notice title=Firebase::progetto '+j.project_id)"
+            setenv FIREBASE_SERVICE_ACCOUNT "$(cat "$RUNNER_TEMP/sa.json")"
+            # la stessa chiave serve anche all'anteprima
+            K=FIREBASE_SERVICE_ACCOUNT V="$(cat "$RUNNER_TEMP/sa.json")" node -e 'process.stdout.write(JSON.stringify({key:process.env.K,value:process.env.V,type:"encrypted",target:["production","preview"]}))' > "$RUNNER_TEMP/e.json"
+            api -o /dev/null -X POST "https://api.vercel.com/v10/projects/$PID/env?upsert=true&$Q" --data-binary @"$RUNNER_TEMP/e.json"
+            api -o /dev/null -w "rimossa chiave di trasferimento %{http_code}\n" -X DELETE "https://api.vercel.com/v9/projects/$PID/env/$ID?$Q"
+            rm -rf "$RUNNER_TEMP/priv.pem" "$RUNNER_TEMP/k" "$RUNNER_TEMP/sa.json" "$RUNNER_TEMP/e.json" "$RUNNER_TEMP/a" "$RUNNER_TEMP/a.zip"
+            vercel deploy --prod --yes --token "$VERCEL_TOKEN" >/dev/null
+            sleep 8; echo "::notice title=SocialGlass::$(curl -s https://socialglass.vercel.app/api/health) $(curl -s https://socialglass.vercel.app/api/ottici | head -c 200)"
+          fi
