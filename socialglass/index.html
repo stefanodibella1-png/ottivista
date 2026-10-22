@@ -44,9 +44,9 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 .area{position:absolute;top:calc(env(safe-area-inset-top,0px) + 20px);left:max(20px,env(safe-area-inset-left,0px));display:flex;gap:10px;z-index:5}
 .area button{margin:0}
 @media (max-width:768px){ .area{display:none} }
-.area-mobile{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:5;background:none;color:#555;box-shadow:none;border:0;font-size:12px;text-decoration:underline;padding:6px 10px}
-.area-mobile:hover{background:none;transform:translateX(-50%)}
-@media (max-width:768px){ .area-mobile{display:block} }
+.area-mobile{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 8px);z-index:5;gap:8px}
+.area-mobile button{margin:0;padding:8px 14px;font-size:13px}
+@media (max-width:768px){ .area-mobile{display:flex} }
 
 /* logo cadente (computer) e logo fisso (telefono) */
 #immagineCadente1{position:absolute;top:-600px;left:78%;transform:translateX(-50%);width:min(560px,40vw);height:auto;z-index:2;filter:drop-shadow(0 6px 18px rgba(10,31,92,.12))}
@@ -170,7 +170,7 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 
   <!-- accesso riservato -->
   <div class="area"><button id="loginButton" type="button">LOGIN CAF</button><button id="otticoButton" type="button">OTTICO</button></div>
-  <button class="area-mobile" id="areaMobile" type="button">Area CAF e ottici</button>
+  <div class="area-mobile" id="areaMobile"><button type="button" id="mCaf">Accesso CAF</button><button type="button" id="mOtt">Accesso ottico</button></div>
 
   <!-- pulsanti a destra -->
   <button id="scan-btn" type="button" hidden>Ho scelto la<br>montatura</button>

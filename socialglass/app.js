@@ -170,7 +170,10 @@ const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(bod
 const ruolo = () => sessionStorage.getItem("sg_tok") ? sessionStorage.getItem("sg_ruolo") : null;
 $("loginButton").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : "passwordPopup"));
 $("otticoButton").addEventListener("click", () => open(ruolo() === "ottico" ? "optionsOtticoPopup" : "otticoPopup"));
-$("areaMobile").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : ruolo() === "ottico" ? "optionsOtticoPopup" : "passwordPopup"));
+$("mCaf").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : "passwordPopup"));
+$("mOtt").addEventListener("click", () => open(ruolo() === "ottico" ? "optionsOtticoPopup" : "otticoPopup"));
+// il link del cliente non mostra gli accessi riservati
+if (par("Univoco")) $("areaMobile").hidden = true;
 document.querySelectorAll("form[data-login]").forEach(f => f.addEventListener("submit", async e => {
   e.preventDefault();
   const r0 = f.dataset.login, [c, p] = f.querySelectorAll("input"), err = f.querySelector("[data-err]"), btn = f.querySelector("button");
