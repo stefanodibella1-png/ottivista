@@ -273,7 +273,7 @@ function disegnaClienti(){
   const q = $("filtroClienti").value.trim().toUpperCase(), st = $("filtroStato").value, isOtt = ruolo() === "ottico";
   const l = clienti.filter(c => (!st || c.stato === st) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
   $("clientiLista").innerHTML = l.length ? l.map(c => `<div class="cli">
-      <div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>${chip(c.stato)}</div>
+      <div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div><div>${chip(c.stato)}${c.insoluto ? ' <span class="chip s3">RATA INSOLUTA</span>' : ""}</div></div>
       ${c.montatura ? `<div>Montatura: ${esc(c.montatura)}${c.totale ? ` · ${euro(c.totale)} in ${12} rate da ${euro(c.rata)}` : ""}</div>` : ""}
       <div class="az">${isOtt
         ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
@@ -396,6 +396,9 @@ function disegnaMio(){
   } else if (u.stato === STATI.CONSEGNATO){
     a = `<div class="esito ok">Occhiali consegnati. Buona visione! Tra 12 mesi potrai cambiarli: il tuo CAF ti invierà il nuovo link.</div>`;
   }
+  const ins = od.pagamento && od.pagamento.insoluto;
+  if (ins) a = `<div class="esito err"><b>Rata non riuscita</b> (${euro(ins.importo)}). Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.link ? `<br><a href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia metodo di pagamento</a>` : ""}</div>` + a;
+  if (od.pagamento && od.pagamento.ratePagate && od.prezzi) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Rate pagate: ${od.pagamento.ratePagate} di ${od.prezzi.mesi}</p>`;
   $("mpAzione").innerHTML = a;
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
   const pc = $("mpPaga"); if (pc) pc.onclick = attivaRate;

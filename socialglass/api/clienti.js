@@ -7,7 +7,7 @@ module.exports = L.wrap(async (req, res) => {
     const o = L.parseOrdine(f.Ordine);
     return {univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
-      rata: o.prezzi ? o.prezzi.rata : null, aggiornato: o.aggiornato || f.Creato || ""};
+      rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, insoluto: !!(o.pagamento && o.pagamento.insoluto), aggiornato: o.aggiornato || f.Creato || ""};
   }).sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)));
   L.send(res, 200, {clienti: list});
 });
