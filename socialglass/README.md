@@ -16,7 +16,7 @@ Importa la cartella `socialglass` come progetto (Root Directory: `socialglass`).
 | `SESSION_SECRET` | una stringa casuale lunga |
 | `SITE_URL` | es. `https://www.socialglass.it` |
 | `STRIPE_SECRET_KEY` | chiave segreta Stripe (rate mensili). Senza, l'attivazione delle rate è simulata |
-| `STRIPE_WEBHOOK_SECRET` | segreto del webhook Stripe puntato a `/api/stripe-webhook` (eventi `checkout.session.completed`, `invoice.payment_failed`) |
+| `STRIPE_WEBHOOK_SECRET` | segreto del webhook Stripe puntato a `/api/stripe-webhook` (eventi `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`) |
 | `SMS_WEBHOOK_URL` | facoltativo: indirizzo che riceve `{to, text}` e invia l'SMS. Senza, il CAF invia il link su WhatsApp |
 | `AIRTABLE_BASE_MAIN`, `AIRTABLE_BASE_MONTATURE`, `T_*` | solo se le basi o le tabelle hanno nomi diversi da quelli originali |
 
