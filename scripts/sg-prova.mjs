@@ -1,0 +1,21 @@
+// Prova dal vivo di SocialGlass: CAF -> cliente -> montatura -> ordine -> pagamento -> pronto
+import CF from "../socialglass/cf.js";
+const B = process.env.SG_URL || "https://socialglass.vercel.app";
+const call = async (p, body, tok) => { const r = await fetch(B + p, {method: body ? "POST" : "GET", headers: {"Content-Type": "application/json", ...(tok ? {Authorization: "Bearer " + tok} : {})}, body: body ? JSON.stringify(body) : undefined}); let d; try { d = await r.json(); } catch(e){ d = {}; } return {s: r.status, d}; };
+const out = [];
+const ok = (t, c, x) => { out.push(`${c ? "OK" : "KO"} ${t}${x ? " · " + x : ""}`); if (!c) fail = true; };
+let fail = false;
+const h = await call("/api/health"); ok("health", h.d.ok, JSON.stringify(h.d));
+const caf = (await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"})).d.token; ok("login CAF", !!caf);
+const ott = (await call("/api/login", {ruolo: "ottico", codice: "OTT07", password: "demo"})).d.token; ok("login ottico", !!ott);
+const p = CF.prefisso("Prova", "Automatica", "1980-01-15", "M") + "C351", cf = p + CF.control(p);
+let r = await call("/api/utenti", {cf, nome: "Prova", cognome: "Automatica", prefisso: "+39", cellulare: "3330000001", nato: "Catania", sesso: "M", datanascita: "1980-01-15", ottica: "OTT07", gdpr: true}, caf);
+if (r.s !== 200 && /già/i.test(r.d.errore || "")) r = await call("/api/utenti", {azione: "rinnovo", cf}, caf);
+const uv = r.d.univoco || (r.d.link || "").match(/Univoco=([^&]+)/)?.[1]; ok("crea cliente", !!uv, uv || JSON.stringify(r.d));
+ok("montatura", (await call("/api/montatura", {univoco: uv, codice: "SG-1042"})).d.ok);
+const o = await call("/api/ordine", {univoco: uv, lente: "mono", trattamenti: ["ar"], ricetta: {OD: {sf: "-1,00"}, OS: {sf: "-1,25"}, pd: 63}}, ott); ok("ordine ottico", o.d.ok, o.d.prezzi && `${o.d.prezzi.rata} €/mese`);
+const pg = await call("/api/pagamento", {univoco: uv, consensoContratto: true, consensoAddebito: true}); ok("pagamento", pg.s === 200, pg.d.url ? "Stripe Checkout" : "simulato");
+ok("clienti CAF", ((await call("/api/clienti", null, caf)).d.clienti || []).length > 0);
+ok("clienti ottico", ((await call("/api/clienti", null, ott)).d.clienti || []).length > 0);
+console.log(`::notice title=Prova SocialGlass::${out.join(" | ")}`);
+process.exit(fail ? 1 : 0);
