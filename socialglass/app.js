@@ -58,11 +58,11 @@ const chip = s => { const i = ORDINE_STATI.indexOf(s); return `<span class="chip
 /* ---------- server o dati di prova ---------- */
 let DEMO = false;
 const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
-  .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottico: OTT07 / demo · Montature: SG-1042, SG-1043, SG-1044"); });
+  .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottici: OTT07 (Demo Centro) o OTT12 (Demo Mare) / demo · Montature: SG-1042, SG-1043, SG-1044"); });
 function notaDemo(t){ const n = $("demoNota"); n.textContent = t; n.hidden = false; }
 ready.then(() => {
   if (DEMO !== "browser") return;
-  for (const [form, cod] of [["passwordPopup", "CAF001"], ["otticoPopup", "OTT07"]]){
+  for (const [form, cod] of [["passwordPopup", "CAF001"], ["otticoPopup", "OTT07"], ["otticoPopup", "OTT12"]]){
     const f = $(form).querySelector("form"), b = document.createElement("button");
     b.type = "button"; b.className = "grigio full"; b.textContent = `Entra con i dati di prova (${cod})`;
     b.onclick = () => { const [c, p] = f.querySelectorAll("input"); c.value = cod; p.value = "demo"; f.requestSubmit(); };
@@ -72,8 +72,8 @@ ready.then(() => {
 
 /* anteprima senza server: stesse regole del server, dati nel browser */
 const local = {
-  load(){ try { const s = JSON.parse(localStorage.getItem("sg_demo")); if (s && s.v === 2) return s; } catch(e){} return {v: 2,
-    caf: [{ID: "CAF001", Password: "demo", Nome: "CAF Demo"}], ottLogin: [{ID: "OTT07", Password: "demo"}],
+  load(){ try { const s = JSON.parse(localStorage.getItem("sg_demo")); if (s && s.v === 2){ if (!s.ottLogin.some(o => o.ID === "OTT12")) s.ottLogin.push({ID: "OTT12", Password: "demo"}); return s; } } catch(e){} return {v: 2,
+    caf: [{ID: "CAF001", Password: "demo", Nome: "CAF Demo"}], ottLogin: [{ID: "OTT07", Password: "demo"}, {ID: "OTT12", Password: "demo"}],
     ottici: [{ID: "OTT07", Intestatario: "Ottica Demo Centro", Indirizzo: "Via Esempio 12, ", Citta: "Catania", Listino: "A"}, {ID: "OTT12", Intestatario: "Ottica Demo Mare", Indirizzo: "Corso Prova 3, ", Citta: "Acireale", Listino: "B"}],
     utenti: [], montature: [
       {Codice: "SG-1042", Modello: "Aurora", Colore: "Nero", Calibro: "52-18", Asse: "145", Stato: "DISPONIBILE"},
@@ -294,7 +294,7 @@ function disegnaClienti(){
           + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
         : (c.stato === STATI.CONSEGNATO ? `<button type="button" class="verde" data-rinnovo="${esc(c.cf)}">Rinnovo</button>` : "")
           + `<a class="btn-link" style="flex:0 0 auto" target="_blank" rel="noopener" href="https://wa.me/39${esc(String(c.cellulare || "").replace(/\D/g, ""))}">WhatsApp</a>`}</div>
-    </div>`).join("") : '<div class="vuoto">Nessun cliente.</div>';
+    </div>`).join("") : `<div class="vuoto">Nessun cliente${isOtt ? " assegnato a questa ottica. Il cliente vede l'ottica scelta dal CAF nella sua pagina: se è un'altra, accedi con quel codice ottico." : "."}</div>`;
 }
 $("filtroClienti").addEventListener("input", disegnaClienti);
 $("filtroStato").addEventListener("change", disegnaClienti);

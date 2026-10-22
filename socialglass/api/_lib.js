@@ -24,7 +24,7 @@ const DEMO = !CFG.token;
 /* ---------- dati di prova (quando Airtable non è collegato) ---------- */
 const demo = global.__sgDemo || (global.__sgDemo = {
   caf: [{ID: "CAF001", Password: "demo", Nome: "CAF Demo"}],
-  ottLogin: [{ID: "OTT07", Password: "demo"}],
+  ottLogin: [{ID: "OTT07", Password: "demo"}, {ID: "OTT12", Password: "demo"}],
   ottici: [
     {ID: "OTT07", Intestatario: "Ottica Demo Centro", Indirizzo: "Via Esempio 12, ", Citta: "Catania", Listino: "A", Telefono: "390950000000"},
     {ID: "OTT12", Intestatario: "Ottica Demo Mare", Indirizzo: "Corso Prova 3, ", Citta: "Acireale", Listino: "B"}
