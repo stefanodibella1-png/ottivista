@@ -1,0 +1,49 @@
+{
+  "socialglass.it": {
+    "file_archiviati": 3,
+    "prima": "20240421094619",
+    "ultima": "20240603154517",
+    "istantanee_home": [
+      "20240501175741",
+      "20241228171038",
+      "20250227180313"
+    ],
+    "pagine_recuperate": 3,
+    "file_recuperati": 0,
+    "whois": [
+      "Status:             AVAILABLE"
+    ]
+  },
+  "biottica.it": {
+    "file_archiviati": 3,
+    "prima": "20240419105413",
+    "ultima": "20240603155220",
+    "istantanee_home": [
+      "20240419105413",
+      "20240817015349"
+    ],
+    "pagine_recuperate": 2,
+    "file_recuperati": 0,
+    "whois": [
+      "Status:             AVAILABLE"
+    ]
+  },
+  "occhialesubito.com": {
+    "file_archiviati": 23,
+    "prima": "20240715100113",
+    "ultima": "20250127023416",
+    "istantanee_home": [
+      "20240715100113",
+      "20240920191205",
+      "20241120200931",
+      "20250121134637",
+      "20250323003702"
+    ],
+    "pagine_recuperate": 5,
+    "file_recuperati": 3,
+    "whois": [
+      "No match for domain \"OCCHIALESUBITO.COM\"."
+    ]
+  },
+  "_file_con_segreti_oscurati": 10
+}
