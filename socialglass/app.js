@@ -4,15 +4,16 @@
 const $ = id => document.getElementById(id);
 const P = new URLSearchParams(location.search);
 const par = k => P.get(k) || P.get(k.toLowerCase()) || "";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const euro = v => Number(v || 0).toLocaleString("it-IT", {style: "currency", currency: "EUR"});
 
-/* ---------- immagini mancanti: segnaposto nello stesso spirito ---------- */
+/* ---------- immagini mancanti: segnaposto ---------- */
 const SVG = {
-  scritta: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 120"><text x="300" y="82" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="78" font-weight="700" fill="#0A1F5C">Social<tspan fill="#0A1F5C">Glass</tspan></text><text x="300" y="112" text-anchor="middle" font-family="Arial" font-size="20" letter-spacing="6" fill="#8a8f98">VISIONE CONDIVISA</text></svg>`,
-  simbolo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 120"><g fill="none" stroke="#0A1F5C" stroke-width="12" stroke-linecap="round"><circle cx="70" cy="66" r="42"/><circle cx="190" cy="66" r="42"/><path d="M112 60q18-14 36 0M28 56L8 40M232 56l20-16"/></g></svg>`,
-  logo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 170"><g fill="none" stroke="#0A1F5C" stroke-width="9" stroke-linecap="round"><circle cx="120" cy="52" r="30"/><circle cx="220" cy="52" r="30"/><path d="M150 48q20-12 40 0"/></g><text x="170" y="132" text-anchor="middle" font-family="Arial" font-size="46" font-weight="700" fill="#0A1F5C">Social<tspan fill="#0A1F5C">Glass</tspan></text><text x="170" y="160" text-anchor="middle" font-family="Arial" font-size="14" letter-spacing="5" fill="#8a8f98">VISIONE CONDIVISA</text></svg>`
+  simbolo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 120"><g fill="none" stroke="#0A1F5C" stroke-width="12" stroke-linecap="round"><circle cx="70" cy="66" r="42"/><circle cx="190" cy="66" r="42"/><path d="M112 60q18-14 36 0"/></g></svg>`,
+  logo: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 120"><text x="170" y="70" text-anchor="middle" font-family="Arial" font-size="52" fill="#0A1F5C">Social Glasses</text></svg>`
 };
 document.querySelectorAll("img[data-fallback]").forEach(img => {
-  const swap = () => { img.onerror = null; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(SVG[img.dataset.fallback]); };
+  const swap = () => { img.onerror = null; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(SVG[img.dataset.fallback] || SVG.logo); };
   img.onerror = swap; if (img.complete && !img.naturalWidth) swap();
 });
 
@@ -24,113 +25,168 @@ function dropImage(el, startY, endY, done){
 }
 window.addEventListener("load", () => {
   if (matchMedia("(max-width:768px)").matches) return;
-  const t = $("immagineCadente1"), s = $("immagineCadente2");
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const end = 140;
+  const t = $("immagineCadente1"), s = $("immagineCadente2"), end = 140;
   const show2 = () => { if (!s.hasAttribute("data-off")){ s.hidden = false; s.style.top = (end + t.offsetHeight + 10) + "px"; } };
-  if (reduce){ t.style.top = end + "px"; show2(); } else dropImage(t, -200, end, show2);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches){ t.style.top = end + "px"; show2(); } else dropImage(t, -200, end, show2);
 });
 
 /* ---------- popup ---------- */
-function open(id){ document.querySelectorAll(".popup").forEach(p => p.hidden = p.id !== id); const el = $(id); el.hidden = false; const f = el.querySelector("input:not([disabled]),select:not([disabled])"); if (f) setTimeout(() => f.focus(), 50); }
+function open(id){
+  document.querySelectorAll(".popup").forEach(p => p.hidden = p.id !== id);
+  const el = $(id); el.hidden = false;
+  const f = el.querySelector("input:not([disabled]):not([type=checkbox]):not([type=radio]),select:not([disabled])");
+  if (f && !("ontouchstart" in window)) setTimeout(() => f.focus(), 50);
+}
 function closeAll(){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); }
 document.addEventListener("click", e => {
   const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; return; }
-  const o = e.target.closest("[data-open]"); if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); return; }
-  if (e.target.closest("[data-logout]")){ sessionStorage.removeItem("sg_tok"); closeAll(); }
+  const o = e.target.closest("[data-open]");
+  if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); if (o.dataset.open === "ordinePopup") resetOrdine(); return; }
+  if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id"].forEach(k => sessionStorage.removeItem(k)); closeAll(); return; }
+  if (e.target.closest("[data-clienti]")){ apriClienti(); return; }
   if (e.target.classList && e.target.classList.contains("popup")) e.target.hidden = true;
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeAll(); stopScan(); } });
 function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.hidden = !txt; }
 
+/* ---------- stati ---------- */
+const STATI = {REGISTRATO: "IN ATTESA SCELTA MONTATURA", MONTATURA: "MONTATURA SCELTA", PAGAMENTO: "IN ATTESA PAGAMENTO",
+  ATTIVO: "RATE ATTIVE - IN LAVORAZIONE", PRONTO: "PRONTO PER IL RITIRO", CONSEGNATO: "CONSEGNATO"};
+const ORDINE_STATI = [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO, STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO];
+const chip = s => { const i = ORDINE_STATI.indexOf(s); return `<span class="chip s${i < 0 ? 6 : i + 1}">${esc(s || "—")}</span>`; };
+
 /* ---------- server o dati di prova ---------- */
 let DEMO = false;
 const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
-  .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova. Accesso CAF: CAF001 / demo · Ottico: OTT07 / demo"); });
+  .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottico: OTT07 / demo · Montature: SG-1042, SG-1043, SG-1044"); });
 function notaDemo(t){ const n = $("demoNota"); n.textContent = t; n.hidden = false; }
 
+/* anteprima senza server: stesse regole del server, dati nel browser */
 const local = {
-  load(){ try { const s = JSON.parse(localStorage.getItem("sg_demo")); if (s && s.v === 1) return s; } catch(e){} return {v:1,
-    caf:[{ID:"CAF001",Password:"demo",Nome:"CAF Demo"}], ottLogin:[{ID:"OTT07",Password:"demo"}],
-    ottici:[{ID:"OTT07",Intestatario:"Ottica Demo Centro",Indirizzo:"Via Esempio 12, ",Citta:"Catania",Listino:"A"},{ID:"OTT12",Intestatario:"Ottica Demo Mare",Indirizzo:"Corso Prova 3, ",Citta:"Acireale",Listino:"B"}],
-    utenti:[], montature:[{Codice:"SG-1042",Modello:"Aurora",Colore:"Nero",Calibro:"52-18",Asse:"145",Stato:"DISPONIBILE"},{Codice:"SG-1043",Modello:"Vela",Colore:"Tartaruga",Calibro:"50-20",Asse:"140",Stato:"DISPONIBILE"}]}; },
+  load(){ try { const s = JSON.parse(localStorage.getItem("sg_demo")); if (s && s.v === 2) return s; } catch(e){} return {v: 2,
+    caf: [{ID: "CAF001", Password: "demo", Nome: "CAF Demo"}], ottLogin: [{ID: "OTT07", Password: "demo"}],
+    ottici: [{ID: "OTT07", Intestatario: "Ottica Demo Centro", Indirizzo: "Via Esempio 12, ", Citta: "Catania", Listino: "A"}, {ID: "OTT12", Intestatario: "Ottica Demo Mare", Indirizzo: "Corso Prova 3, ", Citta: "Acireale", Listino: "B"}],
+    utenti: [], montature: [
+      {Codice: "SG-1042", Modello: "Aurora", Colore: "Nero", Calibro: "52-18", Asse: "145", Stato: "DISPONIBILE"},
+      {Codice: "SG-1043", Modello: "Vela", Colore: "Tartaruga", Calibro: "50-20", Asse: "140", Stato: "DISPONIBILE"},
+      {Codice: "SG-1044", Modello: "Brezza", Colore: "Blu", Calibro: "54-17", Asse: "145", Stato: "DISPONIBILE"}]}; },
   save(s){ try { localStorage.setItem("sg_demo", JSON.stringify(s)); } catch(e){} },
-  async call(path, opt){
-    const s = this.load(), url = new URL(path, location.href), q = k => (url.searchParams.get(k) || "").trim(), b = opt && opt.body ? JSON.parse(opt.body) : {};
-    const ok = d => ({ok:true, status:200, data:d}), ko = (st, m) => ({ok:false, status:st, data:{errore:m}});
-    const tok = sessionStorage.getItem("sg_tok"); const sess = tok ? JSON.parse(atob(tok)) : null;
-    const name = url.pathname.split("/").pop();
+  link(u, o, caf){ return `${location.origin}${location.pathname}?Univoco=${u.Univoco}&espositore=${o.ID}&promotore=${caf}&listino=${o.Listino}`; },
+  async call(path, opt = {}){
+    const s = this.load(), url = new URL(path, location.href), q = k => (url.searchParams.get(k) || "").trim(), b = opt.body ? JSON.parse(opt.body) : {};
+    const ok = d => ({ok: true, status: 200, data: d}), ko = (st, m) => ({ok: false, status: st, data: {errore: m}});
+    const tok = sessionStorage.getItem("sg_tok"); let sess = null; try { sess = tok ? JSON.parse(atob(tok)) : null; } catch(e){}
+    const name = url.pathname.split("/").pop(), post = opt.method === "POST";
+    const ord = u => { try { return JSON.parse(u.Ordine || "{}"); } catch(e){ return {}; } };
+    const ottOf = u => s.ottici.find(o => String(u.Ottica1).startsWith(o.ID + " "));
+    const done = d => { this.save(s); return ok(d); };
     if (name === "login"){
       const rec = (b.ruolo === "caf" ? s.caf : s.ottLogin).find(r => r.ID === String(b.codice).trim().toUpperCase());
       if (!rec || rec.Password !== b.password) return ko(401, "Codice o password non valida.");
-      const nome = b.ruolo === "ottico" ? (s.ottici.find(o => o.ID === rec.ID) || {}).Intestatario || rec.ID : rec.Nome;
-      return ok({token: btoa(JSON.stringify({ruolo:b.ruolo, id:rec.ID})), nome, id: rec.ID});
+      const o = s.ottici.find(x => x.ID === rec.ID);
+      return ok({token: btoa(JSON.stringify({ruolo: b.ruolo, id: rec.ID})), nome: b.ruolo === "ottico" ? (o ? o.Intestatario : rec.ID) : rec.Nome, id: rec.ID});
     }
-    if (name === "ottici") return ok({ottici: s.ottici.map(f => ({id:f.ID, label:`${f.ID} - ${f.Intestatario} - ${f.Indirizzo}${f.Citta}`, listino:f.Listino}))});
+    if (name === "ottici") return ok({ottici: s.ottici.map(f => ({id: f.ID, label: `${f.ID} - ${f.Intestatario} - ${f.Indirizzo}${f.Citta}`, listino: f.Listino}))});
     if (name === "utenti"){
-      if ((opt && opt.method) === "POST"){
+      if (post && b.azione === "rinnovo"){
+        const u = s.utenti.find(x => x["Codice Fiscale"] === String(b.cf).toUpperCase()); if (!u) return ko(404, "Cliente non trovato.");
+        const o = ord(u); u.Ordine = JSON.stringify({storico: (o.storico || []).concat(o.montatura ? [{montatura: o.montatura, totale: o.prezzi && o.prezzi.totale}] : [])}); u.Stato = STATI.REGISTRATO;
+        const ot = ottOf(u), link = this.link(u, ot, sess.id);
+        return done({univoco: u.Univoco, link, whatsapp: `https://wa.me/39${u.Cellulare}?text=${encodeURIComponent("SocialGlass: ecco il tuo link per il rinnovo: " + link)}`});
+      }
+      if (post){
         const d = b;
         if (!CF.valido(d.cf)) return ko(400, "CODICE FISCALE NON VALIDO");
         if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)) return ko(400, "Codice fiscale non conforme a nome, cognome, data di nascita e sesso.");
         const g = s.utenti.find(u => u["Codice Fiscale"] === d.cf); if (g) return ko(409, `ATTENZIONE ! CODICE FISCALE ${g.Stato}`);
         const o = s.ottici.find(x => x.ID === d.ottica);
-        const uv = "SG" + Math.random().toString(36).slice(2, 9).toUpperCase();
-        s.utenti.unshift({Univoco:uv, CAF:sess.id, Nome:d.nome.toUpperCase(), Cognome:d.cognome.toUpperCase(), Cellulare:d.cellulare, "Codice Fiscale":d.cf, Ottica1:o.Intestatario, Listino:o.Listino, Stato:"IN ATTESA SCELTA MONTATURA"});
-        this.save(s);
-        const link = `${location.origin}${location.pathname}?Univoco=${uv}&espositore=${o.ID}&promotore=${sess.id}&listino=${o.Listino}`;
-        const testo = `SocialGlass: ciao ${d.nome.toUpperCase()}, ecco il tuo link per scegliere i nuovi occhiali da ${o.Intestatario}: ${link}`;
-        return ok({univoco:uv, link, smsInviato:false, whatsapp:`https://wa.me/${(d.prefisso + d.cellulare).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`, ottica:o.Intestatario});
+        const u = {Univoco: "SG" + Math.random().toString(36).slice(2, 9).toUpperCase(), CAF: sess.id, Nome: d.nome.toUpperCase(), Cognome: d.cognome.toUpperCase(), Cellulare: d.cellulare, "Codice Fiscale": d.cf,
+          Ottica1: `${o.ID} - ${o.Intestatario} - ${o.Indirizzo}${o.Citta}`, Listino: o.Listino, Stato: STATI.REGISTRATO, Creato: new Date().toISOString()};
+        s.utenti.unshift(u);
+        const link = this.link(u, o, sess.id), testo = `SocialGlass: ciao ${u.Nome}, ecco il tuo link personale per scegliere i nuovi occhiali da ${o.Intestatario}: ${link}`;
+        return done({univoco: u.Univoco, link, smsInviato: false, whatsapp: `https://wa.me/${(d.prefisso + d.cellulare).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`, ottica: o.Intestatario});
       }
-      if (q("cf")){ const cf = q("cf").toUpperCase(); if (!CF.valido(cf)) return ok({valido:false}); const u = s.utenti.find(x => x["Codice Fiscale"] === cf); return ok({valido:true, stato:u ? u.Stato : null, nome:u ? `${u.Nome} ${u.Cognome}` : null, univoco:u ? u.Univoco : null}); }
-      if (q("univoco")){ const u = s.utenti.find(x => x.Univoco === q("univoco").toUpperCase()); return ok(u ? {trovato:true, nome:u.Nome, cognome:u.Cognome, stato:u.Stato} : {trovato:false}); }
+      if (q("cf")){ const cf = q("cf").toUpperCase(); if (!CF.valido(cf)) return ok({valido: false}); const u = s.utenti.find(x => x["Codice Fiscale"] === cf); return ok({valido: true, stato: u ? u.Stato : null, nome: u ? `${u.Nome} ${u.Cognome}` : null, univoco: u ? u.Univoco : null}); }
+      if (q("univoco")){ const u = s.utenti.find(x => x.Univoco === q("univoco").toUpperCase()); return ok(u ? {trovato: true, nome: u.Nome, cognome: u.Cognome, stato: u.Stato} : {trovato: false}); }
+    }
+    if (name === "clienti"){
+      const rows = s.utenti.filter(u => sess.ruolo === "caf" ? u.CAF === sess.id : String(u.Ottica1).startsWith(sess.id + " "));
+      return ok({clienti: rows.map(u => { const o = ord(u); return {univoco: u.Univoco, nome: u.Nome, cognome: u.Cognome, stato: u.Stato, cf: sess.ruolo === "caf" ? u["Codice Fiscale"] : undefined, cellulare: u.Cellulare,
+        montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null, rata: o.prezzi ? o.prezzi.rata : null, aggiornato: o.aggiornato || u.Creato}; })
+        .sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)))});
     }
     if (name === "benvenuto"){
-      const u = s.utenti.find(x => x.Univoco === q("univoco")), o = s.ottici.find(x => x.ID === q("espositore"));
-      return u ? ok({nome:u.Nome, cognome:u.Cognome, stato:u.Stato, ottico:o ? {nome:o.Intestatario, indirizzo:o.Indirizzo, citta:o.Citta} : null}) : ko(404, "Link non valido o scaduto.");
+      const u = s.utenti.find(x => x.Univoco === q("univoco")); if (!u) return ko(404, "Link non valido o scaduto.");
+      const o = ottOf(u), od = ord(u);
+      return ok({nome: u.Nome, cognome: u.Cognome, stato: u.Stato, ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo, citta: o.Citta} : null,
+        ordine: {montatura: od.montatura || null, lenti: od.lenti || null, trattamenti: od.trattamenti || [], prezzi: od.prezzi || null, pagamento: od.pagamento || null}});
     }
     if (name === "montatura"){
-      if ((opt && opt.method) === "POST"){
-        const m = s.montature.find(x => x.Codice === b.codice), u = s.utenti.find(x => x.Univoco === b.univoco);
-        if (!m || m.Stato !== "DISPONIBILE") return ko(409, "Montatura non più disponibile.");
-        if (!u) return ko(404, "Cliente non trovato");
-        m.Stato = "RISERVATA"; u.Stato = "MONTATURA SCELTA"; this.save(s);
-        return ok({ok:true, descrizione:`${m.Modello} ${m.Colore} ${m.Calibro}-${m.Asse}`});
+      if (post){
+        const u = s.utenti.find(x => x.Univoco === b.univoco); if (!u) return ko(404, "Cliente non trovato");
+        if (![STATI.REGISTRATO, STATI.MONTATURA].includes(u.Stato)) return ko(409, "La montatura è già confermata: per cambiarla parla con l'ottico.");
+        const m = s.montature.find(x => x.Codice === b.codice); if (!m || m.Stato !== "DISPONIBILE") return ko(409, "Montatura non più disponibile.");
+        const od = ord(u);
+        if (od.montatura){ const prima = s.montature.find(x => x.Codice === od.montatura.codice); if (prima) prima.Stato = "DISPONIBILE"; }
+        od.montatura = {codice: m.Codice, modello: m.Modello, colore: m.Colore, calibro: m.Calibro, asse: m.Asse}; od.aggiornato = new Date().toISOString();
+        m.Stato = "RISERVATA"; u.Stato = STATI.MONTATURA; u.Ordine = JSON.stringify(od);
+        return done({ok: true, descrizione: `${m.Modello} ${m.Colore} ${m.Calibro}-${m.Asse}`});
       }
       const m = s.montature.find(x => x.Codice === q("codice"));
-      return ok(m && m.Stato === "DISPONIBILE" ? {disponibile:true, codice:m.Codice, modello:m.Modello, colore:m.Colore, calibro:m.Calibro, asse:m.Asse} : {disponibile:false});
+      return ok(m && m.Stato === "DISPONIBILE" ? {disponibile: true, codice: m.Codice, modello: m.Modello, colore: m.Colore, calibro: m.Calibro, asse: m.Asse} : {disponibile: false});
+    }
+    if (name === "ordine"){
+      const u = s.utenti.find(x => x.Univoco === (post ? String(b.univoco) : q("univoco")).toUpperCase());
+      if (!u || !String(u.Ottica1).startsWith(sess.id + " ")) return ko(404, "Cliente non trovato tra i clienti della tua ottica.");
+      const od = ord(u), conv = LISTINI.conv(u.Listino);
+      if (!post) return ok({nome: u.Nome, cognome: u.Cognome, stato: u.Stato, ordine: od, listino: {lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: LISTINI.LISTINI.mesi, spedizione: LISTINI.LISTINI.spedizione}});
+      if (b.azione === "pronto" || b.azione === "consegnato"){ u.Stato = b.azione === "pronto" ? STATI.PRONTO : STATI.CONSEGNATO; od.aggiornato = new Date().toISOString(); u.Ordine = JSON.stringify(od); return done({ok: true, stato: u.Stato}); }
+      if (![STATI.MONTATURA, STATI.PAGAMENTO].includes(u.Stato) || !od.montatura) return ko(409, "Il cliente deve prima scegliere la montatura con il QR.");
+      const r = b.ricetta; if (!r.pd) return ko(400, "Inserisci la distanza pupillare (45-80 mm).");
+      const prev = LISTINI.preventivo(u.Listino, b.lente, b.trattamenti); if (!prev) return ko(400, "Scegli il tipo di lenti.");
+      Object.assign(od, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta: r, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione}, aggiornato: new Date().toISOString()});
+      u.Stato = STATI.PAGAMENTO; u.Ordine = JSON.stringify(od);
+      return done({ok: true, prezzi: od.prezzi});
+    }
+    if (name === "pagamento"){
+      const u = s.utenti.find(x => x.Univoco === b.univoco); if (!u || u.Stato !== STATI.PAGAMENTO) return ko(409, "Non c'è un ordine da attivare.");
+      const od = ord(u); od.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString()}; od.aggiornato = od.pagamento.attivatoIl; u.Stato = STATI.ATTIVO; u.Ordine = JSON.stringify(od);
+      return done({simulato: true});
     }
     return ko(404, "Non trovato");
   }
 };
 async function api(path, opt = {}){
   await ready;
-  const tok = sessionStorage.getItem("sg_tok");
   if (DEMO === "browser") return local.call(path, opt);
+  const tok = sessionStorage.getItem("sg_tok");
   const r = await fetch(path, Object.assign({}, opt, {headers: Object.assign({"Content-Type": "application/json"}, tok ? {Authorization: `Bearer ${tok}`} : {})}));
   let data = {}; try { data = await r.json(); } catch(e){}
   return {ok: r.ok, status: r.status, data};
 }
+const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(body)});
 
 /* ---------- accesso CAF e ottico ---------- */
-$("loginButton").addEventListener("click", () => open(sessionStorage.getItem("sg_ruolo") === "caf" && sessionStorage.getItem("sg_tok") ? "optionsPopup" : "passwordPopup"));
-$("otticoButton").addEventListener("click", () => open(sessionStorage.getItem("sg_ruolo") === "ottico" && sessionStorage.getItem("sg_tok") ? "optionsOtticoPopup" : "otticoPopup"));
-$("areaMobile").addEventListener("click", () => open("passwordPopup"));
+const ruolo = () => sessionStorage.getItem("sg_tok") ? sessionStorage.getItem("sg_ruolo") : null;
+$("loginButton").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : "passwordPopup"));
+$("otticoButton").addEventListener("click", () => open(ruolo() === "ottico" ? "optionsOtticoPopup" : "otticoPopup"));
+$("areaMobile").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : ruolo() === "ottico" ? "optionsOtticoPopup" : "passwordPopup"));
 document.querySelectorAll("form[data-login]").forEach(f => f.addEventListener("submit", async e => {
   e.preventDefault();
-  const ruolo = f.dataset.login, [c, p] = f.querySelectorAll("input"), err = f.querySelector("[data-err]");
-  err.hidden = true;
-  const btn = f.querySelector("button"); btn.disabled = true;
-  const r = await api("api/login", {method: "POST", body: JSON.stringify({ruolo, codice: c.value, password: p.value})});
+  const r0 = f.dataset.login, [c, p] = f.querySelectorAll("input"), err = f.querySelector("[data-err]"), btn = f.querySelector("button");
+  err.hidden = true; btn.disabled = true;
+  const r = await post("api/login", {ruolo: r0, codice: c.value, password: p.value});
   btn.disabled = false;
   if (!r.ok){ err.textContent = r.data.errore || "Codice o password non valida."; err.hidden = false; return; }
-  sessionStorage.setItem("sg_tok", r.data.token); sessionStorage.setItem("sg_ruolo", ruolo); sessionStorage.setItem("sg_id", r.data.id);
+  sessionStorage.setItem("sg_tok", r.data.token); sessionStorage.setItem("sg_ruolo", r0); sessionStorage.setItem("sg_id", r.data.id); sessionStorage.setItem("sg_nome", r.data.nome);
   p.value = "";
-  if (ruolo === "caf"){ $("cafNome").textContent = r.data.nome; open("optionsPopup"); }
+  if (r0 === "caf"){ $("cafNome").textContent = r.data.nome; open("optionsPopup"); }
   else { $("ottNome").textContent = r.data.nome; $("codiceUnivocoContainer").textContent = "Cod.Ottico: " + r.data.id; open("optionsOtticoPopup"); }
 }));
+if (ruolo()){ $("cafNome").textContent = $("ottNome").textContent = sessionStorage.getItem("sg_nome") || ""; }
 function scaduta(r){ if (r.status === 401){ sessionStorage.removeItem("sg_tok"); open(sessionStorage.getItem("sg_ruolo") === "ottico" ? "otticoPopup" : "passwordPopup"); return true; } return false; }
 
-/* ---------- nuovo utente ---------- */
+/* ---------- nuovo utente (CAF) ---------- */
 const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","ottica","gdprAcceptance"];
 function resetForm(){
   $("formCliente").reset(); $("codiceFiscale").disabled = false; $("attivaCodiceFiscale").hidden = false; $("segnoDiSpunta").hidden = true;
@@ -140,21 +196,20 @@ function resetForm(){
 let otticiCaricati = false;
 async function loadOttici(){
   if (otticiCaricati) return;
-  const r = await api("api/ottici"); if (scaduta(r)) return;
-  if (!r.ok) return;
+  const r = await api("api/ottici"); if (scaduta(r) || !r.ok) return;
   const sel = $("ottica");
   for (const o of r.data.ottici){ const op = document.createElement("option"); op.value = o.id; op.textContent = o.label; op.dataset.listino = o.listino; sel.appendChild(op); }
   otticiCaricati = true;
 }
-$("ottica").addEventListener("change", e => { const op = e.target.selectedOptions[0]; $("listinoTextBox").value = op ? op.dataset.listino || "" : ""; });
+$("ottica").addEventListener("change", e => { const op = e.target.selectedOptions[0]; $("listinoTextBox").value = op && op.dataset.listino ? "Convenzione " + op.dataset.listino : ""; });
 function cambiaBandiera(){ const s = $("prefisso"), f = s.selectedOptions[0].dataset.flag; s.style.backgroundImage = `url('https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/${f}.svg')`; }
 $("prefisso").addEventListener("change", cambiaBandiera); cambiaBandiera();
-["codiceFiscale","nome","cognome","nato","cfVerifica","cfRinnovo","utenteCodice"].forEach(id => $(id).addEventListener("input", e => { const p = e.target.selectionStart; e.target.value = e.target.value.toUpperCase(); try { e.target.setSelectionRange(p, p); } catch(_){} }));
+["codiceFiscale","nome","cognome","nato","cfVerifica","cfRinnovo","utenteCodice","ordineCodice"].forEach(id => $(id).addEventListener("input", e => { const p = e.target.selectionStart; e.target.value = e.target.value.toUpperCase(); try { e.target.setSelectionRange(p, p); } catch(_){} }));
 $("attivaCodiceFiscale").addEventListener("click", async () => {
   const cf = $("codiceFiscale").value.trim();
-  if (!CF.valido(cf)){ esito($("cfEsito"), "CODICE FISCALE NON VALIDO", "err"); return; }
+  if (!CF.valido(cf)){ esito($("cfEsito"), "CODICE FISCALE NON VALIDO: controlla le 16 lettere e cifre.", "err"); return; }
   const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
-  if (r.ok && r.data.stato){ esito($("cfEsito"), `ATTENZIONE ! CODICE FISCALE ${r.data.stato}${r.data.univoco ? " · codice " + r.data.univoco : ""}`, "err"); return; }
+  if (r.ok && r.data.stato){ esito($("cfEsito"), `ATTENZIONE ! CODICE FISCALE ${r.data.stato}${r.data.univoco ? " · codice " + r.data.univoco : ""}. Per un nuovo occhiale usa RINNOVO OCCHIALE.`, "err"); return; }
   esito($("cfEsito"), "", ""); $("attivaCodiceFiscale").hidden = true; $("segnoDiSpunta").hidden = false; $("codiceFiscale").disabled = true;
   campi.forEach(id => $(id).disabled = false); $("inviaLink").disabled = false; $("nome").focus();
 });
@@ -162,30 +217,41 @@ $("formCliente").addEventListener("submit", async e => {
   e.preventDefault();
   const v = id => $(id).value.trim();
   const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), gdpr: $("gdprAcceptance").checked};
-  if (!d.nome || !d.cognome || !d.nato || !d.datanascita || !d.sesso || !d.cellulare || !d.ottica || !d.gdpr){ esito($("formErr"), "Per favore, compila tutti i campi obbligatori.", "err"); return; }
-  if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)){ esito($("formErr"), "Codice fiscale non conforme a nome, cognome, data di nascita e sesso.", "err"); return; }
+  const manca = [["nome","Nome"],["cognome","Cognome"],["nato","Luogo di nascita"],["datanascita","Data di nascita"],["sesso","Sesso"],["cellulare","Cellulare"],["ottica","Ottica"]].filter(([k]) => !d[k]).map(([, n]) => n);
+  if (manca.length || !d.gdpr){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : "Serve il consenso GDPR del cliente.", "err"); return; }
+  if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)){ esito($("formErr"), "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso: controlla i dati.", "err"); return; }
   $("inviaLink").disabled = true;
-  const r = await api("api/utenti", {method: "POST", body: JSON.stringify(d)});
+  const r = await post("api/utenti", d);
   $("inviaLink").disabled = false;
   if (scaduta(r)) return;
   if (!r.ok){ esito($("formErr"), r.data.errore || "Si è verificato un errore. Riprova.", "err"); return; }
-  $("inviatoTesto").textContent = r.data.smsInviato ? `SMS inviato a ${d.prefisso} ${d.cellulare}. Codice del cliente:` : `Invia il link al cliente (${d.prefisso} ${d.cellulare}). Codice del cliente:`;
-  $("inviatoCodice").textContent = r.data.univoco;
-  $("inviatoLink").textContent = r.data.link;
-  $("inviatoWa").href = r.data.whatsapp;
-  $("copiaLink").onclick = async () => { try { await navigator.clipboard.writeText(r.data.link); $("copiaLink").textContent = "Copiato"; } catch(_){ const s = getSelection(), rg = document.createRange(); rg.selectNodeContents($("inviatoLink")); s.removeAllRanges(); s.addRange(rg); } };
-  open("inviatoPopup");
+  mostraLink(r.data, `${d.prefisso} ${d.cellulare}`);
 });
+function mostraLink(data, numero){
+  $("inviatoTesto").textContent = data.smsInviato ? `SMS inviato a ${numero}. Codice del cliente:` : `Invia il link al cliente${numero ? " (" + numero + ")" : ""}. Codice del cliente:`;
+  $("inviatoCodice").textContent = data.univoco; $("inviatoLink").textContent = data.link; $("inviatoWa").href = data.whatsapp;
+  $("copiaLink").textContent = "Copia link";
+  $("copiaLink").onclick = async () => { try { await navigator.clipboard.writeText(data.link); $("copiaLink").textContent = "Copiato"; } catch(_){ const s = getSelection(), rg = document.createRange(); rg.selectNodeContents($("inviatoLink")); s.removeAllRanges(); s.addRange(rg); } };
+  open("inviatoPopup");
+}
 
-/* ---------- verifica e rinnovo ---------- */
+/* ---------- verifica e rinnovo (CAF) ---------- */
 $("formVerifica").addEventListener("submit", e => { e.preventDefault(); const ok = CF.valido($("cfVerifica").value); esito($("verificaEsito"), ok ? "Codice fiscale valido" : "Codice fiscale non valido", ok ? "ok" : "err"); });
 $("formRinnovo").addEventListener("submit", async e => {
   e.preventDefault();
-  const cf = $("cfRinnovo").value.trim();
-  if (!CF.valido(cf)){ esito($("rinnovoEsito"), "Codice fiscale non valido", "err"); return; }
+  const cf = $("cfRinnovo").value.trim(), box = $("rinnovoEsito");
+  if (!CF.valido(cf)){ esito(box, "Codice fiscale non valido", "err"); return; }
   const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
-  esito($("rinnovoEsito"), r.data.stato ? `${r.data.nome} · codice ${r.data.univoco} · ${r.data.stato}` : "Nessun cliente con questo codice fiscale: inseriscilo come nuovo utente.", r.data.stato ? "ok" : "info");
+  if (!r.data.stato){ esito(box, "Nessun cliente con questo codice fiscale: inseriscilo come nuovo utente.", "info"); return; }
+  esito(box, `${r.data.nome} · codice ${r.data.univoco} · ${r.data.stato}`, "ok");
+  if ([STATI.CONSEGNATO, STATI.ATTIVO, STATI.PRONTO].includes(r.data.stato)){
+    const b = document.createElement("button"); b.type = "button"; b.className = "verde full"; b.textContent = "Avvia il rinnovo e invia il nuovo link"; b.style.marginTop = "8px";
+    b.onclick = async () => { b.disabled = true; const x = await post("api/utenti", {azione: "rinnovo", cf}); if (scaduta(x)) return; if (x.ok) mostraLink(x.data, ""); else esito(box, x.data.errore, "err"); };
+    box.appendChild(b);
+  }
 });
+
+/* ---------- assistenza (ottico) ---------- */
 $("formCerca").addEventListener("submit", async e => {
   e.preventDefault();
   const r = await api(`api/utenti?univoco=${encodeURIComponent($("utenteCodice").value.trim())}`); if (scaduta(r)) return;
@@ -193,32 +259,191 @@ $("formCerca").addEventListener("submit", async e => {
 });
 $("come-funziona").addEventListener("click", () => open("comePopup"));
 
-/* ---------- link personale del cliente ---------- */
+/* ---------- i miei clienti (CAF e ottico) ---------- */
+let clienti = [];
+async function apriClienti(){
+  open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
+  const r = await api("api/clienti"); if (scaduta(r)) return;
+  clienti = r.ok ? r.data.clienti : [];
+  const sel = $("filtroStato"); sel.length = 1;
+  ORDINE_STATI.forEach(s => { if (clienti.some(c => c.stato === s)){ const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); } });
+  disegnaClienti();
+}
+function disegnaClienti(){
+  const q = $("filtroClienti").value.trim().toUpperCase(), st = $("filtroStato").value, isOtt = ruolo() === "ottico";
+  const l = clienti.filter(c => (!st || c.stato === st) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
+  $("clientiLista").innerHTML = l.length ? l.map(c => `<div class="cli">
+      <div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>${chip(c.stato)}</div>
+      ${c.montatura ? `<div>Montatura: ${esc(c.montatura)}${c.totale ? ` · ${euro(c.totale)} in ${12} rate da ${euro(c.rata)}` : ""}</div>` : ""}
+      <div class="az">${isOtt
+        ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
+          + (c.stato === STATI.ATTIVO ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
+          + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
+        : (c.stato === STATI.CONSEGNATO ? `<button type="button" class="verde" data-rinnovo="${esc(c.cf)}">Rinnovo</button>` : "")
+          + `<a class="btn-link" style="flex:0 0 auto" target="_blank" rel="noopener" href="https://wa.me/39${esc(String(c.cellulare || "").replace(/\D/g, ""))}">WhatsApp</a>`}</div>
+    </div>`).join("") : '<div class="vuoto">Nessun cliente.</div>';
+}
+$("filtroClienti").addEventListener("input", disegnaClienti);
+$("filtroStato").addEventListener("change", disegnaClienti);
+$("clientiLista").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.ord){ open("ordinePopup"); resetOrdine(); $("ordineCodice").value = b.dataset.ord; caricaOrdine(b.dataset.ord); return; }
+  if (b.dataset.azione){ b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.u, azione: b.dataset.azione}); if (scaduta(r)) return; if (!r.ok) alertBox(r.data.errore); apriClienti(); return; }
+  if (b.dataset.rinnovo){ b.disabled = true; const x = await post("api/utenti", {azione: "rinnovo", cf: b.dataset.rinnovo}); if (scaduta(x)) return; if (x.ok) mostraLink(x.data, ""); }
+});
+function alertBox(t){ notaDemo(t); }
+
+/* ---------- ordine cliente (ottico) ---------- */
+let ordCorrente = null;
+function resetOrdine(){ $("formOrdine").hidden = true; $("ordineEsito").hidden = true; $("ordineAzioni").hidden = true; $("formOrdine").reset(); ordCorrente = null; }
+$("formOrdineCerca").addEventListener("submit", e => { e.preventDefault(); caricaOrdine($("ordineCodice").value.trim()); });
+async function caricaOrdine(cod){
+  resetOrdine(); if (!cod) return;
+  const r = await api(`api/ordine?univoco=${encodeURIComponent(cod.toUpperCase())}`); if (scaduta(r)) return;
+  if (!r.ok){ esito($("ordineEsito"), r.data.errore, "err"); return; }
+  const d = r.data, o = d.ordine || {}; ordCorrente = Object.assign({univoco: cod.toUpperCase()}, d);
+  const m = o.montatura;
+  if (!m || ![STATI.MONTATURA, STATI.PAGAMENTO].includes(d.stato)){
+    esito($("ordineEsito"), `${d.nome} ${d.cognome} · ${d.stato}. ` + (!m ? "Il cliente deve prima scegliere la montatura con il QR (pulsante «Ho scelto la montatura» sul suo link)." : "L'ordine è già confermato."), m ? "ok" : "info");
+    return;
+  }
+  $("ordineCliente").innerHTML = `<b>${esc(d.nome)} ${esc(d.cognome)}</b> · ${chip(d.stato)}<br>Montatura: <b>${esc(m.modello)} ${esc(m.colore)}</b> · calibro ${esc(m.calibro)}-${esc(m.asse)} · cod. ${esc(m.codice)}`;
+  const L = d.listino;
+  $("ordineLenti").innerHTML = Object.entries(L.lenti).map(([id, l], i) => `<label class="scelta"><input type="radio" name="lente" value="${id}" ${(o.lenti ? o.lenti.id === id : i === 0) ? "checked" : ""}><span class="t">${esc(l.nome)}<small>${esc(l.desc || "")}</small></span><span class="p">${euro(l.prezzo)}</span></label>`).join("");
+  $("ordineTratt").innerHTML = Object.entries(L.trattamenti).map(([id, t]) => `<label class="scelta"><input type="checkbox" name="tratt" value="${id}" ${(o.trattamenti || []).some(x => x.id === id) ? "checked" : ""}><span class="t">${esc(t.nome)}</span><span class="p">+${euro(t.prezzo)}</span></label>`).join("");
+  const f = $("formOrdine"), rc = o.ricetta;
+  if (rc){ for (const e of ["OD","OS"]) for (const k of ["sf","cil","ax","add"]) if (rc[e] && rc[e][k] != null) f[`${e}_${k}`].value = String(rc[e][k]).replace(".", ","); if (rc.pd) f.pd.value = rc.pd; if (rc.note) f.note.value = rc.note; }
+  else { try { const pd = JSON.parse(localStorage.getItem("ov_pd") || "null"); if (pd) f.pd.value = pd; } catch(e){} }
+  f.hidden = false; calcolaOrdine();
+}
+function sceltaOrdine(){
+  const f = $("formOrdine");
+  return {lente: (f.querySelector("[name=lente]:checked") || {}).value, trattamenti: [...f.querySelectorAll("[name=tratt]:checked")].map(x => x.value)};
+}
+function calcolaOrdine(){
+  if (!ordCorrente) return;
+  const s = sceltaOrdine(), L = ordCorrente.listino;
+  const lente = L.lenti[s.lente]; if (!lente) return;
+  const tot = L.montatura + lente.prezzo + s.trattamenti.reduce((a, t) => a + L.trattamenti[t].prezzo, 0);
+  const rata = Math.ceil(tot / L.mesi * 100) / 100;
+  $("ordineTotale").innerHTML = `Montatura ${euro(L.montatura)} + lenti ${euro(lente.prezzo)}${s.trattamenti.length ? " + trattamenti" : ""}<br>Totale <b>${euro(tot)}</b> · ${L.mesi} rate da <b>${euro(rata)}</b> + spedizione ${euro(L.spedizione)}`;
+  $("formOrdine").querySelectorAll("[name$=_add]").forEach(x => { x.disabled = s.lente !== "prog"; if (x.disabled) x.value = ""; });
+}
+$("formOrdine").addEventListener("change", calcolaOrdine);
+$("formOrdine").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target, v = n => f[n].value.trim().replace(",", ".");
+  const s = sceltaOrdine();
+  const ricetta = {OD: {sf: v("OD_sf"), cil: v("OD_cil"), ax: v("OD_ax"), add: v("OD_add")}, OS: {sf: v("OS_sf"), cil: v("OS_cil"), ax: v("OS_ax"), add: v("OS_add")}, pd: v("pd"), note: f.note.value.trim()};
+  if (!ricetta.OD.sf && !ricetta.OS.sf){ esito($("ordineErr"), "Inserisci almeno lo sfero di un occhio (0 se neutro).", "err"); return; }
+  if (!ricetta.pd){ esito($("ordineErr"), "Inserisci la distanza pupillare.", "err"); return; }
+  $("ordineErr").hidden = true; $("ordineInvia").disabled = true;
+  const r = await post("api/ordine", Object.assign({univoco: ordCorrente.univoco, ricetta}, s));
+  $("ordineInvia").disabled = false;
+  if (scaduta(r)) return;
+  if (!r.ok){ esito($("ordineErr"), r.data.errore, "err"); return; }
+  f.hidden = true;
+  esito($("ordineEsito"), `Ordine inviato a ${ordCorrente.nome}: ${euro(r.data.prezzi.totale)} in ${r.data.prezzi.mesi} rate da ${euro(r.data.prezzi.rata)}. Il cliente vede il riepilogo sul suo link e attiva le rate dal telefono.`, "ok");
+});
+
+/* ---------- pagina personale del cliente ---------- */
 const UNIVOCO = par("Univoco"), ESPOSITORE = par("espositore");
+let mio = null, pollT = 0;
 if (UNIVOCO || ESPOSITORE) $("scan-btn").hidden = false;
+const TAPPE = [
+  ["Registrato dal CAF", STATI.REGISTRATO],
+  ["Montatura scelta", STATI.MONTATURA],
+  ["Lenti e ricetta inserite", STATI.PAGAMENTO],
+  ["Rate attivate · occhiali in lavorazione", STATI.ATTIVO],
+  ["Pronti per il ritiro", STATI.PRONTO],
+  ["Consegnati", STATI.CONSEGNATO]
+];
+async function caricaMio(apri){
+  const r = await api(`api/benvenuto?univoco=${encodeURIComponent(UNIVOCO)}&espositore=${encodeURIComponent(ESPOSITORE)}`);
+  if (!r.ok){ if (apri){ $("mpTitolo").textContent = "Link non valido"; $("mpTappe").innerHTML = ""; $("mpAzione").innerHTML = `<div class="esito err">${esc(r.data.errore || "Link non valido o scaduto.")} Contatta il tuo CAF.</div>`; open("miaPagina"); } return null; }
+  mio = r.data; $("mio-ordine").hidden = false; disegnaMio(); return mio;
+}
+function disegnaMio(){
+  const u = mio, o = u.ottico, od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato);
+  $("mpTitolo").textContent = `Ciao ${u.nome}`;
+  $("mpTappe").innerHTML = TAPPE.map(([t], k) => `<li class="${k < i ? "fatto" : k === i ? "ora" : ""}">${t}${k === 1 && od.montatura ? `<br><small>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</small>` : ""}</li>`).join("");
+  let a = "";
+  const dove = o ? `<b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}` : "";
+  if (u.stato === STATI.REGISTRATO){
+    a = `<div class="scheda">1) Vai dall'ottico:<br>${dove}<br>2) Mostra il tuo codice <b>${esc(UNIVOCO)}</b><br>3) Scegli la montatura e premi <b>«Ho scelto la montatura»</b> per inquadrare il QR sull'espositore.</div>
+      <button type="button" class="verde full" id="mpScan">Ho scelto la montatura</button>`;
+  } else if (u.stato === STATI.MONTATURA){
+    a = `<div class="esito ok">Montatura scelta: <b>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</b>.</div><p style="margin:0 0 10px">Ora l'ottico inserisce le lenti e la tua ricetta. Questa pagina si aggiorna da sola: tra poco vedrai il riepilogo con la rata mensile.</p>
+      <button type="button" class="grigio full" id="mpScan">Ho cambiato idea: scansiona un'altra montatura</button>`;
+  } else if (u.stato === STATI.PAGAMENTO){
+    const p = od.prezzi;
+    a = `<div class="rata">${p.mesi} rate mensili da<b>${euro(p.rata)}</b>senza interessi</div>
+      <div class="riepilogo">
+        <div class="r"><span>Montatura ${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</span><span>${euro(p.montatura)}</span></div>
+        <div class="r"><span>Lenti ${esc(od.lenti.nome)}</span><span>${euro(od.lenti.prezzo)}</span></div>
+        ${(od.trattamenti || []).map(t => `<div class="r"><span>${esc(t.nome)}</span><span>${euro(t.prezzo)}</span></div>`).join("")}
+        <div class="r tot"><span>Totale occhiale</span><span>${euro(p.totale)}</span></div>
+        <div class="r"><span>Oggi paghi: prima rata + spedizione</span><span>${euro(p.rata + p.spedizione)}</span></div>
+      </div>
+      <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni</button>: ${p.mesi} rate da ${euro(p.rata)}, la prima oggi insieme alla spedizione (${euro(p.spedizione)}).</span></label>
+      <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Autorizzo l'addebito mensile automatico su carta o conto (SEPA) per ${p.mesi} mesi.</span></label>
+      <div class="esito err" id="mpErr" hidden></div>
+      <button type="button" class="verde full" id="mpPaga">Attiva le rate</button>`;
+  } else if (u.stato === STATI.ATTIVO){
+    a = `<div class="esito ok">Rate attive${od.pagamento && od.pagamento.attivatoIl ? " dal " + new Date(od.pagamento.attivatoIl).toLocaleDateString("it-IT") : ""}. I tuoi occhiali sono in lavorazione: ti avvisiamo quando sono pronti.</div>${o ? `<div class="scheda">Ritiro presso ${dove}</div>` : ""}`;
+  } else if (u.stato === STATI.PRONTO){
+    a = `<div class="esito ok"><b>I tuoi occhiali sono pronti!</b> Passa a ritirarli mostrando il codice ${esc(UNIVOCO)}.</div>${o ? `<div class="scheda">${dove}</div>` : ""}`;
+  } else if (u.stato === STATI.CONSEGNATO){
+    a = `<div class="esito ok">Occhiali consegnati. Buona visione! Tra 12 mesi potrai cambiarli: il tuo CAF ti invierà il nuovo link.</div>`;
+  }
+  $("mpAzione").innerHTML = a;
+  const sc = $("mpScan"); if (sc) sc.onclick = startScan;
+  const pc = $("mpPaga"); if (pc) pc.onclick = attivaRate;
+  const cc = $("mpCond"); if (cc) cc.onclick = mostraCondizioni;
+  clearTimeout(pollT);
+  if (u.stato === STATI.MONTATURA || (u.stato === STATI.PAGAMENTO && od.pagamento && od.pagamento.stato === "IN CORSO")) pollT = setTimeout(async () => { const prima = mio && mio.stato; await caricaMio(false); if (mio && mio.stato !== prima && $("miaPagina").hidden === false) disegnaMio(); }, 15000);
+}
+async function attivaRate(){
+  if (!$("c1").checked || !$("c2").checked){ esito($("mpErr"), "Per attivare le rate spunta entrambe le conferme.", "err"); return; }
+  $("mpPaga").disabled = true; $("mpPaga").textContent = "Attendi…";
+  const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true});
+  if (r.ok && r.data.url){ location.href = r.data.url; return; }
+  $("mpPaga").disabled = false; $("mpPaga").textContent = "Attiva le rate";
+  if (!r.ok){ esito($("mpErr"), r.data.errore || "Pagamento non riuscito. Riprova.", "err"); return; }
+  await caricaMio(false); open("miaPagina");
+}
+function mostraCondizioni(){
+  const p = mio.ordine.prezzi;
+  $("condizioniTesto").innerHTML = `<p><b>Bozza da far verificare a un consulente legale.</b></p>
+    <p>Il prezzo totale dell'occhiale è ${euro(p.totale)}, suddiviso in ${p.mesi} rate mensili da ${euro(p.rata)}, senza interessi né costi aggiuntivi. Alla conferma vengono addebitati la prima rata e la spedizione (${euro(p.spedizione)}); le rate successive ogni mese, nello stesso giorno, per ${p.mesi - 1} mesi, poi l'addebito si ferma da solo.</p>
+    <p>Puoi pagare con carta o con addebito sul conto (SEPA). Se una rata non va a buon fine riceverai un avviso e il sistema riproverà l'addebito.</p>
+    <p>Dopo ${p.mesi} mesi puoi chiedere al tuo CAF un nuovo occhiale con le stesse modalità.</p>
+    <p>Diritto di recesso, garanzia legale e trattamento dei dati personali: vedi l'informativa completa del servizio.</p>`;
+  open("condizioniPopup");
+}
+$("mio-ordine").addEventListener("click", async () => { await caricaMio(true); open("miaPagina"); });
 if (UNIVOCO){
-  api(`api/benvenuto?univoco=${encodeURIComponent(UNIVOCO)}&espositore=${encodeURIComponent(ESPOSITORE)}`).then(r => {
-    if (!r.ok) return;
-    const u = r.data, o = u.ottico;
-    const h = $("welcome-message"); h.textContent = "";
-    const esc = s => String(s || "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-    h.innerHTML = `Benvenuto da SocialGlass<br><span style="font-size:16px;color:darkgreen">${esc(u.nome)} ${esc(u.cognome)}</span><br><br>
-      <div class="passi">1) Vai dall'ottico:<br><br><span style="color:darkgreen">${o ? esc(o.nome) + "<br>" + esc(o.indirizzo) + esc(o.citta) : ""}</span><br><br>2) Mostra questo codice:</div>
-      <div class="codice-grande">${esc(UNIVOCO)}</div>
-      <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva le mini rate mensili<br>5) Paga il costo della spedizione<br>6) Cambia gli occhiali ogni anno</div>`;
-    if (u.stato === "MONTATURA SCELTA") h.insertAdjacentHTML("beforeend", `<div class="esito ok" style="margin-top:12px">Hai già scelto la montatura: l'ottico ti contatterà per le lenti.</div>`);
-    setTimeout(() => { $("my-popup").hidden = false; }, 1500);
+  caricaMio(true).then(u => {
+    if (!u) return;
+    if (par("pagamento") === "ok"){ open("miaPagina"); return; }
+    if (u.stato === STATI.REGISTRATO){
+      const o = u.ottico;
+      $("welcome-message").innerHTML = `Benvenuto da SocialGlass<br><span style="font-size:16px;color:darkgreen">${esc(u.nome)} ${esc(u.cognome)}</span><br><br>
+        <div class="passi">1) Vai dall'ottico:<br><br><span style="color:darkgreen">${o ? esc(o.nome) + "<br>" + esc(o.indirizzo) + esc(o.citta) : ""}</span><br><br>2) Mostra questo codice:</div>
+        <div class="codice-grande">${esc(UNIVOCO)}</div>
+        <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva le mini rate mensili<br>5) Paga il costo della spedizione<br>6) Cambia gli occhiali ogni anno</div>`;
+      setTimeout(() => { $("my-popup").hidden = false; }, 1200);
+    } else setTimeout(() => open("miaPagina"), 600);
   });
 }
-$("continue-button").addEventListener("click", () => { $("my-popup").hidden = true; });
+$("continue-button").addEventListener("click", () => { $("my-popup").hidden = true; open("miaPagina"); });
 
 /* ---------- scanner QR ---------- */
 let stream = null, scanning = false, detector = null;
 async function startScan(){
-  $("video-container").hidden = false;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false});
-  } catch(e){ $("video-container").querySelector("p").textContent = "Fotocamera non disponibile: scrivi il codice qui sotto."; return; }
+  closeAll(); $("video-container").hidden = false; $("video-container").querySelector("p").textContent = "Inquadra il QR code sulla montatura";
+  try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false}); }
+  catch(e){ $("video-container").querySelector("p").textContent = "Fotocamera non disponibile: scrivi il codice qui sotto."; return; }
   const v = $("preview"); v.srcObject = stream; await v.play();
   if ("BarcodeDetector" in window){ try { detector = new BarcodeDetector({formats: ["qr_code"]}); } catch(e){ detector = null; } }
   if (!detector && !window.jsQR) await new Promise(res => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; s.onload = res; s.onerror = res; document.head.appendChild(s); });
@@ -232,44 +457,32 @@ async function loop(){
     let txt = null;
     try {
       if (detector){ const r = await detector.detect(v); if (r.length) txt = r[0].rawValue; }
-      else if (window.jsQR){
-        const w = 480, h = Math.round(w*v.videoHeight/v.videoWidth); cvs.width = w; cvs.height = h; cx.drawImage(v, 0, 0, w, h);
-        const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h); if (r) txt = r.data;
-      }
+      else if (window.jsQR){ const w = 480, h = Math.round(w*v.videoHeight/v.videoWidth); cvs.width = w; cvs.height = h; cx.drawImage(v, 0, 0, w, h); const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h); if (r) txt = r.data; }
     } catch(e){}
-    if (txt){ stopScan(); return verifica(txt); }
+    if (txt){ if (navigator.vibrate) navigator.vibrate(60); stopScan(); return verificaQR(txt); }
   }
   setTimeout(loop, 120);
 }
 function stopScan(){ scanning = false; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("video-container").hidden = true; }
 function codiceDa(txt){ try { const u = new URL(txt); return u.searchParams.get("id") || u.searchParams.get("codice") || u.pathname.split("/").pop(); } catch(e){ return String(txt).trim(); } }
-async function verifica(raw){
-  const codice = codiceDa(raw);
-  const r = await api(`api/montatura?codice=${encodeURIComponent(codice)}`);
+async function verificaQR(raw){
+  const codice = codiceDa(raw), r = await api(`api/montatura?codice=${encodeURIComponent(codice)}`);
   const t = $("qr-text"), b = $("qr-btn");
   if (r.ok && r.data.disponibile){
     const m = r.data;
-    t.innerHTML = `<b>MONTATURA DISPONIBILE</b><br>Modello: ${m.modello}<br>Colore: ${m.colore}<br>Calibro: ${m.calibro}<br>Asse: ${m.asse}`;
+    t.innerHTML = `<b>MONTATURA DISPONIBILE</b><br>Modello: ${esc(m.modello)}<br>Colore: ${esc(m.colore)}<br>Calibro: ${esc(m.calibro)}<br>Asse: ${esc(m.asse)}`;
     b.hidden = !UNIVOCO; b.textContent = "CONTINUA";
     b.onclick = async () => {
-      b.disabled = true;
-      const s = await api("api/montatura", {method: "POST", body: JSON.stringify({univoco: UNIVOCO, codice: m.codice})});
-      b.disabled = false;
+      b.disabled = true; const s = await post("api/montatura", {univoco: UNIVOCO, codice: m.codice}); b.disabled = false;
       if (!s.ok){ t.textContent = s.data.errore || "Si è verificato un errore. Riprova."; b.hidden = true; return; }
-      t.innerHTML = `<b>Montatura scelta!</b><br>${s.data.descrizione}<br><br>Mostra il tuo codice <b>${UNIVOCO}</b> all'ottico per scegliere le lenti e attivare le rate.`;
-      b.hidden = true;
+      await caricaMio(false); open("miaPagina");
     };
-    if (!UNIVOCO) t.insertAdjacentHTML("beforeend", "<br><br>Per sceglierla apri il link personale che hai ricevuto via SMS.");
-  } else {
-    t.innerHTML = "CODICE NON VALIDO<br>MONTATURA NON DISPONIBILE"; b.hidden = true;
-  }
+    if (!UNIVOCO) t.insertAdjacentHTML("beforeend", "<br><br>Per sceglierla apri il link personale che hai ricevuto via SMS o WhatsApp.");
+  } else { t.innerHTML = "CODICE NON VALIDO<br>MONTATURA NON DISPONIBILE"; b.hidden = true; }
   open("popup");
 }
 $("scan-btn").addEventListener("click", startScan);
-$("close-video-btn").addEventListener("click", stopScan);
+$("close-video-btn").addEventListener("click", () => { stopScan(); if (mio) open("miaPagina"); });
 $("qr-riprova").addEventListener("click", () => { $("popup").hidden = true; startScan(); });
-$("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; stopScan(); verifica(c); });
-
-/* ---------- ripristino della sessione ---------- */
-if (sessionStorage.getItem("sg_tok")){ /* resta collegato finché la scheda è aperta */ }
+$("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; stopScan(); verificaQR(c); });
 })();
