@@ -40,7 +40,13 @@ jobs:
           echo "::notice title=Firebase progetto::$PID"
           npm i -g firebase-tools@14 --no-audit --no-fund >/dev/null
           if firebase firestore:databases:list --project "$PID" --json 2>/dev/null | grep -q '(default)'; then echo "database presente"
-          else firebase firestore:databases:create '(default)' --location eur3 --project "$PID" --non-interactive || echo "::warning title=Firestore::crea il database dalla console (eur3)"; fi
+          else
+            gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" -q 2>/dev/null || true
+            gcloud services enable firestore.googleapis.com --project "$PID" -q 2>&1 | tail -2 | tr '\n' ' ' > svc.log || true
+            sleep 20
+            if gcloud firestore databases create --location=eur3 --project "$PID" -q > db.log 2>&1 || firebase firestore:databases:create '(default)' --location eur3 --project "$PID" --non-interactive >> db.log 2>&1; then echo "::notice title=Firestore::database creato (eur3)"
+            else echo "::warning title=Firestore::non creato · servizi: $(cat svc.log | cut -c1-300) · errore: $(tail -c 500 db.log | tr '\n' ' ')"; fi
+          fi
           rm -f "$RUNNER_TEMP/sa.json"
       - name: Primo deploy
         working-directory: socialglass
