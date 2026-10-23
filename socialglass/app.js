@@ -444,20 +444,24 @@ $("formOrdine").addEventListener("submit", async e => {
 
 /* ---------- pagina personale del cliente ---------- */
 const UNIVOCO = par("Univoco"), ESPOSITORE = par("espositore");
+if (UNIVOCO) document.body.classList.add("cliente");
 let mio = null, pollT = 0;
 if (UNIVOCO || ESPOSITORE) $("scan-btn").hidden = false;
+// [testo quando la tappa è fatta, testo quando è la prossima da fare]
 const TAPPE = [
-  ["Registrazione", STATI.REGISTRATO],
-  ["Montatura scelta", STATI.MONTATURA],
-  ["Lenti e ricetta inserite", STATI.PAGAMENTO],
-  ["Abbonamento attivato · occhiali in lavorazione", STATI.ATTIVO],
-  ["Pronti per il ritiro", STATI.PRONTO],
-  ["Consegnati", STATI.CONSEGNATO]
+  ["Registrazione", "Registrazione"],
+  ["Montatura scelta", "Scegli la montatura in ottica"],
+  ["Lenti e ricetta inserite", "L'ottico inserisce lenti e ricetta"],
+  ["Abbonamento attivato", "Attiva l'abbonamento"],
+  ["Occhiali pronti", "Occhiali in lavorazione"],
+  ["Occhiali consegnati", "Ritiro in ottica"]
 ];
 async function caricaMio(apri){
   const r = await api(`api/benvenuto?univoco=${encodeURIComponent(UNIVOCO)}&espositore=${encodeURIComponent(ESPOSITORE)}`);
   if (!r.ok){ if (apri){ $("mpTitolo").textContent = "Link non valido"; $("mpTappe").innerHTML = ""; $("mpAzione").innerHTML = `<div class="esito err">${esc(r.data.errore || "Link non valido o scaduto.")} Contatta il tuo CAF.</div>`; open("miaPagina"); } return null; }
-  mio = r.data; $("mio-ordine").hidden = false; disegnaMio(); return mio;
+  mio = r.data; $("mio-ordine").hidden = false;
+  $("scan-btn").hidden = ![STATI.REGISTRATO, STATI.MONTATURA].includes(mio.stato);
+  disegnaMio(); return mio;
 }
 const dt = d => new Date(d).toLocaleDateString("it-IT");
 // regole di fine periodo spiegate al cliente, con le sue date
@@ -493,7 +497,9 @@ function boxAbbonamento(od){
 function disegnaMio(){
   const u = mio, o = u.ottico, od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato);
   $("mpTitolo").textContent = `Ciao ${u.nome}`;
-  $("mpTappe").innerHTML = TAPPE.map(([t], k) => `<li class="${k < i ? "fatto" : k === i ? "ora" : ""}">${t}${k === 1 && od.montatura ? `<br><small>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</small>` : ""}</li>`).join("");
+  // le tappe raggiunte sono verdi; quella successiva è "in corso" (blu)
+  const fatte = u.stato === STATI.CONSEGNATO ? TAPPE.length : i + 1;
+  $("mpTappe").innerHTML = TAPPE.map(([t, prossima], k) => `<li class="${k < fatte ? "fatto" : k === fatte ? "ora" : ""}">${k < fatte ? t : prossima}${k === 1 && od.montatura ? `<br><small>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</small>` : ""}</li>`).join("");
   let a = "";
   const dove = o ? `<b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}` : "";
   if (u.stato === STATI.REGISTRATO){

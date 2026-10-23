@@ -214,6 +214,26 @@ async function rinnova(u, {otticoId, caf} = {}){
   return {univoco: u.f.Univoco, link, avviso, whatsapp: avviso.whatsapp, smsInviato: avviso.sms};
 }
 
+/* ---------- attivazione dopo il pagamento Stripe (dal webhook o verificando la sessione) ---------- */
+async function attiva(u, sessione){
+  const ord = parseOrdine(u.f.Ordine);
+  if (u.f.Stato !== STATI.PAGAMENTO) return false;
+  ord.pagamento = Object.assign({}, ord.pagamento, {stato: "ATTIVO", sessione: sessione.id, abbonamento: sessione.subscription || "", cliente: sessione.customer || "", attivatoIl: new Date().toISOString()});
+  if (!ord.pagamento.ratePagate && sessione.payment_status === "paid") ord.pagamento.ratePagate = 1;
+  ord.aggiornato = ord.pagamento.attivatoIl;
+  await DB.aggiorna(u, {Stato: STATI.ATTIVO, Ordine: JSON.stringify(ord)});
+  return true;
+}
+// se la conferma di Stripe non è ancora arrivata, la si chiede direttamente a Stripe
+async function verificaPagamento(u){
+  if (u.f.Stato !== STATI.PAGAMENTO || !CFG.stripeKey) return false;
+  const pg = parseOrdine(u.f.Ordine).pagamento;
+  if (!pg || pg.stato !== "IN CORSO" || !pg.sessione) return false;
+  try { const s = await stripeApi("GET", `checkout/sessions/${pg.sessione}`); if (s.status === "complete") return await attiva(u, s); }
+  catch(e){ console.error(e); }
+  return false;
+}
+
 function nuovoUnivoco(){ return "SG" + crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 7); }
 
 /* ---------- stati del percorso ---------- */
@@ -273,4 +293,4 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
-module.exports = {avvisa, stripeApi, rinnova, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

@@ -13,6 +13,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   const rows = await L.DB.utenti(s.ruolo === "caf" ? {caf: s.id} : {ottico: s.id});
+  for (const r of rows) if (r.f.Stato === L.STATI.PAGAMENTO) await L.verificaPagamento(r);
   const list = rows.map(({f}) => {
     const o = L.parseOrdine(f.Ordine);
     return {univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,

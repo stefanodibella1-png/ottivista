@@ -6,6 +6,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!uv) return L.send(res, 400, {errore: "Codice mancante"});
   const u = await L.DB.utente("Univoco", uv);
   if (!u) return L.send(res, 404, {errore: "Link non valido o scaduto."});
+  await L.verificaPagamento(u);
   const idOtt = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore");
   const o = await L.DB.ottico(idOtt);
   const ord = L.parseOrdine(u.f.Ordine);

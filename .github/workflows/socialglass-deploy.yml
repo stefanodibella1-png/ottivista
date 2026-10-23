@@ -87,6 +87,10 @@ jobs:
           if [ -n "$STRIPE_SECRET_KEY" ]; then
             setenv STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
             HOOK="$URL/api/stripe-webhook"
+            # webhook già esistente e segreto già su Vercel: non lo si ricrea (così Stripe continua a riprovare gli eventi in sospeso)
+            ESISTE=$(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log((JSON.parse(s).data||[]).some(w=>w.url==='$HOOK'&&w.status==='enabled')?1:0)})")
+            HASW=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/env?$Q" | grep -c '"key":"STRIPE_WEBHOOK_SECRET"' || true)
+            if [ "$ESISTE" = 1 ] && [ "$HASW" != 0 ]; then echo "::notice title=Stripe::webhook già attivo, mantenuto"; else
             # un solo webhook per questo indirizzo: il vecchio viene sostituito (il segreto si legge solo alla creazione)
             for id in $(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const w of JSON.parse(s).data||[]) if(w.url==='$HOOK') console.log(w.id)})"); do
               curl -s -o /dev/null -u "$STRIPE_SECRET_KEY:" -X DELETE "https://api.stripe.com/v1/webhook_endpoints/$id"; done
@@ -95,7 +99,10 @@ jobs:
               | node -p "const j=JSON.parse(require('fs').readFileSync(0));j.secret||''")
             [ -n "$WH" ] || { echo "::error::Webhook Stripe non creato: controlla la chiave"; exit 1; }
             setenv STRIPE_WEBHOOK_SECRET "$WH"
+            fi
           fi
+          # body grezzo per la verifica della firma Stripe: niente parsing automatico di Vercel
+          setenv NODEJS_HELPERS "0"
       - name: Deploy finale con le variabili
         working-directory: socialglass
         run: |

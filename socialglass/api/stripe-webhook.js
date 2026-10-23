@@ -14,14 +14,7 @@ module.exports = L.wrap(async (req, res) => {
   if (ev.type === "checkout.session.completed"){
     const s = ev.data.object, uv = s.client_reference_id || (s.metadata || {}).univoco;
     const u = uv && await L.DB.utente("Univoco", uv);
-    if (u){
-      const ord = L.parseOrdine(u.f.Ordine), mesi = (ord.prezzi && ord.prezzi.mesi) || 12;
-      void mesi; // abbonamento: continua mese per mese finché il cliente non disdice dopo la durata minima
-      // l'evento del primo pagamento (invoice.paid) può arrivare prima: si conservano i dati già salvati
-      ord.pagamento = Object.assign({}, ord.pagamento, {stato: "ATTIVO", sessione: s.id, abbonamento: s.subscription || "", cliente: s.customer || "", attivatoIl: new Date().toISOString()});
-      ord.aggiornato = ord.pagamento.attivatoIl;
-      await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
-    }
+    if (u) await L.attiva(u, s);
   }
   // rate mensili: pagata / non pagata / interrotta
   if (["invoice.paid", "invoice.payment_failed", "customer.subscription.deleted"].includes(ev.type)){
@@ -33,7 +26,8 @@ module.exports = L.wrap(async (req, res) => {
       const pg = ord.pagamento, ora = new Date().toISOString();
       if (ev.type === "invoice.paid" && o.amount_paid > 0 && meta.tipo === "riscatto") pg.riscatto = Object.assign(pg.riscatto || {}, {pagato: ora});
       else if (ev.type === "invoice.paid" && o.amount_paid > 0){
-        pg.ratePagate = (pg.ratePagate || 0) + (o.billing_reason === "subscription_create" ? 1 : 1);
+        // il primo canone può essere già stato contato all'attivazione
+        pg.ratePagate = o.billing_reason === "subscription_create" ? Math.max(pg.ratePagate || 0, 1) : (pg.ratePagate || 0) + 1;
         pg.ultimaRata = ora; delete pg.insoluto;
       }
       if (ev.type === "invoice.payment_failed"){

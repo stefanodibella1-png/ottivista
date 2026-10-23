@@ -17,5 +17,7 @@ const o = await call("/api/ordine", {univoco: uv, lente: "mono", trattamenti: ["
 const pg = await call("/api/pagamento", {univoco: uv, consensoContratto: true, consensoAddebito: true}); ok("pagamento", pg.s === 200, pg.d.url ? "Stripe Checkout " + pg.d.url.slice(0, 40) : (pg.d.errore ? pg.d.errore + " " + (pg.d.dettaglio || "") : "simulato"));
 ok("clienti CAF", ((await call("/api/clienti", null, caf)).d.clienti || []).length > 0);
 ok("clienti ottico", ((await call("/api/clienti", null, ott)).d.clienti || []).length > 0);
+{ const r = await fetch(B + "/api/stripe-webhook", {method: "POST", headers: {"stripe-signature": "t=1,v1=x", "Content-Type": "application/json"}, body: "{}"}); ok("webhook risponde", r.status === 400, "firma falsa rifiutata"); }
+{ const r = await fetch(B + "/api/scadenze"); ok("controllo giornaliero protetto", r.status === 401); }
 console.log(`::notice title=Prova SocialGlass::${out.join(" | ")}`);
 process.exit(fail ? 1 : 0);
