@@ -17,6 +17,19 @@ module.exports = L.wrap(async (req, res) => {
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
   const ord = L.parseOrdine(u.f.Ordine);
+  // recesso entro 14 giorni dall'attivazione (diritto del consumatore): l'abbonamento si chiude subito
+  if (b.azione === "recesso"){
+    const pg = ord.pagamento;
+    if (!pg || !pg.attivatoIl || pg.chiuso || Date.now() - new Date(pg.attivatoIl) > 14*864e5) return L.send(res, 409, {errore: "Il recesso è possibile solo nei 14 giorni dall'attivazione."});
+    if (L.CFG.stripeKey && pg.abbonamento){ try { await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`); } catch(e){ console.error(e); return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco."}); } }
+    const ora = new Date().toISOString();
+    pg.chiuso = ora; pg.esito = "RECESSO ENTRO 14 GIORNI: RIMBORSO DA FARE DA STRIPE";
+    if (u.f.Stato === L.STATI.CONSEGNATO || u.f.Stato === L.STATI.PRONTO) ord.ritiro = {daRitirare: u.f.Stato === L.STATI.CONSEGNATO, dal: ora};
+    ord.aggiornato = ora;
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, abbiamo registrato il recesso: l'abbonamento è chiuso e non ci saranno altri addebiti. Il rimborso arriva sul metodo di pagamento usato.${ord.ritiro && ord.ritiro.daRitirare ? " Riporta l'occhiale in ottica." : ""}`);
+    return L.send(res, 200, {ok: true, avviso: av});
+  }
   if (b.azione === "ritirato"){
     if (!ord.ritiro || !ord.ritiro.daRitirare) return L.send(res, 409, {errore: "Non c'è un occhiale da ritirare."});
     const ora = new Date().toISOString();

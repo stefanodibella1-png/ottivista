@@ -66,6 +66,28 @@ async function esegui(u, ord, p, ora){
   }
   return null;
 }
+async function attesa(u, ora){
+  const o = L.parseOrdine(u.f.Ordine), da = new Date(ora) - new Date(o.aggiornato || u.f.Creato || ora);
+  if (o.pagamento && o.pagamento.stato === "IN CORSO" && da < 30*864e5) return null;
+  if (da > 30*864e5 && o.montatura){
+    const m = await L.DB.montatura(o.montatura.codice); if (m) await L.DB.aggiornaMontatura(m, {Stato: "DISPONIBILE"});
+    const prima = o.montatura; delete o.montatura; delete o.prezzi; delete o.lenti; delete o.pagamento;
+    o.scaduta = {montatura: prima, il: ora};
+    await annota(u, o, "prenotazioneScaduta", `SocialGlass: ${u.f.Nome}, la montatura ${prima.modello} ${prima.colore} era prenotata da oltre 30 giorni senza conferma ed è tornata disponibile. Quando vuoi, torna in ottica e scegline una dal tuo link.`);
+    o.aggiornato = ora;
+    await L.DB.aggiorna(u, {Stato: L.STATI.REGISTRATO, Ordine: JSON.stringify(o)});
+    return "prenotazione scaduta";
+  }
+  if (da > 14*864e5 && !(o.avvisi && o.avvisi.attesa)){
+    const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
+    await annota(u, o, "attesa", u.f.Stato === L.STATI.PAGAMENTO
+      ? `SocialGlass: ${u.f.Nome}, il preventivo del tuo occhiale ti aspetta: conferma dal tuo link entro 30 giorni dalla scelta, poi la montatura torna disponibile. ${link}`
+      : `SocialGlass: ${u.f.Nome}, la montatura che hai scelto è prenotata per te: passa in ottica per lenti e ricetta entro 30 giorni. ${link}`);
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+    return "promemoria attesa";
+  }
+  return null;
+}
 const handler = L.wrap(async (req, res) => {
   const auth = req.headers.authorization || "";
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) return L.send(res, 401, {errore: "Non autorizzato"});
@@ -73,6 +95,17 @@ const handler = L.wrap(async (req, res) => {
   const tutti = await L.DB.tutti();
   const esiti = [];
   for (const u of tutti){
+    // montatura prenotata ma ordine mai confermato: promemoria a 14 giorni, a 30 la montatura torna disponibile
+    if ([L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){
+      try { const r = await attesa(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
+      continue;
+    }
+    // occhiale da restituire non ancora riportato dopo 15 giorni
+    { const o = L.parseOrdine(u.f.Ordine);
+      if (o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && new Date(ora) - new Date(o.ritiro.dal) > 15*864e5 && !(o.avvisi && o.avvisi.ritardoRitiro)){
+        await annota(u, o, "ritardoRitiro", `SocialGlass: ${u.f.Nome}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di riscattarlo.`);
+        await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); esiti.push({univoco: u.f.Univoco, esito: "sollecito restituzione"});
+      } }
     if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) continue;
     const ord = L.parseOrdine(u.f.Ordine), p = L.PREZZI.periodo(ord, ora);
     if (!p || p.chiuso) continue;
