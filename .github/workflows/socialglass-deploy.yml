@@ -47,7 +47,16 @@ jobs:
             if gcloud firestore databases create --location=eur3 --project "$PID" -q > db.log 2>&1 || firebase firestore:databases:create '(default)' --location eur3 --project "$PID" --non-interactive >> db.log 2>&1; then echo "::notice title=Firestore::database creato (eur3)"
             else echo "::warning title=Firestore::non creato · servizi: $(cat svc.log | cut -c1-300) · errore: $(tail -c 500 db.log | tr '\n' ' ')"; fi
           fi
-          (cd socialglass && firebase deploy --only firestore:rules --project "$PID" --non-interactive > ../rules.log 2>&1) && echo "::notice title=Firestore::regole pubblicate (accesso solo dal server)" || echo "::warning title=Regole::$(tail -c 400 rules.log | tr '\n' ' ')"
+          # regole via API Firebase Rules (non serve il permesso sui servizi Google)
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" -q >/dev/null 2>&1
+          AT=$(gcloud auth print-access-token); echo "::add-mask::$AT"
+          node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({source:{files:[{name:"firestore.rules",content:fs.readFileSync("socialglass/firestore.rules","utf8")}]}}))' > rs.json
+          RS=$(curl -s -X POST -H "Authorization: Bearer $AT" -H "Content-Type: application/json" "https://firebaserules.googleapis.com/v1/projects/$PID/rulesets" --data-binary @rs.json | node -p "JSON.parse(require('fs').readFileSync(0)).name||''")
+          if [ -n "$RS" ]; then
+            C=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH -H "Authorization: Bearer $AT" -H "Content-Type: application/json" "https://firebaserules.googleapis.com/v1/projects/$PID/releases/cloud.firestore" -d "{\"release\":{\"name\":\"projects/$PID/releases/cloud.firestore\",\"rulesetName\":\"$RS\"}}")
+            [ "$C" = 200 ] || C=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $AT" -H "Content-Type: application/json" "https://firebaserules.googleapis.com/v1/projects/$PID/releases" -d "{\"name\":\"projects/$PID/releases/cloud.firestore\",\"rulesetName\":\"$RS\"}")
+            echo "::notice title=Firestore regole::pubblicate ($C): accesso solo dal server"
+          else echo "::warning title=Firestore regole::non pubblicate (restano quelle di produzione: tutto chiuso)"; fi
           rm -f "$RUNNER_TEMP/sa.json"
       - name: Primo deploy
         working-directory: socialglass
