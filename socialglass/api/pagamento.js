@@ -33,18 +33,14 @@ module.exports = L.wrap(async (req, res) => {
       {price_data: {currency: "eur", unit_amount: Math.round(p.rata*100), recurring: {interval: "month"}, product_data: {name: "SocialGlass · canone mensile abbonamento occhiale", description: descr}}, quantity: 1},
       {price_data: {currency: "eur", unit_amount: Math.round(p.spedizione*100), product_data: {name: "Spedizione"}}, quantity: 1}
     ],
-    payment_method_types: ["card", "sepa_debit"],
     custom_text: {submit: {message: `Abbonamento: ${p.rata.toFixed(2).replace(".", ",")} € al mese, durata minima ${p.mesi} mesi. Oggi paghi il primo canone e la spedizione.`}},
     subscription_data: {metadata: {univoco: u.f.Univoco, mesi: p.mesi}, description: descr},
     metadata: {univoco: u.f.Univoco}
   };
   let session;
   try {
-    try { session = await stripe("checkout/sessions", params); }
-    catch(e){ // se l'addebito SEPA non è attivo sull'account Stripe, si usa solo la carta
-      if (!/sepa|payment method type/i.test(e.message)) throw e;
-      params.payment_method_types = ["card"]; session = await stripe("checkout/sessions", params);
-    }
+    // i metodi di pagamento (carta, SEPA…) si scelgono dalla dashboard Stripe
+    session = await stripe("checkout/sessions", params);
   } catch(e){ console.error(e); return L.send(res, 502, {errore: "Il pagamento non si è avviato. Riprova tra poco.", dettaglio: String(e.message).slice(0, 300)}); }
   ord.pagamento = {stato: "IN CORSO", sessione: session.id}; ord.aggiornato = new Date().toISOString();
   await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
