@@ -39,11 +39,13 @@ module.exports = L.wrap(async (req, res) => {
     metadata: {univoco: u.f.Univoco}
   };
   let session;
-  try { session = await stripe("checkout/sessions", params); }
-  catch(e){ // se l'addebito SEPA non è attivo sull'account Stripe, si usa solo la carta
-    if (!/sepa|payment method type/i.test(e.message)) throw e;
-    params.payment_method_types = ["card"]; session = await stripe("checkout/sessions", params);
-  }
+  try {
+    try { session = await stripe("checkout/sessions", params); }
+    catch(e){ // se l'addebito SEPA non è attivo sull'account Stripe, si usa solo la carta
+      if (!/sepa|payment method type/i.test(e.message)) throw e;
+      params.payment_method_types = ["card"]; session = await stripe("checkout/sessions", params);
+    }
+  } catch(e){ console.error(e); return L.send(res, 502, {errore: "Il pagamento non si è avviato. Riprova tra poco.", dettaglio: String(e.message).slice(0, 300)}); }
   ord.pagamento = {stato: "IN CORSO", sessione: session.id}; ord.aggiornato = new Date().toISOString();
   await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
   L.send(res, 200, {url: session.url});
