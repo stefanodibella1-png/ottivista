@@ -8,7 +8,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!["caf", "ottico"].includes(ruolo) || !codice || !password) return L.send(res, 400, {errore: "Inserisci codice e password."});
   const id = String(codice).trim().toUpperCase();
   const rec = await L.DB.login(ruolo, id);
-  if (!rec || !L.safeEq(rec.Password || "", password)) return L.send(res, 401, {errore: "Codice o password non valida."});
+  if (!rec || !L.checkPw(rec.Password, password)) return L.send(res, 401, {errore: "Codice o password non valida."});
   let nome = rec.Nome || id, listino = "";
   if (ruolo === "ottico"){ const o = await L.DB.ottico(id); if (o){ nome = o.Intestatario || nome; listino = o.Listino || ""; } }
   L.send(res, 200, {token: L.sign({ruolo, id, listino}), nome, id, listino});

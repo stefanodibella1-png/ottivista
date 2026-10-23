@@ -17,6 +17,16 @@ document.querySelectorAll("img[data-fallback]").forEach(img => {
   img.onerror = swap; if (img.complete && !img.naturalWidth) swap();
 });
 
+/* ---------- pannello amministratore: 7 tocchi sul logo ---------- */
+{ let n = 0, t = 0;
+  document.querySelectorAll("#mobile-image,#immagineCadente1").forEach(img => img.addEventListener("click", () => {
+    clearTimeout(t); t = setTimeout(() => { n = 0; }, 2500);
+    if (++n < 7) return; n = 0;
+    const go = () => window.SG_ADMIN && window.SG_ADMIN.apri();
+    if (window.SG_ADMIN) return go();
+    const sc = document.createElement("script"); sc.src = "admin.js?v=" + Date.now(); sc.onload = go; document.head.appendChild(sc);
+  })); }
+
 /* ---------- logo cadente (come nel sito originale) ---------- */
 function dropImage(el, startY, endY, done){
   let y = startY;
@@ -31,15 +41,35 @@ window.addEventListener("load", () => {
 });
 
 /* ---------- popup ---------- */
+// accessibilità: ogni finestra è un dialogo modale con titolo, il focus resta dentro e torna dove era
+document.querySelectorAll(".popup").forEach((p, i) => {
+  const c = p.querySelector(".popup-content"), h = c && c.querySelector("h2");
+  if (!c) return; c.setAttribute("role", "dialog"); c.setAttribute("aria-modal", "true");
+  if (h){ h.id = h.id || "tit" + i; c.setAttribute("aria-labelledby", h.id); }
+});
+document.querySelectorAll(".esito").forEach(e => { e.setAttribute("role", e.classList.contains("err") ? "alert" : "status"); e.setAttribute("aria-live", "polite"); });
+let primaDelPopup = null;
+document.addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const p = [...document.querySelectorAll(".popup")].find(x => !x.hidden); if (!p) return;
+  const f = [...p.querySelectorAll("button,a[href],input,select,textarea,summary,[tabindex]:not([tabindex='-1'])")].filter(x => !x.disabled && x.offsetParent !== null);
+  if (!f.length) return;
+  if (!p.contains(document.activeElement)){ e.preventDefault(); f[0].focus(); return; }
+  if (e.shiftKey && document.activeElement === f[0]){ e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && document.activeElement === f[f.length - 1]){ e.preventDefault(); f[0].focus(); }
+});
 function open(id){
+  if (![...document.querySelectorAll(".popup")].some(x => !x.hidden)) primaDelPopup = document.activeElement;
   document.querySelectorAll(".popup").forEach(p => p.hidden = p.id !== id);
   const el = $(id); el.hidden = false;
+  setTimeout(() => { if (!el.contains(document.activeElement)){ const t = el.querySelector("h2"); if (t){ t.tabIndex = -1; t.focus({preventScroll: true}); } } }, 60);
   const f = el.querySelector("input:not([disabled]):not([type=checkbox]):not([type=radio]),select:not([disabled])");
   if (f && !("ontouchstart" in window)) setTimeout(() => f.focus(), 50);
 }
-function closeAll(){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); }
+function closeAll(){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); ritornaFocus(); }
+function ritornaFocus(){ if (primaDelPopup && document.contains(primaDelPopup)) try { primaDelPopup.focus(); } catch(_){} primaDelPopup = null; }
 document.addEventListener("click", e => {
-  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; return; }
+  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; ritornaFocus(); return; }
   const o = e.target.closest("[data-open]");
   if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); if (o.dataset.open === "ordinePopup") resetOrdine(); return; }
   if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id"].forEach(k => sessionStorage.removeItem(k)); closeAll(); return; }
@@ -47,7 +77,7 @@ document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("popup")) e.target.hidden = true;
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeAll(); stopScan(); } });
-function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.hidden = !txt; }
+function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.setAttribute("role", kind === "err" ? "alert" : "status"); el.hidden = !txt; }
 
 /* ---------- stati ---------- */
 const STATI = {REGISTRATO: "IN ATTESA SCELTA MONTATURA", MONTATURA: "MONTATURA SCELTA", PAGAMENTO: "IN ATTESA PAGAMENTO",
@@ -59,6 +89,7 @@ const chip = s => { const i = ORDINE_STATI.indexOf(s); return `<span class="chip
 let DEMO = false, STRIPE = false;
 const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; STRIPE = !!j.stripe; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
   .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottici: OTT07 (Demo Centro) o OTT12 (Demo Mare) / demo · Montature: SG-1042, SG-1043, SG-1044"); });
+fetch("api/info", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(j => { window.SG_INFO = j; }).catch(() => {});
 function notaDemo(t){ const n = $("demoNota"); n.textContent = t; n.hidden = false; }
 ready.then(() => {
   if (DEMO !== "browser") return;
@@ -208,10 +239,18 @@ document.querySelectorAll("form[data-login]").forEach(f => f.addEventListener("s
   if (!r.ok){ err.textContent = r.data.errore || "Codice o password non valida."; err.hidden = false; return; }
   sessionStorage.setItem("sg_tok", r.data.token); sessionStorage.setItem("sg_ruolo", r0); sessionStorage.setItem("sg_id", r.data.id); sessionStorage.setItem("sg_nome", r.data.nome);
   p.value = "";
+  contaAvvisi();
   if (r0 === "caf"){ $("cafNome").textContent = r.data.nome; open("optionsPopup"); }
   else { $("ottNome").textContent = r.data.nome; $("codiceUnivocoContainer").textContent = "Cod.Ottico: " + r.data.id; open("optionsOtticoPopup"); }
 }));
 if (ruolo()){ $("cafNome").textContent = $("ottNome").textContent = sessionStorage.getItem("sg_nome") || ""; }
+// numero di avvisi da inviare, mostrato sul pulsante "I MIEI CLIENTI"
+async function contaAvvisi(){
+  const r = await api("api/clienti"); if (!r.ok) return;
+  const n = (r.data.clienti || []).filter(c => c.avviso).length;
+  document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; });
+}
+if (sessionStorage.getItem("sg_tok")) contaAvvisi();
 function scaduta(r){ if (r.status === 401){ sessionStorage.removeItem("sg_tok"); open(sessionStorage.getItem("sg_ruolo") === "ottico" ? "otticoPopup" : "passwordPopup"); return true; } return false; }
 
 /* ---------- nuovo utente (CAF) ---------- */
@@ -237,7 +276,7 @@ $("attivaCodiceFiscale").addEventListener("click", async () => {
   const cf = $("codiceFiscale").value.trim();
   if (!CF.valido(cf)){ esito($("cfEsito"), "CODICE FISCALE NON VALIDO: controlla le 16 lettere e cifre.", "err"); return; }
   const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
-  if (r.ok && r.data.stato){ esito($("cfEsito"), `ATTENZIONE ! CODICE FISCALE ${r.data.stato}${r.data.univoco ? " · codice " + r.data.univoco : ""}. Per un nuovo occhiale usa RINNOVO OCCHIALE.`, "err"); return; }
+  if (r.ok && r.data.stato){ esito($("cfEsito"), `Questo cliente è già registrato${r.data.nome ? " (" + r.data.nome + ")" : ""}${r.data.univoco ? ", codice " + r.data.univoco : ""}. Stato: ${r.data.stato.toLowerCase()}. Per un occhiale nuovo usa RINNOVO OCCHIALE.`, "err"); return; }
   esito($("cfEsito"), "", ""); $("attivaCodiceFiscale").hidden = true; $("segnoDiSpunta").hidden = false; $("codiceFiscale").disabled = true;
   campi.forEach(id => $(id).disabled = false); $("inviaLink").disabled = false; $("nome").focus();
 });
@@ -302,6 +341,7 @@ async function apriClienti(){
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
   const r = await api("api/clienti"); if (scaduta(r)) return;
   clienti = r.ok ? r.data.clienti : [];
+  { const n = clienti.filter(c => c.avviso).length; document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; }); }
   const sel = $("filtroStato"); sel.length = 1;
   ORDINE_STATI.forEach(s => { if (clienti.some(c => c.stato === s)){ const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); } });
   disegnaClienti();
@@ -329,7 +369,8 @@ function disegnaClienti(){
       ${c.finePeriodo ? `<div><span class="chip s2">SCELTA DEL CLIENTE: ${esc(c.finePeriodo)}</span></div>` : ""}
       ${c.daRitirare ? `<div><span class="chip s3">OCCHIALE DA RITIRARE${c.ritiroInRitardo ? " · IN RITARDO" : ""}</span></div>` : ""}
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
-      ${c.avviso ? `<div class="avviso-cli">Avviso da inviare: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>` : ""}
+      ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
+        : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
       <div class="az">${isOtt
         ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
           + (c.stato === STATI.ATTIVO ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
@@ -345,7 +386,7 @@ $("filtroClienti").addEventListener("input", disegnaClienti);
 $("filtroStato").addEventListener("change", disegnaClienti);
 $("clientiLista").addEventListener("click", async e => {
   const av = e.target.closest("[data-avvisato]");
-  if (av){ post("api/clienti", {univoco: av.dataset.avvisato}).then(() => setTimeout(apriClienti, 1500)); return; }
+  if (av){ post("api/clienti", {univoco: av.dataset.avvisato}).then(() => setTimeout(apriClienti, av.tagName === "A" ? 1500 : 100)); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.ord){ open("ordinePopup"); resetOrdine(); $("ordineCodice").value = b.dataset.ord; caricaOrdine(b.dataset.ord); return; }
   if (b.dataset.azione){
@@ -503,7 +544,7 @@ function disegnaMio(){
   let a = "";
   const dove = o ? `<b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}` : "";
   if (u.stato === STATI.REGISTRATO){
-    a = `<div class="scheda">1) Vai dall'ottico:<br>${dove}<br>2) Mostra il tuo codice <b>${esc(UNIVOCO)}</b><br>3) Scegli la montatura e premi <b>«Ho scelto la montatura»</b> per inquadrare il QR sull'espositore.</div>
+    a = `<div class="scheda">1) Vai dall'ottico:<br>${dove}<br>2) All'ottico mostra il codice <b>${esc(UNIVOCO)}</b>: così trova il tuo ordine<br>3) Scegli la montatura, poi premi <b>«Ho scelto la montatura»</b> e inquadra il quadratino QR sul cartellino della montatura (o scrivi il codice che c'è sotto).</div>
       <button type="button" class="verde full" id="mpScan">Ho scelto la montatura</button>`;
   } else if (u.stato === STATI.MONTATURA){
     a = `<div class="esito ok">Montatura scelta: <b>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</b>.</div><p style="margin:0 0 10px">Ora l'ottico inserisce le lenti e la tua ricetta. Questa pagina si aggiorna da sola e ti mandiamo un messaggio: tra poco vedrai il riepilogo con il canone mensile.</p>
@@ -539,7 +580,8 @@ function disegnaMio(){
         ${(od.trattamenti || []).map(t => `<div class="r"><span>${esc(t.nome)}</span><span>${euro(t.prezzo)}</span></div>`).join("")}
         <div class="r tot"><span>Valore dell'occhiale</span><span>${euro(p.totale)}</span></div>
         <div class="r"><span>Oggi paghi: primo mese + spedizione</span><span>${euro(p.rata + p.spedizione)}</span></div>
-        <div class="r"><span>Poi ogni mese</span><span>${euro(p.rata)}</span></div>
+        <div class="r"><span>Poi ogni mese, il giorno ${new Date().getDate()}</span><span>${euro(p.rata)}</span></div>
+        <div class="r"><span>Impegno minimo: ${p.mesi} canoni + spedizione</span><span>${euro(p.rata * p.mesi + p.spedizione)}</span></div>
         ${p.riscatto ? `<div class="r"><span>Dopo ${p.mesi} mesi, se vuoi tenerlo</span><span>${euro(p.riscatto)}</span></div>` : ""}
       </div>
       <div class="scheda"><b>Cosa succede adesso</b><ol class="passi-ora">
@@ -566,6 +608,7 @@ function disegnaMio(){
   if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}). Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità. Se resta non pagato per oltre 30 giorni l'abbonamento si chiude e l'occhiale va restituito.${ins.link ? `<br><a href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia metodo di pagamento</a>` : ""}</div>` + a;
   if (od.pagamento && od.pagamento.ratePagate && od.prezzi && !od.pagamento.chiuso) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Mesi pagati in questo periodo: ${od.pagamento.ratePagate} su ${od.prezzi.mesi} minimi</p>`;
   if (od.prezzi && !a.includes(`id="mpCond"`)) a += `<p class="piede-cli"><button type="button" class="linkbtn" id="mpCond">Condizioni dell'abbonamento</button></p>`;
+  a += `<p class="piede-cli"><a href="privacy.html" target="_blank" rel="noopener">Informativa privacy</a></p>`;
   if (o && o.telefono) a += `<p class="piede-cli">Domande? <a href="tel:+${esc(String(o.telefono).replace(/\D/g, ""))}">Chiama ${esc(o.nome)}</a></p>`;
   $("mpAzione").innerHTML = a;
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
@@ -635,7 +678,8 @@ function checkoutProva(){
 function mostraCondizioni(){
   const p = mio.ordine.prezzi;
   const o = mio.ottico;
-  $("condizioniTesto").innerHTML = `<p><b>Bozza da far verificare a un consulente legale.</b></p>
+  const T = (window.SG_INFO && SG_INFO.titolare) || {};
+  $("condizioniTesto").innerHTML = `${T.ragione ? `<p>Contratto di abbonamento con <b>${esc(T.ragione)}</b>${T.piva ? `, P.IVA ${esc(T.piva)}` : ""}${T.indirizzo ? `, ${esc(T.indirizzo)}` : ""}.</p>` : ""}
     <p><b>1. Cosa ricevi.</b> ${o ? esc(o.nome) : "L'ottica"} ti dà in uso un occhiale da vista con le tue lenti (valore ${euro(p.totale)}). L'occhiale resta di proprietà dell'ottica: non lo stai comprando a rate e non c'è nessun obbligo di acquisto.</p>
     <p><b>2. Quanto paghi.</b> ${euro(p.rata)} al mese, senza interessi né altri costi, più la spedizione (${euro(p.spedizione)}) una sola volta. Il primo mese si paga alla conferma, poi ogni mese nello stesso giorno con addebito automatico su carta o conto (SEPA).</p>
     <p><b>3. Durata e scadenza.</b> Minimo ${p.mesi} mesi. 30 giorni prima della scadenza ti avvisiamo con un messaggio e puoi scegliere:</p>${regoleFine(p, mio.ordine.periodo)}
@@ -644,7 +688,7 @@ function mostraCondizioni(){
     <p><b>5. Se un pagamento non riesce.</b> Ti avvisiamo e riproviamo in automatico per circa 2 settimane. Puoi pagare subito dal link che ricevi. Se il pagamento resta non saldato per oltre 30 giorni, l'abbonamento si chiude e l'occhiale va restituito all'ottica (o riscattato pagando la differenza).</p>
     <p><b>6. Recesso.</b> Puoi ripensarci entro 14 giorni dall'attivazione: dillo al tuo ottico, che chiude subito l'abbonamento. Restituisci l'occhiale integro e ti rimborsiamo quanto pagato, tranne la spedizione e le lenti già fatte su misura.</p>
     <p><b>Montatura prenotata.</b> La montatura che scegli resta prenotata per te 30 giorni: se in quel tempo non confermi l'ordine, torna disponibile e puoi sceglierne un'altra dal tuo link.</p>
-    <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo l'ottica e SocialGlass per preparare l'occhiale. I dati di pagamento li gestisce Stripe.</p>
+    <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo l'ottica e SocialGlass per preparare l'occhiale. I dati di pagamento li gestisce Stripe. Leggi l'<a href="privacy.html" target="_blank" rel="noopener">informativa privacy</a>.</p>
     <p><b>8. Detrazione.</b> Per la detrazione fiscale chiedi all'ottica il documento fiscale dei canoni pagati (da verificare con il tuo CAF).</p>`;
   open("condizioniPopup");
 }
@@ -656,9 +700,9 @@ if (UNIVOCO){
     if (u.stato === STATI.REGISTRATO){
       const o = u.ottico;
       $("welcome-message").innerHTML = `Benvenuto da SocialGlass<br><span style="font-size:16px;color:darkgreen">${esc(u.nome)} ${esc(u.cognome)}</span><br><br>
-        <div class="passi">1) Vai dall'ottico:<br><br><span style="color:darkgreen">${o ? esc(o.nome) + "<br>" + esc(o.indirizzo) + esc(o.citta) : ""}</span><br><br>2) Mostra questo codice:</div>
+        <div class="passi">1) Vai dall'ottico:<br><br><span style="color:darkgreen">${o ? esc(o.nome) + "<br>" + esc(o.indirizzo) + esc(o.citta) : ""}</span><br><br>2) All'ottico mostra questo codice, così trova il tuo ordine:</div>
         <div class="codice-grande">${esc(UNIVOCO)}</div>
-        <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva l'abbonamento mensile dal telefono<br>5) Paga solo il primo mese e la spedizione<br>6) Ogni anno un occhiale nuovo</div>`;
+        <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva l'abbonamento mensile dal telefono<br>5) Paga solo il primo mese e la spedizione<br>6) Dopo 12 mesi puoi cambiarlo con uno nuovo</div>`;
       setTimeout(() => { $("my-popup").hidden = false; }, 1200);
     } else setTimeout(() => open("miaPagina"), 600);
   });
@@ -668,7 +712,7 @@ $("continue-button").addEventListener("click", () => { $("my-popup").hidden = tr
 /* ---------- scanner QR ---------- */
 let stream = null, scanning = false, detector = null;
 async function startScan(){
-  closeAll(); $("video-container").hidden = false; $("video-container").querySelector("p").textContent = "Inquadra il QR code sulla montatura";
+  closeAll(); $("video-container").hidden = false; $("video-container").querySelector("p").textContent = "Inquadra il quadratino QR sul cartellino della montatura";
   try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false}); }
   catch(e){ $("video-container").classList.add("senza-video"); $("video-container").querySelector(".mirino").hidden = true; $("preview").hidden = true; $("video-container").querySelector("p").textContent = "Fotocamera non disponibile: scrivi il codice che trovi sull'etichetta della montatura."; return; }
   $("video-container").classList.remove("senza-video"); $("video-container").querySelector(".mirino").hidden = false; $("preview").hidden = false;

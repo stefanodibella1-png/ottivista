@@ -1,6 +1,7 @@
 // Verifica della montatura dal QR dell'espositore e registrazione della scelta del cliente
 const L = require("./_lib");
 module.exports = L.wrap(async (req, res) => {
+  if (L.bloccato(req)) return L.send(res, 429, L.TROPPI);
   const url = new URL(req.url, "http://x");
   if (req.method === "GET"){
     const codice = (url.searchParams.get("codice") || "").trim();
@@ -13,7 +14,7 @@ module.exports = L.wrap(async (req, res) => {
   const {univoco, codice} = await L.readBody(req);
   if (!univoco || !codice) return L.send(res, 400, {errore: "Dati mancanti"});
   const u = await L.DB.utente("Univoco", String(univoco));
-  if (!u) return L.send(res, 404, {errore: "Cliente non trovato"});
+  if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato"}); }
   if (![L.STATI.REGISTRATO, L.STATI.MONTATURA].includes(u.f.Stato)) return L.send(res, 409, {errore: "La montatura è già confermata: per cambiarla parla con l'ottico."});
   const m = await L.DB.montatura(String(codice));
   if (!m || String(m.f.Stato || "").toUpperCase() !== "DISPONIBILE") return L.send(res, 409, {errore: "Montatura non più disponibile."});

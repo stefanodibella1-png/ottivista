@@ -15,9 +15,9 @@ async function esegui(u, ord, p, ora){
   // canone non pagato da oltre 30 giorni: l'abbonamento si chiude e l'occhiale va restituito (o riscattato)
   if (pg.insoluto && pg.insoluto.tipo !== "riscatto" && new Date(ora) - new Date(pg.insoluto.dal) > 30*864e5){
     if (stripeOk) await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`);
-    pg.chiuso = ora; pg.esito = "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE";
-    ord.ritiro = {daRitirare: true, dal: ora};
-    await annota(u, ord, "chiusuraInsoluto", `SocialGlass: ${u.f.Nome}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso. Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo.`);
+    pg.chiuso = ora; pg.esito = u.f.Stato === L.STATI.CONSEGNATO ? "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE" : "CHIUSO PER MANCATO PAGAMENTO: ORDINE ANNULLATO";
+    if (u.f.Stato === L.STATI.CONSEGNATO) ord.ritiro = {daRitirare: true, dal: ora};
+    await annota(u, ord, "chiusuraInsoluto", `SocialGlass: ${u.f.Nome}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo." : " L'ordine non verrà completato."}`);
     return "chiuso per insoluto";
   }
   // con un pagamento in sospeso la scelta di fine periodo aspetta

@@ -1,11 +1,12 @@
 // Pagina personale del cliente (link ricevuto via SMS o WhatsApp)
 const L = require("./_lib");
 module.exports = L.wrap(async (req, res) => {
+  if (L.bloccato(req)) return L.send(res, 429, L.TROPPI);
   const url = new URL(req.url, "http://x");
   const uv = (url.searchParams.get("univoco") || "").trim();
   if (!uv) return L.send(res, 400, {errore: "Codice mancante"});
   const u = await L.DB.utente("Univoco", uv);
-  if (!u) return L.send(res, 404, {errore: "Link non valido o scaduto."});
+  if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Link non valido o scaduto."}); }
   await L.verificaPagamento(u);
   const idOtt = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore");
   const o = await L.DB.ottico(idOtt);

@@ -40,6 +40,8 @@ module.exports = L.wrap(async (req, res) => {
     // l'ottico può rinnovare per codice univoco solo i propri clienti; per un cliente di un'altra ottica serve il codice fiscale
     if (so && b.univoco && !String(u.f.Ottica1 || "").startsWith(so.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i tuoi clienti."});
     const ord = L.parseOrdine(u.f.Ordine);
+    if (ord.rinnovo && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato))
+      return L.send(res, 409, {errore: `Rinnovo già avviato il ${new Date(ord.rinnovo.il).toLocaleDateString("it-IT")} (${ord.rinnovo.da}): il cliente deve solo scegliere la montatura dal suo link.`, univoco: u.f.Univoco});
     if (![L.STATI.CONSEGNATO, L.STATI.REGISTRATO].includes(u.f.Stato) && ord.pagamento && !ord.pagamento.chiuso)
       return L.send(res, 409, {errore: "Il cliente ha un ordine in corso: il rinnovo si fa dopo la consegna."});
     if (!L.PREZZI.rinnovabile(ord)){

@@ -2,10 +2,11 @@
 const L = require("./_lib");
 const stripe = (path, params) => L.stripeApi("POST", path, params);
 module.exports = L.wrap(async (req, res) => {
+  if (L.bloccato(req)) return L.send(res, 429, L.TROPPI);
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   const b = await L.readBody(req);
   const u = await L.DB.utente("Univoco", String(b.univoco || "").trim());
-  if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+  if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
   if (u.f.Stato !== L.STATI.PAGAMENTO) return L.send(res, 409, {errore: "Non c'è un ordine da attivare."});
   if (!b.consensoContratto || !b.consensoAddebito) return L.send(res, 400, {errore: "Per attivare l'abbonamento servono entrambe le conferme."});
   const ord = L.parseOrdine(u.f.Ordine), p = ord.prezzi;
@@ -60,7 +61,8 @@ module.exports = L.wrap(async (req, res) => {
   let session;
   try {
     // i metodi di pagamento (carta, SEPA…) si scelgono dalla dashboard Stripe
-    session = await stripe("checkout/sessions", params);
+    // stessa chiave per richieste uguali: due schede aperte insieme ricevono la stessa pagina Stripe
+    session = await L.stripeApi("POST", "checkout/sessions", params, `checkout-${u.f.Univoco}-${ord.aggiornato || ""}-${new Date().toISOString().slice(0, 10)}`);
   } catch(e){ console.error(e); return L.send(res, 502, {errore: "Il pagamento non si è avviato. Riprova tra poco.", dettaglio: String(e.message).slice(0, 300)}); }
   ord.pagamento = {stato: "IN CORSO", sessione: session.id}; ord.aggiornato = new Date().toISOString();
   await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});

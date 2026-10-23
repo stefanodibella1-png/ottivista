@@ -70,8 +70,13 @@ jobs:
           set -e
           PID=$(node -p "require('./.vercel/project.json').projectId"); TEAM=$(node -p "require('./.vercel/project.json').orgId")
           Q="teamId=$TEAM"; case "$TEAM" in team_*) ;; *) Q="";; esac
-          DOM=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/domains?$Q" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const d=(JSON.parse(s).domains||[]).map(x=>x.name);const c=d.find(x=>!x.endsWith('.vercel.app'))||d[0]||'';console.log(c)})")
-          [ -n "$DOM" ] || DOM=$(sed 's#https://##' ../url1.txt)
+          # dominio proprio: www.socialglass.it (e socialglass.it che rimanda a www). Si usa solo quando il DNS è già configurato.
+          for d in www.socialglass.it socialglass.it; do
+            curl -s -o /dev/null -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" "https://api.vercel.com/v10/projects/$PID/domains?$Q" -d "{\"name\":\"$d\"$( [ $d = socialglass.it ] && echo ',\"redirect\":\"www.socialglass.it\"' )}"
+          done
+          MIS=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v6/domains/www.socialglass.it/config?$Q" | node -p "JSON.parse(require('fs').readFileSync(0)).misconfigured!==false")
+          if [ "$MIS" = "false" ]; then DOM=www.socialglass.it; echo "::notice title=Dominio::www.socialglass.it attivo"
+          else DOM=socialglass.vercel.app; echo "::notice title=Dominio::www.socialglass.it non ancora collegato: imposta i DNS su Register.it (CNAME www → cname.vercel-dns.com, A @ → 76.76.21.21)"; fi
           URL="https://$DOM"; echo "URL=$URL" >> $GITHUB_ENV
           setenv(){ K="$1" V="$2" node -e 'process.stdout.write(JSON.stringify({key:process.env.K,value:process.env.V,type:"encrypted",target:["production","preview"]}))' > "$RUNNER_TEMP/env.json"
             curl -s -o /dev/null -w "$1 %{http_code}\n" -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
@@ -92,7 +97,7 @@ jobs:
             HASW=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/env?$Q" | grep -c '"key":"STRIPE_WEBHOOK_SECRET"' || true)
             if [ "$ESISTE" = 1 ] && [ "$HASW" != 0 ]; then echo "::notice title=Stripe::webhook già attivo, mantenuto"; else
             # un solo webhook per questo indirizzo: il vecchio viene sostituito (il segreto si legge solo alla creazione)
-            for id in $(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const w of JSON.parse(s).data||[]) if(w.url==='$HOOK') console.log(w.id)})"); do
+            for id in $(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const w of JSON.parse(s).data||[]) if(w.url==='$HOOK'||w.description==='SocialGlass') console.log(w.id)})"); do
               curl -s -o /dev/null -u "$STRIPE_SECRET_KEY:" -X DELETE "https://api.stripe.com/v1/webhook_endpoints/$id"; done
             WH=$(curl -s -u "$STRIPE_SECRET_KEY:" https://api.stripe.com/v1/webhook_endpoints -d url="$HOOK" -d description="SocialGlass" \
               -d "enabled_events[]=checkout.session.completed" -d "enabled_events[]=invoice.paid" -d "enabled_events[]=invoice.payment_failed" -d "enabled_events[]=customer.subscription.deleted" \

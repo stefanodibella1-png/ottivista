@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Informativa privacy · SocialGlass</title>
+<link rel="icon" href="assets/favicon.png">
+<style>
+body{margin:0;font:15px/1.65 Arial,sans-serif;color:#333;background:#f4f4f4}
+main{max-width:760px;margin:0 auto;padding:20px 16px 40px;background:#fff;min-height:100vh;box-sizing:border-box}
+h1{font-size:24px;line-height:1.3;margin:10px 0 4px;color:#0A1F5C} h2{font-size:17px;margin:22px 0 6px;color:#0A1F5C}
+.logo{width:200px;height:auto} .agg{color:#666;font-size:13px;margin:0 0 14px}
+.box{background:#f6f8fb;border-radius:8px;padding:10px 12px}
+a{color:#0062CC} ul{padding-left:20px}
+</style>
+</head>
+<body><main>
+<a href="./"><img class="logo" src="assets/logo-social-glass.png" alt="SocialGlass, torna alla pagina iniziale"></a>
+<h1>Informativa sul trattamento dei dati personali</h1>
+<p class="agg">Ai sensi degli articoli 13 e 14 del Regolamento (UE) 2016/679 (GDPR).</p>
+
+<h2>1. Chi tratta i tuoi dati</h2>
+<div class="box" id="titolare">Titolare del trattamento: <span data-t="ragione">SocialGlass</span><span data-opt="piva">, P.IVA <span data-t="piva"></span></span><span data-opt="indirizzo">, <span data-t="indirizzo"></span></span>.<br>
+Contatti: <span data-opt="email"><a data-t="email" data-mail></a></span><span data-opt="pec"> · PEC <span data-t="pec"></span></span><span data-opt="telefono"> · tel. <span data-t="telefono"></span></span></div>
+
+<h2>2. Quali dati raccogliamo</h2>
+<ul>
+<li><b>Dati anagrafici e di contatto</b>: nome, cognome, codice fiscale, luogo e data di nascita, sesso, numero di cellulare. Li inserisce il CAF quando ti registra.</li>
+<li><b>Dati sulla salute</b>: la tua prescrizione oculistica (ricetta, distanza pupillare, tipo di lenti). Li inserisce l'ottico per preparare l'occhiale.</li>
+<li><b>Dati dell'abbonamento</b>: montatura scelta, prezzi, stato dell'ordine, pagamenti ricevuti o non riusciti.</li>
+<li><b>Dati di pagamento</b>: li inserisci tu sulla pagina sicura di Stripe. Noi non vediamo né conserviamo i numeri della carta o del conto.</li>
+</ul>
+
+<h2>3. Perché li usiamo e su quale base</h2>
+<ul>
+<li>Per attivare e gestire l'abbonamento all'occhiale, prepararlo, consegnarlo e gestire rinnovo, riscatto o restituzione: esecuzione del contratto (art. 6.1.b GDPR).</li>
+<li>Per trattare la ricetta, che è un dato sanitario: tuo consenso esplicito (art. 9.2.a GDPR), raccolto dal CAF al momento della registrazione. Senza questo consenso l'occhiale non può essere preparato.</li>
+<li>Per gli addebiti mensili e la contabilità: contratto e obblighi di legge fiscali (art. 6.1.b e 6.1.c GDPR).</li>
+<li>Per inviarti messaggi di servizio (preventivo pronto, occhiali pronti, scadenze, pagamenti non riusciti): esecuzione del contratto. Non inviamo pubblicità.</li>
+</ul>
+
+<h2>4. Chi può vedere i dati</h2>
+<ul>
+<li>Il <b>CAF</b> che ti ha registrato vede i tuoi dati anagrafici e lo stato dell'ordine, non la ricetta.</li>
+<li>L'<b>ottica convenzionata</b> scelta vede i dati necessari a preparare l'occhiale, compresa la ricetta.</li>
+<li>Fornitori tecnici che trattano i dati per nostro conto: Google Firebase (archivio dei dati, in Europa), Vercel (sito), Stripe (pagamenti). Alcuni di questi fornitori possono trasferire dati fuori dall'Unione europea solo con le garanzie previste dal GDPR, come le clausole contrattuali standard o il Data Privacy Framework.</li>
+</ul>
+
+<h2>5. Per quanto tempo</h2>
+<p>Per tutta la durata dell'abbonamento. Dopo la chiusura, i dati necessari agli obblighi fiscali sono conservati per 10 anni; la ricetta per il tempo necessario a eventuali richieste di garanzia sull'occhiale, poi viene cancellata.</p>
+
+<h2>6. I tuoi diritti</h2>
+<p>Puoi chiedere in qualsiasi momento di vedere i tuoi dati, correggerli, cancellarli, limitarne l'uso, riceverli in un formato leggibile, opporti al trattamento e ritirare il consenso sui dati sanitari (senza effetti sul trattamento fatto prima). Scrivi ai contatti del punto 1. Se ritieni che i tuoi dati siano trattati in modo non corretto puoi rivolgerti al Garante per la protezione dei dati personali (<a href="https://www.garanteprivacy.it" rel="noopener">garanteprivacy.it</a>).</p>
+</main>
+<script>
+fetch("api/info",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
+  var t=j.titolare||{};
+  document.querySelectorAll("[data-t]").forEach(function(e){var v=t[e.getAttribute("data-t")];if(v){e.textContent=v;if(e.hasAttribute("data-mail"))e.href="mailto:"+v;}});
+  document.querySelectorAll("[data-opt]").forEach(function(e){if(!t[e.getAttribute("data-opt")])e.hidden=true;});
+}).catch(function(){document.querySelectorAll("[data-opt]").forEach(function(e){e.hidden=true;});});
+</script>
+</body></html>

@@ -43,7 +43,7 @@ module.exports = L.wrap(async (req, res) => {
         pg.chiuso = pg.chiuso || ora;
         if (!pg.esito || /DISDETTO/.test(pg.esito)){
           if (/DISDETTO/.test(pg.esito || "")) pg.esito = "ABBONAMENTO CHIUSO (RESTITUZIONE)";
-          else if (pg.insoluto){ pg.esito = "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE"; ord.ritiro = ord.ritiro || {daRitirare: true, dal: ora}; }
+          else if (pg.insoluto){ pg.esito = u.f.Stato === L.STATI.CONSEGNATO ? "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE" : "CHIUSO PER MANCATO PAGAMENTO: ORDINE ANNULLATO"; if (u.f.Stato === L.STATI.CONSEGNATO) ord.ritiro = ord.ritiro || {daRitirare: true, dal: ora}; }
           else pg.esito = (pg.ratePagate || 0) >= mesi ? "CHIUSO DOPO LA DURATA MINIMA" : "INTERROTTO PRIMA DELLA DURATA MINIMA";
         }
       }

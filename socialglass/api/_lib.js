@@ -70,6 +70,11 @@ function seed(db){
 }
 async function fdb(){ const db = fs(); await seed(db); return db; }
 const FS = {
+  // gestione dal pannello amministratore
+  async lista(k){ return (await (await fdb()).collection(COL[k]).get()).docs.map(d => Object.assign({_id: d.id}, d.data())); },
+  async salva(k, id, data){ await (await fdb()).collection(COL[k]).doc(String(id)).set(data, {merge: true}); },
+  async elimina(k, id){ await (await fdb()).collection(COL[k]).doc(String(id)).delete(); },
+  async meta(id, data){ const d = (await fdb()).collection(COL.meta).doc(id); if (data === undefined){ const x = await d.get(); return x.exists ? x.data() : null; } await d.set(data, {merge: true}); },
   async login(ruolo, id){ const d = await (await fdb()).collection(ruolo === "caf" ? COL.caf : COL.ottLogin).doc(String(id).toUpperCase()).get(); return d.exists ? d.data() : null; },
   async ottici(){ return (await (await fdb()).collection(COL.ottici).get()).docs.map(d => d.data()); },
   async ottico(id){ if (!id) return null; const d = await (await fdb()).collection(COL.ottici).doc(id).get(); return d.exists ? d.data() : null; },
@@ -126,6 +131,15 @@ async function find(base, table, formula, max = 1){
 
 /* ---------- archivio: stesse funzioni con Airtable o con i dati di prova ---------- */
 const parseOrdine = s => { try { return s ? JSON.parse(s) : {}; } catch(e){ return {}; } };
+// dati di prova in memoria (server senza database): stesse funzioni del pannello
+const DEMOCOL = {caf: () => demo.caf, ottLogin: () => demo.ottLogin, ottici: () => demo.ottici, mont: () => demo.montature, utenti: () => demo.utenti};
+const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco"};
+const MEM = {
+  async lista(k){ return DEMOCOL[k]().map(x => Object.assign({_id: x[DEMOKEY[k]]}, x)); },
+  async salva(k, id, data){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i < 0) a.push(Object.assign({[DEMOKEY[k]]: id}, data)); else Object.assign(a[i], data); },
+  async elimina(k, id){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i >= 0) a.splice(i, 1); },
+  async meta(id, data){ demo.meta = demo.meta || {}; if (data === undefined) return demo.meta[id] || null; demo.meta[id] = Object.assign(demo.meta[id] || {}, data); }
+};
 const AT = {
   async login(ruolo, id){
     if (DEMO) return (ruolo === "caf" ? demo.caf : demo.ottLogin).find(r => r.ID === id) || null;
@@ -179,6 +193,16 @@ const AT = {
   }
 };
 const DB = MODO === "firestore" ? FS : AT;
+if (MODO !== "firestore") Object.assign(AT, MEM);
+
+/* ---------- password: salvate cifrate (scrypt); le vecchie in chiaro restano valide ---------- */
+function hashPw(p){ const salt = crypto.randomBytes(16).toString("hex"); return `scrypt$${salt}$${crypto.scryptSync(String(p), salt, 32).toString("hex")}`; }
+function checkPw(stored, p){
+  stored = String(stored || "");
+  if (stored.startsWith("scrypt$")){ const [, salt, h] = stored.split("$"); return safeEq(crypto.scryptSync(String(p), salt, 32).toString("hex"), h); }
+  return !!stored && safeEq(stored, String(p));
+}
+const PROVA = {caf: ["CAF001"], ottici: ["OTT07", "OTT12"], montature: ["SG-1042", "SG-1043", "SG-1044"]};
 /* avvisi al cliente: SMS se configurato, altrimenti link WhatsApp da far inviare a CAF/ottico */
 async function avvisa(u, testo){
   const numero = String(u.f.Prefisso || "+39") + String(u.f.Cellulare || "");
@@ -189,11 +213,11 @@ async function avvisa(u, testo){
   return {sms, whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
 }
 /* ---------- Stripe (API con parametri form) ---------- */
-async function stripeApi(method, path, params){
+async function stripeApi(method, path, params, chiave){
   const body = new URLSearchParams();
   const add = (k, v) => { if (v === undefined || v === null) return; if (typeof v === "object" && !Array.isArray(v)) for (const [kk, vv] of Object.entries(v)) add(`${k}[${kk}]`, vv); else if (Array.isArray(v)) v.forEach((x, i) => add(`${k}[${i}]`, x)); else body.append(k, String(v)); };
   for (const [k, v] of Object.entries(params || {})) add(k, v);
-  const r = await fetch(`https://api.stripe.com/v1/${path}${method === "GET" && params ? "?" + body : ""}`, {method, headers: {Authorization: `Bearer ${CFG.stripeKey}`, "Content-Type": "application/x-www-form-urlencoded"}, body: method === "GET" ? undefined : body});
+  const r = await fetch(`https://api.stripe.com/v1/${path}${method === "GET" && params ? "?" + body : ""}`, {method, headers: Object.assign({Authorization: `Bearer ${CFG.stripeKey}`, "Content-Type": "application/x-www-form-urlencoded"}, chiave ? {"Idempotency-Key": chiave} : {}), body: method === "GET" ? undefined : body});
   const j = await r.json(); if (!r.ok) throw new Error(`Stripe: ${j.error && j.error.message}`); return j;
 }
 
@@ -202,7 +226,9 @@ async function rinnova(u, {otticoId, caf} = {}){
   const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
   const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString()}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
-  const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl} : null;
+  // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
+  const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl}
+    : (ord.rinnovo && ord.rinnovo.prosegue) || null;
   const campi = {Stato: STATI.REGISTRATO, Ordine: JSON.stringify({storico, rinnovo: {il: new Date().toISOString(), da: caf ? "CAF " + caf : "ottico " + (otticoId || ""), prosegue}})};
   let o = null;
   if (otticoId){ o = await DB.ottico(otticoId); if (o) campi.Ottica1 = `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`; }
@@ -217,7 +243,18 @@ async function rinnova(u, {otticoId, caf} = {}){
 /* ---------- attivazione dopo il pagamento Stripe (dal webhook o verificando la sessione) ---------- */
 async function attiva(u, sessione){
   const ord = parseOrdine(u.f.Ordine);
-  if (u.f.Stato !== STATI.PAGAMENTO) return false;
+  if (u.f.Stato !== STATI.PAGAMENTO){
+    // abbonamento in più (es. pagamento fatto due volte da due schede): si chiude subito e si avvisa
+    const attuale = ord.pagamento && ord.pagamento.abbonamento;
+    if (sessione.subscription && attuale && sessione.subscription !== attuale && CFG.stripeKey){
+      try { await stripeApi("DELETE", `subscriptions/${sessione.subscription}`); } catch(e){ console.error(e); }
+      const ora = new Date().toISOString();
+      ord.avvisi = ord.avvisi || {};
+      ord.avvisi["doppio" + ora.slice(0, 16)] = {il: ora, testo: `Pagamento doppio: abbiamo chiuso l'abbonamento in più (${sessione.subscription}). Rimborsa il primo addebito dalla dashboard Stripe.`, whatsapp: "", inviato: false, operatore: true};
+      await DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    }
+    return false;
+  }
   ord.pagamento = Object.assign({}, ord.pagamento, {stato: "ATTIVO", sessione: sessione.id, abbonamento: sessione.subscription || "", cliente: sessione.customer || "", attivatoIl: new Date().toISOString()});
   if (!ord.pagamento.ratePagate && sessione.payment_status === "paid") ord.pagamento.ratePagate = 1;
   ord.aggiornato = ord.pagamento.attivatoIl;
@@ -286,6 +323,11 @@ function tooMany(key, max = 8, windowMs = 10*60e3){
   const now = Date.now(), arr = (hits.get(key) || []).filter(t => now - t < windowMs);
   arr.push(now); hits.set(key, arr); return arr.length > max;
 }
+// tentativi con codici cliente inesistenti: al massimo 10 ogni 10 minuti per indirizzo
+function ipDi(req){ return String(req.headers["x-forwarded-for"] || (req.socket && req.socket.remoteAddress) || "").split(",")[0].trim(); }
+function bloccato(req){ const a = (hits.get("cod:" + ipDi(req)) || []).filter(t => Date.now() - t < 10*60e3); return a.length >= 10; }
+function codiceErrato(req){ tooMany("cod:" + ipDi(req), 1e9); }
+const TROPPI = {errore: "Troppi codici sbagliati. Riprova tra 10 minuti."};
 function wrap(fn){
   return async (req, res) => {
     try { await fn(req, res); }
@@ -293,4 +335,4 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
-module.exports = {avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

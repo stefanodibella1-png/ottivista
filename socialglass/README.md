@@ -42,3 +42,19 @@ L'occhiale resta dell'ottica ed è dato in uso al cliente: canone mensile (60% d
 
 ## Pubblicazione automatica con Stripe test
 Nel repo GitHub → Settings → Secrets and variables → Actions aggiungi `VERCEL_TOKEN`, `STRIPE_SECRET_KEY` (solo `sk_test_…`) e `FIREBASE_SERVICE_ACCOUNT` (il json della chiave Firebase: i dati vanno su Firestore nelle raccolte `sg_*`, CAF, ottici e montature di prova caricati al primo avvio). Airtable (`AIRTABLE_TOKEN`) resta solo come alternativa. Poi Actions → **socialglass-deploy** → Run workflow. Il workflow pubblica su Vercel, crea il webhook Stripe, imposta le variabili e scrive l'indirizzo nel riepilogo. Carta di prova: 4242 4242 4242 4242, scadenza futura, CVC qualsiasi. Carta che fallisce: 4000 0000 0000 0341.
+
+## Pannello amministratore
+Tocca 7 volte il logo: al primo accesso scegli la password (almeno 10 caratteri, salvata cifrata).
+Dal pannello: numeri del servizio e lista "Pronto per il pubblico", accessi CAF e ottici (password cifrate),
+montature con stampa dei cartellini QR, dati del titolare (usati nell'informativa privacy e nelle condizioni),
+verifica legale, rimozione dei dati di prova.
+
+## Dominio
+Il workflow aggiunge www.socialglass.it e socialglass.it al progetto Vercel. Su Register.it imposta:
+- CNAME `www` → `cname.vercel-dns.com`
+- A `@` → `76.76.21.21`
+Al primo deploy dopo la propagazione il sito, i link ai clienti e il webhook Stripe passano su https://www.socialglass.it.
+
+## Pagamenti reali
+Sostituisci il segreto `STRIPE_SECRET_KEY` con la chiave `sk_live_…` (account Stripe attivato) e rilancia il workflow:
+il webhook live viene creato da solo.

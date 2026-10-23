@@ -10,7 +10,7 @@
       quotaAnnua: 0.60,    // 60% del valore dell'occhiale all'anno
       minimoMensile: 9.90,
       riscatto: 0.15,      // per tenere l'occhiale a fine periodo: 15% del valore
-      servizi: ["Occhiale nuovo in uso, con le tue lenti", "Controllo della vista ogni anno", "Copertura rottura: 1 sostituzione all'anno", "Cambio occhiale ogni 12 mesi"]
+      servizi: ["Occhiale nuovo in uso, con le tue lenti", "Controllo della vista ogni anno, dal tuo ottico", "Se si rompe: 1 sostituzione all'anno (non vale per smarrimento o furto)", "Dopo 12 mesi puoi cambiarlo con uno nuovo"]
     },
     convenzioni: {
       A: {
