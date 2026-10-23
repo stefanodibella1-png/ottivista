@@ -87,9 +87,8 @@ const chip = s => { const i = ORDINE_STATI.indexOf(s); return `<span class="chip
 
 /* ---------- server o dati di prova ---------- */
 let DEMO = false, STRIPE = false;
-const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { DEMO = !!j.demo; STRIPE = !!j.stripe; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
+const ready = fetch("api/health", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(j => { window.SG_INFO = j; DEMO = !!j.demo; STRIPE = !!j.stripe; if (DEMO) notaDemo("Server attivo senza Airtable: dati di prova."); })
   .catch(() => { DEMO = "browser"; notaDemo("Anteprima con dati di prova · CAF: CAF001 / demo · Ottici: OTT07 (Demo Centro) o OTT12 (Demo Mare) / demo · Montature: SG-1042, SG-1043, SG-1044"); });
-fetch("api/info", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(j => { window.SG_INFO = j; }).catch(() => {});
 function notaDemo(t){ const n = $("demoNota"); n.textContent = t; n.hidden = false; }
 ready.then(() => {
   if (DEMO !== "browser") return;
@@ -127,7 +126,7 @@ const local = {
       const o = s.ottici.find(x => x.ID === rec.ID);
       return ok({token: btoa(JSON.stringify({ruolo: b.ruolo, id: rec.ID})), nome: b.ruolo === "ottico" ? (o ? o.Intestatario : rec.ID) : rec.Nome, id: rec.ID});
     }
-    if (name === "ottici") return ok({ottici: s.ottici.map(f => ({id: f.ID, label: `${f.ID} - ${f.Intestatario} - ${f.Indirizzo}${f.Citta}`, listino: f.Listino}))});
+    if (name === "utenti" && q("ottici")) return ok({ottici: s.ottici.map(f => ({id: f.ID, label: `${f.ID} - ${f.Intestatario} - ${f.Indirizzo}${f.Citta}`, listino: f.Listino}))});
     if (name === "utenti"){
       if (post && b.azione === "rinnovo"){
         const u = s.utenti.find(x => b.univoco ? x.Univoco === String(b.univoco).toUpperCase() : x["Codice Fiscale"] === String(b.cf).toUpperCase()); if (!u) return ko(404, "Cliente non trovato. Controlla il codice fiscale.");
@@ -263,7 +262,7 @@ function resetForm(){
 let otticiCaricati = false;
 async function loadOttici(){
   if (otticiCaricati) return;
-  const r = await api("api/ottici"); if (scaduta(r) || !r.ok) return;
+  const r = await api("api/utenti?ottici=1"); if (scaduta(r) || !r.ok) return;
   const sel = $("ottica");
   for (const o of r.data.ottici){ const op = document.createElement("option"); op.value = o.id; op.textContent = o.label; op.dataset.listino = o.listino; sel.appendChild(op); }
   otticiCaricati = true;

@@ -9,6 +9,13 @@ function messaggio(nome, ottica, link){ return `SocialGlass: ciao ${nome}, ecco 
 function wa(numero, testo){ return `https://wa.me/${String(numero).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`; }
 module.exports = L.wrap(async (req, res) => {
   const url = new URL(req.url, "http://x");
+  if (req.method === "GET" && url.searchParams.get("ottici")){
+    // elenco ottiche convenzionate (solo per il CAF collegato)
+    if (!L.verify(req, "caf")) return L.send(res, 401, L.NOAUTH);
+    const list = (await L.DB.ottici()).filter(f => f.ID).sort((a, b) => parseInt(String(a.ID).replace(/\D/g, "") || 0) - parseInt(String(b.ID).replace(/\D/g, "") || 0))
+      .map(f => ({id: f.ID, label: `${f.ID} - ${f.Intestatario || ""} - ${f.Indirizzo || ""}${f.Citta || ""}`, listino: f.Listino || ""}));
+    return L.send(res, 200, {ottici: list});
+  }
   if (req.method === "GET"){
     const cf = (url.searchParams.get("cf") || "").toUpperCase().trim();
     const uv = (url.searchParams.get("univoco") || "").toUpperCase().trim();

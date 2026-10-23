@@ -53,7 +53,7 @@ Contatti: <span data-opt="email"><a data-t="email" data-mail></a></span><span da
 <p>Puoi chiedere in qualsiasi momento di vedere i tuoi dati, correggerli, cancellarli, limitarne l'uso, riceverli in un formato leggibile, opporti al trattamento e ritirare il consenso sui dati sanitari (senza effetti sul trattamento fatto prima). Scrivi ai contatti del punto 1. Se ritieni che i tuoi dati siano trattati in modo non corretto puoi rivolgerti al Garante per la protezione dei dati personali (<a href="https://www.garanteprivacy.it" rel="noopener">garanteprivacy.it</a>).</p>
 </main>
 <script>
-fetch("api/info",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
+fetch("api/health",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
   var t=j.titolare||{};
   document.querySelectorAll("[data-t]").forEach(function(e){var v=t[e.getAttribute("data-t")];if(v){e.textContent=v;if(e.hasAttribute("data-mail"))e.href="mailto:"+v;}});
   document.querySelectorAll("[data-opt]").forEach(function(e){if(!t[e.getAttribute("data-opt")])e.hidden=true;});
