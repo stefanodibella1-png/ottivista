@@ -1,4 +1,4 @@
-// Stripe conferma il pagamento: l'ordine diventa attivo e le rate si fermano da sole dopo 12 mesi.
+// Stripe conferma il pagamento: l'ordine diventa attivo; poi canoni mensili, insoluti, chiusura.
 const crypto = require("crypto");
 const L = require("./_lib");
 function valid(raw, header, secret){
@@ -30,7 +30,8 @@ module.exports = L.wrap(async (req, res) => {
     if (u){
       const ord = L.parseOrdine(u.f.Ordine); ord.pagamento = ord.pagamento || {};
       const pg = ord.pagamento, ora = new Date().toISOString();
-      if (ev.type === "invoice.paid" && o.amount_paid > 0){
+      if (ev.type === "invoice.paid" && o.amount_paid > 0 && meta.tipo === "riscatto") pg.riscatto = Object.assign(pg.riscatto || {}, {pagato: ora});
+      else if (ev.type === "invoice.paid" && o.amount_paid > 0){
         pg.ratePagate = (pg.ratePagate || 0) + (o.billing_reason === "subscription_create" ? 1 : 1);
         pg.ultimaRata = ora; delete pg.insoluto;
       }
@@ -40,7 +41,8 @@ module.exports = L.wrap(async (req, res) => {
       }
       if (ev.type === "customer.subscription.deleted"){
         const mesi = (ord.prezzi && ord.prezzi.mesi) || 12;
-        pg.chiuso = ora; pg.esito = (pg.ratePagate || 0) >= mesi ? "CHIUSO DOPO LA DURATA MINIMA" : "INTERROTTO PRIMA DELLA DURATA MINIMA";
+        pg.chiuso = pg.chiuso || ora;
+        if (!pg.esito || /DISDETTO/.test(pg.esito)) pg.esito = /DISDETTO/.test(pg.esito || "") ? "ABBONAMENTO CHIUSO (RESTITUZIONE)" : (pg.ratePagate || 0) >= mesi ? "CHIUSO DOPO LA DURATA MINIMA" : "INTERROTTO PRIMA DELLA DURATA MINIMA";
       }
       ord.aggiornato = ora;
       await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});

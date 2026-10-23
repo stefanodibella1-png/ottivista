@@ -95,6 +95,7 @@ const FS = {
     }
     throw new Error("Impossibile creare il codice cliente");
   },
+  async tutti(){ return (await (await fdb()).collection(COL.utenti).get()).docs.map(d => ({id: d.id, f: d.data()})); },
   async aggiorna(u, fields){ await (await fdb()).collection(COL.utenti).doc(u.id).update(fields); Object.assign(u.f, fields); },
   async montatura(codice){ const d = await (await fdb()).collection(COL.mont).doc(String(codice)).get(); return d.exists ? {id: d.id, f: d.data()} : null; },
   async aggiornaMontatura(m, fields){ await (await fdb()).collection(COL.mont).doc(m.id).update(fields); Object.assign(m.f, fields); }
@@ -151,6 +152,10 @@ const AT = {
     }
     return rows.filter(r => filtro.caf ? r.f.CAF === filtro.caf : String(r.f.Ottica1 || "").startsWith(filtro.ottico + " "));
   },
+  async tutti(){
+    if (DEMO) return demo.utenti.map(f => ({id: f.Univoco, f}));
+    return (await find(CFG.baseMain, CFG.tUtenti, "", 0)).map(r => ({id: r.id, f: r.fields}));
+  },
   async creaUtente(fields){
     if (DEMO){ const uv = nuovoUnivoco(); demo.utenti.unshift(Object.assign({Univoco: uv, Creato: new Date().toISOString()}, fields)); return uv; }
     const r = await at(CFG.baseMain, CFG.tUtenti, {method: "POST", body: {fields, typecast: true}});
@@ -183,6 +188,32 @@ async function avvisa(u, testo){
   }
   return {sms, whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
 }
+/* ---------- Stripe (API con parametri form) ---------- */
+async function stripeApi(method, path, params){
+  const body = new URLSearchParams();
+  const add = (k, v) => { if (v === undefined || v === null) return; if (typeof v === "object" && !Array.isArray(v)) for (const [kk, vv] of Object.entries(v)) add(`${k}[${kk}]`, vv); else if (Array.isArray(v)) v.forEach((x, i) => add(`${k}[${i}]`, x)); else body.append(k, String(v)); };
+  for (const [k, v] of Object.entries(params || {})) add(k, v);
+  const r = await fetch(`https://api.stripe.com/v1/${path}${method === "GET" && params ? "?" + body : ""}`, {method, headers: {Authorization: `Bearer ${CFG.stripeKey}`, "Content-Type": "application/x-www-form-urlencoded"}, body: method === "GET" ? undefined : body});
+  const j = await r.json(); if (!r.ok) throw new Error(`Stripe: ${j.error && j.error.message}`); return j;
+}
+
+/* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
+async function rinnova(u, {otticoId, caf} = {}){
+  const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
+  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString()}] : []);
+  // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
+  const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl} : null;
+  const campi = {Stato: STATI.REGISTRATO, Ordine: JSON.stringify({storico, rinnovo: {il: new Date().toISOString(), da: caf ? "CAF " + caf : "ottico " + (otticoId || ""), prosegue}})};
+  let o = null;
+  if (otticoId){ o = await DB.ottico(otticoId); if (o) campi.Ottica1 = `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`; }
+  if (!o) o = await DB.ottico(String(u.f.Ottica1 || "").split(" - ")[0]);
+  if (o && o.Listino) campi.Listino = o.Listino;
+  await DB.aggiorna(u, campi);
+  const link = linkCliente(u.f.Univoco, o && o.ID, caf || u.f.CAF, o && o.Listino);
+  const avviso = await avvisa(u, `SocialGlass: ciao ${u.f.Nome}, è il momento del tuo occhiale nuovo! Vai da ${o ? o.Intestatario : "la tua ottica"}, scegli la montatura e conferma il nuovo canone dal tuo link: ${link}`);
+  return {univoco: u.f.Univoco, link, avviso, whatsapp: avviso.whatsapp, smsInviato: avviso.sms};
+}
+
 function nuovoUnivoco(){ return "SG" + crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 7); }
 
 /* ---------- stati del percorso ---------- */
@@ -242,4 +273,4 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
-module.exports = {avvisa, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {avvisa, stripeApi, rinnova, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

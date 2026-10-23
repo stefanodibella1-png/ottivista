@@ -57,6 +57,18 @@
     return {montatura, lenti: {id: lente, nome: l.nome, prezzo: l.prezzo}, trattamenti: tr, totale,
       mesi: LISTINI.mesi, rata: canone, spedizione: LISTINI.spedizione, riscatto: r2(Math.ceil(totale * A.riscatto)), modello: "abbonamento"};
   }
-  const api = {LISTINI, conv, preventivo};
+  // Date dell'abbonamento: inizio, scadenza della durata minima, apertura delle scelte (30 giorni prima)
+  function addMesi(d, n){ const x = new Date(d); const g = x.getUTCDate(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() + n); const fine = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate(); x.setUTCDate(Math.min(g, fine)); return x; }
+  function periodo(ord, ora){
+    const pg = ord && ord.pagamento; if (!pg || !pg.attivatoIl) return null;
+    const mesi = (ord.prezzi && ord.prezzi.mesi) || LISTINI.mesi, now = ora ? new Date(ora) : new Date();
+    const inizio = new Date(pg.attivatoIl), scadenza = addMesi(inizio, mesi), preavviso = new Date(scadenza.getTime() - 30*864e5);
+    return {inizio: inizio.toISOString(), scadenza: scadenza.toISOString(), preavviso: preavviso.toISOString(), mesi,
+      aperto: now >= preavviso, scaduto: now >= scadenza, chiuso: !!pg.chiuso,
+      giorni: Math.ceil((scadenza - now) / 864e5)};
+  }
+  // il rinnovo è possibile dai 30 giorni prima della scadenza, o se l'abbonamento è chiuso / mai attivato
+  function rinnovabile(ord, ora){ const p = periodo(ord, ora); return !p || p.chiuso || p.aperto; }
+  const api = {LISTINI, conv, preventivo, periodo, rinnovabile, addMesi};
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.LISTINI = api;
 })(this);

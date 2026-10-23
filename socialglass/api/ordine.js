@@ -17,6 +17,13 @@ module.exports = L.wrap(async (req, res) => {
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
   const ord = L.parseOrdine(u.f.Ordine);
+  if (b.azione === "ritirato"){
+    if (!ord.ritiro || !ord.ritiro.daRitirare) return L.send(res, 409, {errore: "Non c'è un occhiale da ritirare."});
+    const ora = new Date().toISOString();
+    ord.ritiro.ritirato = ora; ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; ord.aggiornato = ora;
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    return L.send(res, 200, {ok: true});
+  }
   if (b.azione === "pronto" || b.azione === "consegnato"){
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});
     ord.aggiornato = new Date().toISOString(); ord[b.azione === "pronto" ? "prontoIl" : "consegnatoIl"] = ord.aggiornato;

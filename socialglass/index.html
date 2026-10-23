@@ -133,6 +133,10 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 .riepilogo{border:1px solid #e3e6ea;border-radius:8px;padding:10px 12px;line-height:1.6;margin-bottom:10px}
 .riepilogo .r{display:flex;justify-content:space-between;gap:10px}
 .riepilogo .r.tot{border-top:1px solid #e3e6ea;margin-top:6px;padding-top:6px;font-weight:700}
+.regole{margin:6px 0 0;padding-left:18px;text-align:left;line-height:1.45}.regole li{margin-bottom:4px}
+.date{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:13.5px}
+.avviso-cli{background:#fff8e1;border-radius:6px;padding:6px 8px;font-size:13px}
+.rinnovo-cf{margin:6px 0 10px;font-size:14px}.rinnovo-cf summary{cursor:pointer;color:#0056b3}
 .servizi{margin:6px 0 0;padding-left:20px;text-align:left}.passi-ora{margin:6px 0 0;padding-left:20px;text-align:left;line-height:1.5}
 .scelte{display:grid;gap:6px;margin-top:10px}.nota-sicura{font-size:12px;color:#666;text-align:center;margin:8px 0 0}
 .stripe-sim{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);overflow:auto;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -321,7 +325,7 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
       <li>L'ottico inserisce lenti e ricetta: ti arriva un messaggio con il <b>canone mensile</b>.</li>
       <li>Attivi l'<b>abbonamento</b> dal telefono (carta o conto, pagina sicura Stripe): paghi solo il primo mese e la spedizione.</li>
       <li>Ti avvisiamo quando gli occhiali sono pronti. Controllo vista e una sostituzione per rottura all'anno sono inclusi.</li>
-      <li>Dopo 12 mesi scegli: <b>occhiale nuovo</b>, <b>lo tieni</b> o <b>lo restituisci</b>.</li>
+      <li>30 giorni prima dei 12 mesi ti scriviamo e scegli: <b>occhiale nuovo</b> (dal tuo ottico o dal CAF), <b>lo tieni</b> pagando il riscatto, o <b>lo restituisci</b>. Se non scegli, continua mese per mese e puoi disdire quando vuoi.</li>
     </ol>
     <button type="button" class="verde full" data-close>Ho capito</button>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
@@ -359,6 +363,10 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
   <div class="popup" id="ordinePopup" hidden><div class="popup-content alto largo">
     <h2>Ordine cliente</h2>
     <form id="formOrdineCerca" class="riga"><input type="text" id="ordineCodice" placeholder="Codice del cliente (es. SG...)" autocomplete="off" style="flex:1;text-transform:uppercase"><button type="submit">Apri</button></form>
+    <details class="rinnovo-cf"><summary>Cliente SocialGlass che rinnova da te?</summary>
+      <p style="margin:6px 0">Se il cliente aveva l'occhiale da un'altra ottica, inserisci il suo codice fiscale: dai 30 giorni prima della scadenza passa alla tua ottica.</p>
+      <form id="formRinnovoCf" class="riga"><input type="text" id="rinnovoCf" placeholder="Codice fiscale" autocomplete="off" maxlength="16" style="flex:1;text-transform:uppercase"><button type="submit">Avvia rinnovo</button></form>
+    </details>
     <div class="esito" id="ordineEsito" hidden></div>
     <form id="formOrdine" hidden novalidate>
       <div class="scheda" id="ordineCliente"></div>
@@ -402,8 +410,8 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1792790000"></script>
-<script src="listini.js?v=1792790000"></script>
-<script src="app.js?v=1792790000"></script>
+<script src="cf.js?v=1792900000"></script>
+<script src="listini.js?v=1792900000"></script>
+<script src="app.js?v=1792900000"></script>
 </body>
 </html>

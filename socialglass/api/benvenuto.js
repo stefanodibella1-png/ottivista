@@ -12,6 +12,7 @@ module.exports = L.wrap(async (req, res) => {
   L.send(res, 200, {nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
     ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo || "", citta: o.Citta || "", telefono: o.Telefono || ""} : null,
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,
-      finePeriodo: ord.finePeriodo || null,
-      pagamento: ord.pagamento ? {stato: ord.pagamento.stato, attivatoIl: ord.pagamento.attivatoIl, ratePagate: ord.pagamento.ratePagate || 0, insoluto: ord.pagamento.insoluto || null, esito: ord.pagamento.esito || null} : null}});
+      finePeriodo: ord.finePeriodo || null, periodo: L.PREZZI.periodo(ord), rinnovo: ord.rinnovo ? {prosegue: !!(ord.rinnovo.prosegue)} : null,
+      ritiro: ord.ritiro || null, storico: (ord.storico || []).length,
+      pagamento: ord.pagamento ? {stato: ord.pagamento.stato, attivatoIl: ord.pagamento.attivatoIl, ratePagate: ord.pagamento.ratePagate || 0, insoluto: ord.pagamento.insoluto || null, esito: ord.pagamento.esito || null, chiuso: ord.pagamento.chiuso || null} : null}});
 });

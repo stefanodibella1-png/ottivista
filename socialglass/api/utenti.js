@@ -26,21 +26,29 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 400, {errore: "Parametro mancante"});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
-  const s = L.verify(req, "caf"); if (!s) return L.send(res, 401, L.NOAUTH);
   const b = await L.readBody(req);
 
-  // rinnovo annuale: nuovo percorso per un cliente già registrato
+  // rinnovo: dal CAF o direttamente dall'ottico, dai 30 giorni prima della scadenza
   if (b.azione === "rinnovo"){
-    const u = await L.DB.utente("Codice Fiscale", String(b.cf || "").toUpperCase().trim());
-    if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
+    if (!sc && !so) return L.send(res, 401, L.NOAUTH);
+    const u = b.univoco ? await L.DB.utente("Univoco", String(b.univoco).toUpperCase().trim()) : await L.DB.utente("Codice Fiscale", String(b.cf || "").toUpperCase().trim());
+    if (!u) return L.send(res, 404, {errore: "Cliente non trovato. Controlla il codice fiscale."});
+    // l'ottico può rinnovare per codice univoco solo i propri clienti; per un cliente di un'altra ottica serve il codice fiscale
+    if (so && b.univoco && !String(u.f.Ottica1 || "").startsWith(so.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i tuoi clienti."});
     const ord = L.parseOrdine(u.f.Ordine);
-    const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, chiuso: new Date().toISOString()}] : []);
-    await L.DB.aggiorna(u, {Stato: L.STATI.REGISTRATO, Ordine: JSON.stringify({storico})});
-    const o = await L.DB.ottico(String(u.f.Ottica1 || "").split(" - ")[0]);
-    const link = L.linkCliente(u.f.Univoco, o && o.ID, s.id, o && o.Listino);
-    const testo = messaggio(u.f.Nome, o ? o.Intestatario : "la tua ottica", link);
-    return L.send(res, 200, {univoco: u.f.Univoco, link, whatsapp: wa((u.f.Prefisso || "+39") + u.f.Cellulare, testo), smsInviato: await sendSms((u.f.Prefisso || "+39") + u.f.Cellulare, testo)});
+    if (![L.STATI.CONSEGNATO, L.STATI.REGISTRATO].includes(u.f.Stato) && ord.pagamento && !ord.pagamento.chiuso)
+      return L.send(res, 409, {errore: "Il cliente ha un ordine in corso: il rinnovo si fa dopo la consegna."});
+    if (!L.PREZZI.rinnovabile(ord)){
+      const p = L.PREZZI.periodo(ord);
+      return L.send(res, 409, {errore: `Rinnovo possibile dal ${new Date(p.preavviso).toLocaleDateString("it-IT")} (30 giorni prima della scadenza del ${new Date(p.scadenza).toLocaleDateString("it-IT")}).`});
+    }
+    // l'ottico che rinnova diventa l'ottica del cliente; il CAF può indicarne un'altra
+    const otticoId = so ? so.id : (b.ottica || "");
+    return L.send(res, 200, await L.rinnova(u, {otticoId, caf: sc ? sc.id : ""}));
   }
+
+  const s = L.verify(req, "caf"); if (!s) return L.send(res, 401, L.NOAUTH);
 
   const d = {cf: String(b.cf || "").toUpperCase().trim(), nome: String(b.nome || "").toUpperCase().trim(), cognome: String(b.cognome || "").toUpperCase().trim(),
     prefisso: String(b.prefisso || "+39"), cellulare: String(b.cellulare || "").replace(/\D/g, ""), nato: String(b.nato || "").toUpperCase().trim(),

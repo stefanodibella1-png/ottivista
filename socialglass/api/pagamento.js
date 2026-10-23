@@ -1,12 +1,7 @@
 // Attivazione delle rate: Stripe Checkout in abbonamento (12 rate mensili) + spedizione subito.
 const L = require("./_lib");
-async function stripe(path, params){
-  const body = new URLSearchParams();
-  const add = (k, v) => { if (v === undefined || v === null) return; if (typeof v === "object" && !Array.isArray(v)) for (const [kk, vv] of Object.entries(v)) add(`${k}[${kk}]`, vv); else if (Array.isArray(v)) v.forEach((x, i) => add(`${k}[${i}]`, x)); else body.append(k, String(v)); };
-  for (const [k, v] of Object.entries(params)) add(k, v);
-  const r = await fetch(`https://api.stripe.com/v1/${path}`, {method: "POST", headers: {Authorization: `Bearer ${L.CFG.stripeKey}`, "Content-Type": "application/x-www-form-urlencoded"}, body});
-  const j = await r.json(); if (!r.ok) throw new Error(`Stripe: ${j.error && j.error.message}`); return j;
-}
+const stripe = (path, params) => L.stripeApi("POST", path, params);
+const prosegueSim = ord => ord.rinnovo && ord.rinnovo.prosegue && ord.rinnovo.prosegue.ratePagate;
 module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   const b = await L.readBody(req);
@@ -18,9 +13,26 @@ module.exports = L.wrap(async (req, res) => {
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
   if (!L.CFG.stripeKey){
     // senza Stripe collegato: attivazione simulata (solo prova)
-    ord.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString()}; ord.aggiornato = ord.pagamento.attivatoIl;
+    ord.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString(), ratePagate: ((prosegueSim(ord)) || 0) + 1}; ord.aggiornato = ord.pagamento.attivatoIl;
     await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {simulato: true});
+  }
+  // rinnovo con abbonamento già attivo: niente nuovo pagamento, cambia solo il canone dal prossimo mese
+  const prosegue = ord.rinnovo && ord.rinnovo.prosegue;
+  if (prosegue && prosegue.abbonamento){
+    try {
+      const sub = await L.stripeApi("GET", `subscriptions/${prosegue.abbonamento}`);
+      const it = sub.items.data[0];
+      await stripe(`subscriptions/${sub.id}`, {proration_behavior: "none",
+        items: [{id: it.id, price_data: {currency: "eur", unit_amount: Math.round(p.rata*100), recurring: {interval: "month"}, product: it.price.product}}],
+        description: `Abbonamento occhiale ${ord.montatura.modello} ${ord.montatura.colore} con lenti ${ord.lenti.nome} (rinnovo)`});
+      if (p.spedizione > 0) await stripe("invoiceitems", {customer: sub.customer, subscription: sub.id, currency: "eur", amount: Math.round(p.spedizione*100), description: "Spedizione occhiale nuovo"});
+    } catch(e){ console.error(e); return L.send(res, 502, {errore: "Il rinnovo non si è avviato. Riprova tra poco.", dettaglio: String(e.message).slice(0, 300)}); }
+    const ora = new Date().toISOString();
+    ord.pagamento = {stato: "ATTIVO", abbonamento: prosegue.abbonamento, cliente: prosegue.cliente, ratePagate: prosegue.ratePagate, attivatoIl: ora, rinnovato: true};
+    ord.aggiornato = ora;
+    await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
+    return L.send(res, 200, {rinnovato: true});
   }
   const descr = `Abbonamento occhiale ${ord.montatura.modello} ${ord.montatura.colore} con lenti ${ord.lenti.nome} (durata minima ${p.mesi} mesi)`;
   const params = {
