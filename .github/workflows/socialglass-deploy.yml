@@ -47,6 +47,7 @@ jobs:
             if gcloud firestore databases create --location=eur3 --project "$PID" -q > db.log 2>&1 || firebase firestore:databases:create '(default)' --location eur3 --project "$PID" --non-interactive >> db.log 2>&1; then echo "::notice title=Firestore::database creato (eur3)"
             else echo "::warning title=Firestore::non creato · servizi: $(cat svc.log | cut -c1-300) · errore: $(tail -c 500 db.log | tr '\n' ' ')"; fi
           fi
+          (cd socialglass && firebase deploy --only firestore:rules --project "$PID" --non-interactive > ../rules.log 2>&1) && echo "::notice title=Firestore::regole pubblicate (accesso solo dal server)" || echo "::warning title=Regole::$(tail -c 400 rules.log | tr '\n' ' ')"
           rm -f "$RUNNER_TEMP/sa.json"
       - name: Primo deploy
         working-directory: socialglass
