@@ -1,7 +1,6 @@
 // Attivazione delle rate: Stripe Checkout in abbonamento (12 rate mensili) + spedizione subito.
 const L = require("./_lib");
 const stripe = (path, params) => L.stripeApi("POST", path, params);
-const prosegueSim = ord => ord.rinnovo && ord.rinnovo.prosegue && ord.rinnovo.prosegue.ratePagate;
 module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   const b = await L.readBody(req);
@@ -13,7 +12,7 @@ module.exports = L.wrap(async (req, res) => {
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
   if (!L.CFG.stripeKey){
     // senza Stripe collegato: attivazione simulata (solo prova)
-    ord.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString(), ratePagate: ((prosegueSim(ord)) || 0) + 1}; ord.aggiornato = ord.pagamento.attivatoIl;
+    ord.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString(), ratePagate: 1}; ord.aggiornato = ord.pagamento.attivatoIl;
     await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {simulato: true});
   }
@@ -29,10 +28,19 @@ module.exports = L.wrap(async (req, res) => {
       if (p.spedizione > 0) await stripe("invoiceitems", {customer: sub.customer, subscription: sub.id, currency: "eur", amount: Math.round(p.spedizione*100), description: "Spedizione occhiale nuovo"});
     } catch(e){ console.error(e); return L.send(res, 502, {errore: "Il rinnovo non si è avviato. Riprova tra poco.", dettaglio: String(e.message).slice(0, 300)}); }
     const ora = new Date().toISOString();
-    ord.pagamento = {stato: "ATTIVO", abbonamento: prosegue.abbonamento, cliente: prosegue.cliente, ratePagate: prosegue.ratePagate, attivatoIl: ora, rinnovato: true};
+    // nuovo periodo: i mesi si contano da zero (il totale storico resta in "storico")
+    ord.pagamento = {stato: "ATTIVO", abbonamento: prosegue.abbonamento, cliente: prosegue.cliente, ratePagate: 0, mesiPrecedenti: prosegue.ratePagate || 0, attivatoIl: ora, rinnovato: true};
     ord.aggiornato = ora;
     await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {rinnovato: true});
+  }
+  // pagamento già aperto: si riusa la stessa pagina Stripe (niente doppi abbonamenti)
+  if (ord.pagamento && ord.pagamento.stato === "IN CORSO" && ord.pagamento.sessione){
+    try {
+      const vecchia = await L.stripeApi("GET", `checkout/sessions/${ord.pagamento.sessione}`);
+      if (vecchia.status === "complete") return L.send(res, 409, {errore: "Pagamento già ricevuto: stiamo attivando l'abbonamento, la pagina si aggiorna da sola tra pochi secondi."});
+      if (vecchia.status === "open" && vecchia.url) return L.send(res, 200, {url: vecchia.url});
+    } catch(e){ console.error(e); }
   }
   const descr = `Abbonamento occhiale ${ord.montatura.modello} ${ord.montatura.colore} con lenti ${ord.lenti.nome} (durata minima ${p.mesi} mesi)`;
   const params = {

@@ -10,7 +10,7 @@ module.exports = L.wrap(async (req, res) => {
     const o = await L.DB.ottico(s.id);
     const conv = L.PREZZI.conv(u.f.Listino || (o && o.Listino));
     return L.send(res, 200, {nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato, ordine: L.parseOrdine(u.f.Ordine),
-      listino: {lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: L.PREZZI.LISTINI.mesi, spedizione: L.PREZZI.LISTINI.spedizione}});
+      listino: {id: u.f.Listino || "", lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: L.PREZZI.LISTINI.mesi, spedizione: L.PREZZI.LISTINI.spedizione}});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   const b = await L.readBody(req);
@@ -43,11 +43,16 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (!ricetta.pd || ricetta.pd < 45 || ricetta.pd > 80) return L.send(res, 400, {errore: "Inserisci la distanza pupillare (45-80 mm)."});
   if (b.lente === "prog" && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
+  // se il cliente aveva già aperto il pagamento con il vecchio prezzo, quella pagina Stripe viene chiusa
+  if (ord.pagamento && ord.pagamento.stato === "IN CORSO" && ord.pagamento.sessione && L.CFG.stripeKey){
+    try { await L.stripeApi("POST", `checkout/sessions/${ord.pagamento.sessione}/expire`, {}); } catch(e){ console.error(e); }
+    delete ord.pagamento;
+  }
   const prev = L.PREZZI.preventivo(u.f.Listino, b.lente, b.trattamenti, ord.montatura.prezzo);
   if (!prev) return L.send(res, 400, {errore: "Scegli il tipo di lenti."});
   Object.assign(ord, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione, riscatto: prev.riscatto, modello: prev.modello},
     ottico: s.id, aggiornato: new Date().toISOString()});
   await L.DB.aggiorna(u, {Stato: L.STATI.PAGAMENTO, Ordine: JSON.stringify(ord)});
-  const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, il tuo occhiale è pronto per l'ordine: ${prev.mesi} mesi a ${prev.rata.toFixed(2).replace(".", ",")} €/mese. Apri il link, controlla il riepilogo e attiva l'abbonamento: ${L.linkCliente(u.f.Univoco, s.id)}`);
+  const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, ${ord.rinnovo && ord.rinnovo.prosegue ? "il preventivo del tuo occhiale nuovo è pronto" : "il tuo ottico ha preparato il preventivo"}: ${prev.rata.toFixed(2).replace(".", ",")} €/mese, durata minima ${prev.mesi} mesi. Apri il link, controlla il riepilogo e conferma: ${L.linkCliente(u.f.Univoco, s.id)}`);
   L.send(res, 200, {ok: true, prezzi: ord.prezzi, avviso: av});
 });

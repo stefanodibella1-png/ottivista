@@ -19,7 +19,7 @@ module.exports = L.wrap(async (req, res) => {
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
       rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, insoluto: !!(o.pagamento && o.pagamento.insoluto), finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || f.Creato || "",
       periodo: L.PREZZI.periodo(o), rinnovabile: L.PREZZI.rinnovabile(o), daRitirare: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato),
-      esito: o.pagamento && o.pagamento.esito || "",
+      esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo,
       avviso: (() => { const a = Object.values(o.avvisi || {}).filter(x => !x.inviato).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()};
   }).sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)));
   L.send(res, 200, {clienti: list});

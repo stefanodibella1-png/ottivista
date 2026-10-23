@@ -12,6 +12,16 @@ async function annota(u, ord, chiave, testo){
 async function esegui(u, ord, p, ora){
   const pg = ord.pagamento, fp = ord.finePeriodo, link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
   const stripeOk = L.CFG.stripeKey && pg.abbonamento;
+  // canone non pagato da oltre 30 giorni: l'abbonamento si chiude e l'occhiale va restituito (o riscattato)
+  if (pg.insoluto && pg.insoluto.tipo !== "riscatto" && new Date(ora) - new Date(pg.insoluto.dal) > 30*864e5){
+    if (stripeOk) await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`);
+    pg.chiuso = ora; pg.esito = "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE";
+    ord.ritiro = {daRitirare: true, dal: ora};
+    await annota(u, ord, "chiusuraInsoluto", `SocialGlass: ${u.f.Nome}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso. Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo.`);
+    return "chiuso per insoluto";
+  }
+  // con un pagamento in sospeso la scelta di fine periodo aspetta
+  if (pg.insoluto) return null;
   // 30 giorni prima
   if (p.aperto && !p.scaduto && !(ord.avvisi && ord.avvisi.preavviso)){
     await annota(u, ord, "preavviso", `SocialGlass: ${u.f.Nome}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);

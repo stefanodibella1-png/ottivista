@@ -303,6 +303,11 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
     <h2>Rinnovo occhiale</h2>
     <form id="formRinnovo"><input type="text" id="cfRinnovo" placeholder="codice fiscale del cliente" maxlength="16" style="text-transform:uppercase" autocomplete="off">
     <div class="esito" id="rinnovoEsito" hidden></div><button type="submit">Cerca</button></form>
+    <div id="rinnovoScelta" hidden>
+      <label for="rinnovoOttica" style="display:block;margin:6px 0 4px;font-size:14px">Ottica per l'occhiale nuovo</label>
+      <select id="rinnovoOttica" style="width:100%"></select>
+      <button type="button" class="verde full" id="rinnovoAvvia" style="margin-top:8px">Avvia il rinnovo e invia il nuovo link</button>
+    </div>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
   </div></div>
 
@@ -410,8 +415,8 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1792900000"></script>
-<script src="listini.js?v=1792900000"></script>
-<script src="app.js?v=1792900000"></script>
+<script src="cf.js?v=1793000000"></script>
+<script src="listini.js?v=1793000000"></script>
+<script src="app.js?v=1793000000"></script>
 </body>
 </html>
