@@ -6,7 +6,16 @@ const out = [];
 const ok = (t, c, x) => { out.push(`${c ? "OK" : "KO"} ${t}${x ? " · " + x : ""}`); if (!c) fail = true; };
 let fail = false;
 const h = await call("/api/health"); ok("health", h.d.ok, JSON.stringify(h.d));
-const caf = (await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"})).d.token; ok("login CAF", !!caf);
+const caf = (await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"})).d.token;
+if (!caf){
+  // accessi di prova rimossi dal pannello: si controllano solo le parti pubbliche
+  { const r = await fetch(B + "/api/stripe-webhook", {method: "POST", headers: {"stripe-signature": "t=1,v1=x"}, body: "{}"}); ok("webhook risponde", r.status === 400); }
+  { const r = await fetch(B + "/api/scadenze"); ok("controllo giornaliero protetto", r.status === 401); }
+  { const r = await fetch(B + "/privacy.html"); ok("informativa privacy", r.ok); }
+  console.log(`::notice title=Prova SocialGlass::${out.join(" | ")} | accessi di prova rimossi: percorso completo non provato`);
+  process.exit(fail ? 1 : 0);
+}
+ok("login CAF", !!caf);
 const ott = (await call("/api/login", {ruolo: "ottico", codice: "OTT07", password: "demo"})).d.token; ok("login ottico", !!ott);
 const p = CF.prefisso("Prova", "Automatica", "1980-01-15", "M") + "C351", cf = p + CF.control(p);
 let r = await call("/api/utenti", {cf, nome: "Prova", cognome: "Automatica", prefisso: "+39", cellulare: "3330000001", nato: "Catania", sesso: "M", datanascita: "1980-01-15", ottica: "OTT07", gdpr: true}, caf);
