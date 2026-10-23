@@ -3,6 +3,8 @@
 name: socialglass-deploy
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "40 5 * * *"   # ogni mattina: se il DNS di socialglass.it è pronto, il sito passa da solo al dominio
   push:
     branches: [main]
     paths: ["socialglass/**"]
