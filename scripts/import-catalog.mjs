@@ -18,7 +18,7 @@ fs.mkdirSync(AR_DIR, {recursive: true});
 fs.mkdirSync(IMG_DIR, {recursive: true});
 
 // carica l'analizzatore dello Studio (lo stesso codice del browser)
-const ctx = {window: {}, Math, Uint8Array, Int32Array, Uint8ClampedArray, Array, Number, Object, JSON};
+const ctx = {window: {}, Math, Uint8Array, Int32Array, Uint8ClampedArray, Float32Array, Array, Number, Object, JSON, Set, Map, String, Boolean, Infinity, isNaN, parseInt};
 ctx.ImageData = class { constructor(w, h){ this.width = w; this.height = h; this.data = new Uint8ClampedArray(w*h*4); } };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync("studio-analyze.js", "utf8"), ctx);
