@@ -8,7 +8,7 @@ const out = {};
 const h = await get(BASE); out.home = {status: h.status, url: h.url, ct: h.ct, len: h.body.length};
 note("Home", `${h.status} ${h.url} · ${h.body.length} caratteri · titolo: ${(h.body.match(/<title[^>]*>([^<]*)/i) || [])[1] || "-"}`);
 const origin = new URL(h.url || BASE).origin;
-const rb = await get(origin + "/robots.txt"); note("robots.txt", rb.status + " · " + rb.body.slice(0, 1200));
+const rb = await get(origin + "/robots.txt"); note("robots.txt", rb.status + " · " + rb.body.slice(0, 1500).split("\n").join(" | "));
 const disallow = [...rb.body.matchAll(/^Disallow:\s*(\S+)/gim)].map(m => m[1]);
 // sitemap
 const sms = [...rb.body.matchAll(/^Sitemap:\s*(\S+)/gim)].map(m => m[1]); if (!sms.length) sms.push(origin + "/sitemap.xml", origin + "/sitemap_index.xml");
@@ -26,7 +26,11 @@ note("Sitemap", `${visti.size} file · ${urls.size} indirizzi · ${[...visti].sl
 const tutti = [...urls];
 const gruppi = {}; for (const u of tutti){ const p = new URL(u).pathname.split("/").filter(Boolean); const k = p.slice(0, Math.min(2, p.length - 1)).join("/") || "/"; gruppi[k] = (gruppi[k] || 0) + 1; }
 note("Sezioni del sito", Object.entries(gruppi).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, n]) => `${k}: ${n}`).join(" · "));
-let prodotti = tutti.filter(u => /product|prodott|frame|montatur|eyewear|occhial|glasses|\/p\/|item/i.test(u));
+// pagine prodotto: /en/<categoria>/<modello>
+let prodotti = tutti.filter(u => { const p = new URL(u).pathname.split("/").filter(Boolean); return p[0] === "en" && p.length >= 3 && /frames|glasses|sunglasses/.test(p[1]); });
+const cat = {}; for (const u of prodotti){ const c = new URL(u).pathname.split("/")[2]; cat[c] = (cat[c] || 0) + 1; }
+note("Modelli per categoria (en)", Object.entries(cat).map(([k, n]) => `${k}: ${n}`).join(" · "));
+prodotti = [prodotti.find(u => /sunoptic-metal-frames/.test(u)), prodotti.find(u => /sunoptic-acetate/.test(u)), prodotti.find(u => /montana-acetate/.test(u)), prodotti.find(u => /kids/.test(u))].filter(Boolean).concat(prodotti);
 if (!prodotti.length){
   // senza sitemap: link dalla home
   const links = [...h.body.matchAll(/href="([^"#]+)"/g)].map(m => new URL(m[1], origin).href).filter(u => u.startsWith(origin));
