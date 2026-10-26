@@ -49,5 +49,9 @@ for (const u of prodotti.filter(u => !disallow.some(d => d !== "/" && new URL(u)
   const prezzo = /€|eur|price/i.test(b) ? "presente" : "assente";
   note("Pagina " + new URL(u).pathname.slice(0, 60), `${r.status} · ${imgs.length} immagini · og:image ${og || "-"} · login ${login} · prezzo ${prezzo} · titolo ${(b.match(/<title[^>]*>([^<]*)/i) || [])[1] || "-"}`);
   note("Immagini " + new URL(u).pathname.slice(0, 40), imgs.slice(0, 12).join(" "));
+  note("Contenuto " + new URL(u).pathname.slice(0, 40), b.replace(/\s+/g, " ").slice(0, 2500));
+  const api = [...new Set([...b.matchAll(/["'](\/?(?:api|graphql|data)\/[^"']{3,120})["']/gi)].map(m => m[1]))].slice(0, 20);
+  const scripts = [...b.matchAll(/<script[^>]+src="([^"]+)"/gi)].map(m => m[1]).slice(0, 15);
+  note("Script e API " + new URL(u).pathname.slice(0, 40), "api: " + api.join(" ") + " · script: " + scripts.join(" "));
   if (ld.length) note("Dati strutturati " + new URL(u).pathname.slice(0, 40), ld.join(" | "));
 }
