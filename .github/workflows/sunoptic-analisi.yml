@@ -1,10 +1,7 @@
-# Analisi in sola lettura del sito Sunoptic: nessun dato viene salvato nel repository (pubblico).
+# Il sito blocca gli accessi automatici (403): analisi disattivata, si parte solo a mano. In sola lettura del sito Sunoptic: nessun dato viene salvato nel repository (pubblico).
 name: sunoptic-analisi
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ["fornitori/sunoptic/analisi.mjs", ".github/workflows/sunoptic-analisi.yml"]
 jobs:
   analisi:
     runs-on: ubuntu-latest
