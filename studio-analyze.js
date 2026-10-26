@@ -15,6 +15,37 @@
     return [median(r), median(g), median(b)];
   }
 
+  // sfondo locale: compensa luce non uniforme, vignettatura e ombre leggere del foglio
+  function localBg(d, w, h){
+    const G = 24, cw = Math.ceil(w/G), ch = Math.ceil(h/G), gx = Math.ceil(w/cw), gy = Math.ceil(h/ch);
+    const cell = new Float32Array(gx*gy*3);
+    for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++){
+      const px = [];
+      for (let y = cy*ch; y < Math.min(h, (cy+1)*ch); y += 2) for (let x = cx*cw; x < Math.min(w, (cx+1)*cw); x += 2){ const j = (y*w + x)*4; px.push([d[j] + d[j+1] + d[j+2], j]); }
+      px.sort((a, b) => b[0] - a[0]);
+      const n = Math.max(1, Math.round(px.length*.25)); let r = 0, g = 0, b = 0;   // il 25% più chiaro = sfondo
+      for (let i = 0; i < n; i++){ const j = px[i][1]; r += d[j]; g += d[j+1]; b += d[j+2]; }
+      const k = (cy*gx + cx)*3; cell[k] = r/n; cell[k+1] = g/n; cell[k+2] = b/n;
+    }
+    // smussatura 3x3 (mediana) per non farsi ingannare da celle coperte dalla montatura
+    const sm = new Float32Array(cell.length);
+    for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) for (let c = 0; c < 3; c++){
+      const v = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){ const xx = cx + dx, yy = cy + dy; if (xx >= 0 && yy >= 0 && xx < gx && yy < gy) v.push(cell[(yy*gx + xx)*3 + c]); }
+      sm[(cy*gx + cx)*3 + c] = Math.max(...v.sort((a, b) => a - b).slice(Math.floor(v.length/2)));
+    }
+    const out = new Float32Array(w*h*3);
+    for (let y = 0; y < h; y++){
+      const fy = Math.min(gy - 1.001, Math.max(0, y/ch - .5)), y0 = fy | 0, ty = fy - y0;
+      for (let x = 0; x < w; x++){
+        const fx = Math.min(gx - 1.001, Math.max(0, x/cw - .5)), x0 = fx | 0, tx = fx - x0;
+        const a = (y0*gx + x0)*3, b = a + 3, c = a + gx*3, e = c + 3, o = (y*w + x)*3;
+        for (let k = 0; k < 3; k++) out[o + k] = (sm[a + k]*(1 - tx) + sm[b + k]*tx)*(1 - ty) + (sm[c + k]*(1 - tx) + sm[e + k]*tx)*ty;
+      }
+    }
+    return out;
+  }
+
   function morph(m, w, h, r, dilate){
     const tmp = new Uint8Array(w*h), out = new Uint8Array(w*h);
     for (let y = 0; y < h; y++){
@@ -145,16 +176,32 @@
 
   function hex(r, g, b){ return "#" + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join(""); }
 
+  // prova la sensibilità scelta e, se non basta, altre vicine: restituisce il primo risultato valido
   function analyze(img, opts){
+    const cache = {lb: localBg(img.data, img.width, img.height)};
+    const base = opts.threshold || 60, tries = [base];
+    for (const t of [base - 15, base + 15, base - 28, base + 30, base + 50, 35, 90, 120]) if (t >= 20 && t <= 160 && !tries.includes(t)) tries.push(t);
+    let first = null;
+    for (const t of tries){
+      const r = analyzeOnce(img, Object.assign({}, opts, {threshold: t}), cache);
+      if (r.ok){ r.threshold = t; if (t !== base) r.checks.push({ok: true, txt: `Sensibilità regolata in automatico a ${t}`}); return r; }
+      if (!first) first = r;
+    }
+    return first;
+  }
+  function analyzeOnce(img, opts, cache){
     const {width: w, height: h, data: d} = img;
     const thr = opts.threshold || 60;
-    const bg = bgColor(d, w, h);
-    // maschera della montatura: pixel lontani dal colore di sfondo
+    const bg = bgColor(d, w, h), lb = cache.lb;
+    // maschera della montatura: pixel lontani dallo sfondo locale (luce non uniforme compensata)
     let m = new Uint8Array(w*h);
     for (let i = 0, j = 0; i < w*h; i++, j += 4){
-      const dr = d[j]-bg[0], dg = d[j+1]-bg[1], db = d[j+2]-bg[2];
-      const dist = Math.sqrt(dr*dr*.3 + dg*dg*.59 + db*db*.11) * 1.7 + Math.max(0, (bg[0]+bg[1]+bg[2] - d[j]-d[j+1]-d[j+2])/3) * .4;
-      m[i] = dist > thr ? 1 : 0;
+      const o = i*3, dr = d[j]-lb[o], dg = d[j+1]-lb[o+1], db = d[j+2]-lb[o+2];
+      const dist = Math.sqrt(dr*dr*.3 + dg*dg*.59 + db*db*.11) * 1.7 + Math.max(0, (lb[o]+lb[o+1]+lb[o+2] - d[j]-d[j+1]-d[j+2])/3) * .4;
+      // ombra sul foglio: più scura dello sfondo ma con lo stesso colore → non è montatura
+      const sb = lb[o] + lb[o+1] + lb[o+2] + 1, sp = d[j] + d[j+1] + d[j+2] + 1, ratio = sp/sb;
+      const chroma = Math.abs(d[j]/sp - lb[o]/sb) + Math.abs(d[j+1]/sp - lb[o+1]/sb) + Math.abs(d[j+2]/sp - lb[o+2]/sb);
+      m[i] = dist > thr && !(ratio > .6 && chroma < .03) ? 1 : 0;
     }
     const R = Math.max(1, Math.round(Math.min(w, h)/500));
     m = morph(morph(m, w, h, R, true), w, h, R, false);   // chiusura: salda i bordi sottili
@@ -162,11 +209,14 @@
 
     // la montatura = componente più grande che non tocca il bordo
     const {lab, comps} = label(m, w, h, 1);
-    const cand = comps.filter(c => !c.border && c.area > w*h*.004).sort((a, b) => b.area - a.area);
-    if (!cand.length) return {ok:false, msg:"Montatura non trovata: usa uno sfondo bianco e lascia spazio attorno agli occhiali."};
-    const F = cand[0];
+    const cand = comps.filter(c => !c.border && c.area > w*h*.002).sort((a, b) => b.area - a.area);
+    if (!cand.length) return {ok:false, msg:"Montatura non trovata: inquadra tutta la montatura con un po' di sfondo libero attorno, su un foglio bianco."};
+    // pezzi della stessa montatura (es. ponte sottile o trasparente che li separa): si uniscono quelli grandi e affiancati
+    const big = cand[0], parts = cand.filter(c => c === big || (c.area > big.area*.25 && c.maxy > big.miny && c.miny < big.maxy));
+    const F = parts.reduce((a, c) => ({id: -1, area: a.area + c.area, minx: Math.min(a.minx, c.minx), miny: Math.min(a.miny, c.miny), maxx: Math.max(a.maxx, c.maxx), maxy: Math.max(a.maxy, c.maxy)}), {area: 0, minx: w, miny: h, maxx: 0, maxy: 0});
+    const ids = new Set(parts.map(c => c.id));
     const frame = new Uint8Array(w*h);
-    for (let i = 0; i < w*h; i++) if (lab[i] === F.id) frame[i] = 1;
+    for (let i = 0; i < w*h; i++) if (ids.has(lab[i])) frame[i] = 1;
 
     // le lenti = zone di sfondo racchiuse dalla montatura
     const solid = fill(frame, w, h);
@@ -174,7 +224,9 @@
     for (let i = 0; i < w*h; i++) if (solid[i] && !frame[i]) holeMask[i] = 1;
     const H = label(holeMask, w, h, 1);
     const holes = H.comps.filter(c => c.area > F.area*.15).sort((a, b) => b.area - a.area).slice(0, 2).sort((a, b) => a.cx - b.cx);
-    if (holes.length < 2) return {ok:false, msg:"Non trovo due lenti aperte. Usa lenti trasparenti (demo) e alza la sensibilità se il bordo è sottile.", bg, frame};
+    if (holes.length < 2) return {ok:false, msg: parts.length > 1 && holes.length === 0
+      ? "Vedo la montatura ma le lenti non sono chiuse da un bordo (montatura a giorno o con filo di nylon): per ora lo Studio funziona con montature a giro completo."
+      : "Non trovo due lenti aperte: togli le lenti demo se hanno etichette o riflessi forti, oppure muovi la sensibilità.", bg, frame};
 
     // contorni in pixel
     const sc = Math.max(1, Math.min(w, h)/700);
