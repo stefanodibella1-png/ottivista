@@ -39,7 +39,7 @@ if (!prodotti.length){
 }
 note("Prodotti stimati", `${prodotti.length} · esempi: ${prodotti.slice(0, 6).join(" ")}`);
 // 3 pagine di esempio: foto, dati strutturati, login
-for (const u of prodotti.filter(u => !disallow.some(d => d !== "/" && new URL(u).pathname.startsWith(d))).slice(0, 4)){
+for (const u of prodotti.filter(u => !disallow.some(d => d !== "/" && new URL(u).pathname.startsWith(d))).slice(0, 2)){
   await pausa(1500);
   const r = await get(u); const b = r.body;
   const imgs = [...new Set([...b.matchAll(/(?:src|data-src|data-zoom-image|href)="([^"]+\.(?:jpe?g|png|webp)(?:\?[^"]*)?)"/gi)].map(m => new URL(m[1].replace(/&amp;/g, "&"), u).href))].filter(x => !/logo|icon|sprite|flag|payment/i.test(x));
@@ -49,7 +49,11 @@ for (const u of prodotti.filter(u => !disallow.some(d => d !== "/" && new URL(u)
   const prezzo = /€|eur|price/i.test(b) ? "presente" : "assente";
   note("Pagina " + new URL(u).pathname.slice(0, 60), `${r.status} · ${imgs.length} immagini · og:image ${og || "-"} · login ${login} · prezzo ${prezzo} · titolo ${(b.match(/<title[^>]*>([^<]*)/i) || [])[1] || "-"}`);
   note("Immagini " + new URL(u).pathname.slice(0, 40), imgs.slice(0, 12).join(" "));
-  note("Contenuto " + new URL(u).pathname.slice(0, 40), b.replace(/\s+/g, " ").slice(0, 2500));
+  const tutte = [...new Set([...b.matchAll(/(?:https?:)?\/\/[^"'\s)]+?\.(?:jpe?g|png|webp)/gi)].map(m => m[0]))].filter(x => !/banner|logo|icon|flag/i.test(x));
+  note("Tutte le immagini " + new URL(u).pathname.slice(0, 40), tutte.length + " · " + tutte.slice(0, 15).join(" "));
+  const testo = b.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const i = testo.search(/M3|TRC|Size|Calibr|Colour|Color/); note("Testo " + new URL(u).pathname.slice(0, 40), testo.slice(Math.max(0, i - 200), i + 1800));
+  for (const k of ["login", "Log in", "price", "Price", "dealer", "retailer"]){ const j = b.indexOf(k); if (j > 0) note("Parola " + k, b.slice(j - 150, j + 150).replace(/\s+/g, " ")); }
   const api = [...new Set([...b.matchAll(/["'](\/?(?:api|graphql|data)\/[^"']{3,120})["']/gi)].map(m => m[1]))].slice(0, 20);
   const scripts = [...b.matchAll(/<script[^>]+src="([^"]+)"/gi)].map(m => m[1]).slice(0, 15);
   note("Script e API " + new URL(u).pathname.slice(0, 40), "api: " + api.join(" ") + " · script: " + scripts.join(" "));
