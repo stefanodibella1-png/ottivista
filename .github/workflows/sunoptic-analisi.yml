@@ -1,0 +1,16 @@
+# Analisi in sola lettura del sito Sunoptic: nessun dato viene salvato nel repository (pubblico).
+name: sunoptic-analisi
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["fornitori/sunoptic/analisi.mjs", ".github/workflows/sunoptic-analisi.yml"]
+jobs:
+  analisi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node fornitori/sunoptic/analisi.mjs
