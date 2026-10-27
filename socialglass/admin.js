@@ -21,7 +21,8 @@ function crea(){
   d.addEventListener("click", clic); d.addEventListener("submit", invio);
 }
 function mostra(){ document.querySelectorAll(".popup").forEach(p => p.hidden = p.id !== "adminPopup"); $("adminPopup").hidden = false; }
-function msg(t, k){ const e = $("admMsg"); if (e){ e.textContent = t; e.className = "esito " + (k || "ok"); e.hidden = !t; e.setAttribute("role", k === "err" ? "alert" : "status"); } }
+let ultimo = null;
+function msg(t, k){ ultimo = t ? {t, k, il: Date.now()} : null; const e = $("admMsg"); if (e){ e.textContent = t; e.className = "esito " + (k || "ok"); e.hidden = !t; e.setAttribute("role", k === "err" ? "alert" : "status"); } }
 async function apri(){
   crea(); mostra();
   if (tok){ await carica(); return; }
@@ -37,7 +38,8 @@ async function carica(){
   const r = await call("dati"); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
-const TAB = [["numeri", "Numeri"], ["caf", "CAF"], ["ottici", "Ottici"], ["montature", "Montature"], ["impostazioni", "Impostazioni"]];
+const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["caf", "CAF"], ["ottici", "Ottici"], ["montature", "Montature"], ["impostazioni", "Impostazioni"]];
+let clientiAdm = null, cercaAdm = "";
 function disegna(){
   const d = dati, opt = l => d.listini.map(x => `<option ${x === l ? "selected" : ""}>${esc(x)}</option>`).join("");
   let h = `<div class="riga" role="tablist">${TAB.map(([k, t]) => `<button type="button" role="tab" aria-selected="${k === scheda}" class="${k === scheda ? "" : "grigio"}" data-tab="${k}" style="margin:0 0 6px">${t}</button>`).join("")}</div><div class="esito" id="admMsg" hidden></div>`;
@@ -47,6 +49,15 @@ function disegna(){
     h += `<div class="scheda"><div class="date"><span>Clienti <b>${n.clienti}</b></span><span>Abbonamenti attivi <b>${n.abbonamentiAttivi}</b></span><span>Canoni al mese <b>${euro(n.canoniMensili)}</b></span></div></div>
       <div class="scheda"><b>Pronto per il pubblico?</b><ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></div>
       <div class="lista">${Object.entries(n.perStato).map(([s, c]) => `<div class="cli"><div class="top"><span>${esc(s)}</span><b>${c}</b></div></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div>`;
+  }
+  if (scheda === "clienti"){
+    if (!clientiAdm){ h += '<div class="vuoto">Caricamento…</div>'; $("admCorpo").innerHTML = h; call("clienti").then(r => { clientiAdm = r.ok ? r.data.clienti : []; disegna(); }); return; }
+    const q = cercaAdm.toUpperCase(), l = clientiAdm.filter(c => !q || `${c.nome} ${c.cf} ${c.univoco} ${c.caf} ${c.ottica}`.toUpperCase().includes(q));
+    h += `<label class="lbl" for="admCerca">Cerca per nome, codice fiscale o codice cliente</label><input id="admCerca" value="${esc(cercaAdm)}" autocomplete="off">
+      <p class="hint" style="margin:4px 0">${l.length} ${l.length === 1 ? "cliente" : "clienti"}. Eliminare un cliente cancella i suoi dati (anche la ricetta), libera la montatura prenotata e, se ha un abbonamento attivo, lo chiude su Stripe.</p>
+      <div class="lista">${l.slice(0, 200).map(c => `<div class="cli"><div class="top"><div><b>${esc(c.nome)}</b><div class="cod">${esc(c.univoco)} · ${esc(c.cf)}</div></div><span class="chip">${esc(c.stato)}</span></div>
+        <div>CAF ${esc(c.caf)} · ottica ${esc(c.ottica)}${c.abbonamentoAttivo ? ' · <b>abbonamento attivo</b>' : ""}</div>
+        <div class="az"><button type="button" class="grigio" data-elimina="cliente" data-id="${esc(c.univoco)}" data-attivo="${c.abbonamentoAttivo ? 1 : ""}">Elimina cliente</button></div></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div>`;
   }
   if (scheda === "caf"){
     h += `<form data-f="salvaCaf" class="scheda"><b>Nuovo CAF o modifica</b>
@@ -104,6 +115,7 @@ function disegna(){
       <button type="button" class="grigio full" data-esci>Esci dal pannello</button>`;
   }
   $("admCorpo").innerHTML = h;
+  if (ultimo && Date.now() - ultimo.il < 8000){ const u = ultimo; msg(u.t, u.k); ultimo.il = u.il; }
 }
 function riempi(f, o){ for (const [k, v] of Object.entries(o)) if (f.elements[k]) f.elements[k].value = v ?? ""; f.scrollIntoView({behavior: "smooth", block: "start"}); }
 document.addEventListener("change", async e => { if (e.target.matches && e.target.matches("[data-legale]")){ await call("legale", {valore: e.target.checked}); await carica(); msg("Salvato."); } });
@@ -114,9 +126,25 @@ async function clic(e){
   if (b.dataset.modOtt){ riempi(document.querySelector('[data-f="salvaOttico"]'), dati.ottici.find(x => x.ID === b.dataset.modOtt)); return; }
   if (b.dataset.modMon){ riempi(document.querySelector('[data-f="salvaMontatura"]'), dati.montature.find(x => x.Codice === b.dataset.modMon)); return; }
   if (b.dataset.elimina){
-    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Tocca di nuovo"; return; }
-    const r = await call("elimina", {tipo: b.dataset.elimina, id: b.dataset.id}); if (!r.ok) return msg(r.data.errore, "err");
-    await carica(); msg("Eliminato."); return;
+    const tipo = b.dataset.elimina;
+    if (!b.dataset.ok){
+      b.dataset.ok = "1"; b.className = "verde";
+      b.textContent = tipo === "cliente" ? (b.dataset.attivo ? "Chiudo l'abbonamento su Stripe ed elimino? Tocca di nuovo" : "Elimino il cliente e i suoi dati? Tocca di nuovo")
+        : tipo === "ottico" ? "Elimino l'ottica? Tocca di nuovo" : tipo === "caf" ? "Elimino il CAF? I suoi clienti restano. Tocca di nuovo" : "Confermi? Tocca di nuovo";
+      return;
+    }
+    const extra = {tipo, id: b.dataset.id};
+    if (tipo === "cliente" && b.dataset.attivo) extra.chiudiAbbonamento = true;
+    if (b.dataset.solo) extra.soloAccesso = true;
+    const r = await call("elimina", extra);
+    if (!r.ok){
+      if (r.data.soloAccesso){ b.dataset.solo = "1"; b.textContent = "Togli solo l'accesso dell'ottica"; return msg(r.data.errore, "err"); }
+      return msg(r.data.errore, "err");
+    }
+    if (tipo === "cliente") clientiAdm = null;
+    await carica();
+    msg(tipo === "cliente" ? `Cliente eliminato${r.data.abbonamentoChiuso ? " e abbonamento chiuso su Stripe" : ""}.` : r.data.soloAccesso ? "Accesso dell'ottica tolto: i suoi clienti restano visibili." : r.data.clientiRestano ? `Eliminato. I suoi ${r.data.clientiRestano} clienti restano nell'archivio.` : "Eliminato.");
+    return;
   }
   if (b.hasAttribute("data-prova")){
     if (!dati.prova) return;
@@ -127,6 +155,7 @@ async function clic(e){
   if (b.hasAttribute("data-esci")){ tok = ""; sessionStorage.removeItem("sg_admin"); $("adminPopup").hidden = true; return; }
   if (b.hasAttribute("data-stampa")) stampa();
 }
+document.addEventListener("input", e => { if (e.target.id === "admCerca"){ cercaAdm = e.target.value; const pos = e.target.selectionStart; disegna(); const n = $("admCerca"); if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(_){} } } });
 async function invio(e){
   e.preventDefault(); const f = e.target, k = f.dataset.f, v = Object.fromEntries(new FormData(f));
   if (k === "imposta" || k === "accedi"){

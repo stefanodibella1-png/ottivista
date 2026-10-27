@@ -83,11 +83,38 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.salva("mont", cod, {Codice: cod, Modello: pulito(b.Modello, 60), Colore: pulito(b.Colore, 40), Calibro: pulito(b.Calibro, 10), Asse: pulito(b.Asse, 10), Prezzo: Number(b.Prezzo) > 0 ? Number(b.Prezzo) : null, Stato: st});
     return L.send(res, 200, {ok: true});
   }
+  if (az === "clienti"){
+    const tutti = await L.DB.tutti();
+    return L.send(res, 200, {clienti: tutti.map(({f}) => { const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {};
+      return {univoco: f.Univoco, nome: `${f.Nome || ""} ${f.Cognome || ""}`.trim(), cf: f["Codice Fiscale"] || "", caf: f.CAF || "", ottica: String(f.Ottica1 || "").split(" - ")[0],
+        stato: f.Stato || "", abbonamentoAttivo: !!(pg.abbonamento && !pg.chiuso), creato: f.Creato || ""}; })
+      .sort((a, b) => String(b.creato).localeCompare(String(a.creato)))});
+  }
   if (az === "elimina"){
-    const k = {caf: "caf", ottico: "ottici", montatura: "mont"}[b.tipo]; if (!k) return L.send(res, 400, {errore: "Tipo non valido"});
     const id = pulito(b.id, 20).toUpperCase();
+    if (b.tipo === "cliente"){
+      const u = await L.DB.utente("Univoco", id); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+      const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {}, prosegue = o.rinnovo && o.rinnovo.prosegue;
+      const abb = (pg.abbonamento && !pg.chiuso) ? pg.abbonamento : (prosegue && prosegue.abbonamento) || "";
+      // con un abbonamento attivo si elimina solo chiudendolo, per non lasciare addebiti senza cliente
+      if (abb && !b.chiudiAbbonamento) return L.send(res, 409, {errore: "Il cliente ha un abbonamento attivo.", abbonamento: true});
+      if (abb && L.CFG.stripeKey){ try { await L.stripeApi("DELETE", `subscriptions/${abb}`); } catch(e){ if (!/No such subscription/i.test(e.message)) return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco."}); } }
+      if (o.montatura && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){ const m = await L.DB.montatura(o.montatura.codice); if (m && m.f.Stato === "RISERVATA") await L.DB.aggiornaMontatura(m, {Stato: "DISPONIBILE"}); }
+      await L.DB.elimina("utenti", u.id);
+      return L.send(res, 200, {ok: true, abbonamentoChiuso: !!abb});
+    }
+    const k = {caf: "caf", ottico: "ottici", montatura: "mont"}[b.tipo]; if (!k) return L.send(res, 400, {errore: "Tipo non valido"});
     if (k === "mont"){ const m = await L.DB.montatura(id); if (m && m.f.Stato === "RISERVATA") return L.send(res, 409, {errore: "Montatura prenotata da un cliente: non si può eliminare."}); }
-    await L.DB.elimina(k, id); if (k === "ottici") await L.DB.elimina("ottLogin", id);
+    if (k === "ottici" || k === "caf"){
+      // i clienti restano: un'ottica con clienti in corso non si elimina (perderebbero indirizzo e ordini), si toglie solo l'accesso
+      const legati = (await L.DB.tutti()).filter(({f}) => k === "caf" ? f.CAF === id : String(f.Ottica1 || "").startsWith(id + " "));
+      const inCorso = legati.filter(({f}) => { const pg = L.parseOrdine(f.Ordine).pagamento || {}; return f.Stato !== L.STATI.CONSEGNATO || (pg.abbonamento && !pg.chiuso); });
+      if (k === "ottici" && inCorso.length && !b.soloAccesso) return L.send(res, 409, {errore: `L'ottica ha ${inCorso.length} ${inCorso.length === 1 ? "cliente" : "clienti"} con ordini o abbonamenti in corso: puoi togliere solo l'accesso.`, soloAccesso: true});
+      if (k === "ottici" && b.soloAccesso){ await L.DB.elimina("ottLogin", id); return L.send(res, 200, {ok: true, soloAccesso: true}); }
+      await L.DB.elimina(k, id); if (k === "ottici") await L.DB.elimina("ottLogin", id);
+      return L.send(res, 200, {ok: true, clientiRestano: legati.length});
+    }
+    await L.DB.elimina(k, id);
     return L.send(res, 200, {ok: true});
   }
   if (az === "cambiaPassword"){
