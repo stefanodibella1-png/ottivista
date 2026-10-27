@@ -12,12 +12,11 @@ jobs:
       - name: Interroga registro .it, nameserver Register e Vercel
         run: |
           sudo apt-get -qq install -y dnsutils >/dev/null 2>&1 || true
-          D=socialglass.it
-          n(){ echo "::notice title=$1::$(echo "$2" | tr '\n' ' ' | cut -c1-3000)"; }
-          n "Registro .it (NS delegati)" "$(dig +norec NS $D @a.dns.it +short; dig +norec NS $D @a.dns.it | grep -E 'IN\s+NS' )"
-          for t in A AAAA MX TXT CNAME NS; do n "Register ns1 $t $D" "$(dig $t $D @ns1.register.it +short)"; done
-          for h in www mail pop pop3 imap smtp webmail pec autodiscover autoconfig ftp; do n "Register ns1 $h" "$(dig $h.$D @ns1.register.it +short)"; done
-          n "Resolver pubblico 8.8.8.8 NS" "$(dig NS $D @8.8.8.8 +short)"
-          n "Resolver pubblico 8.8.8.8 MX" "$(dig MX $D @8.8.8.8 +short)"
-          n "Resolver pubblico 1.1.1.1 NS" "$(dig NS $D @1.1.1.1 +short)"
-          n "Vercel ns1 MX" "$(dig MX $D @ns1.vercel-dns.com +short)"
+          D=socialglass.it; R=""
+          r(){ R="$R | $1"; }
+          r "REGISTRO: $(dig +norec NS $D @a.dns.it | grep -E 'IN[[:space:]]+NS' | awk '{print $5}' | tr '\n' ' ')"
+          for t in A AAAA MX TXT CAA SRV; do r "$t @: $(dig $t $D @ns1.register.it +short | tr '\n' ' ')"; done
+          for h in www mail pop pop3 imap smtp webmail pec autodiscover autoconfig ftp mx _dmarc default._domainkey; do
+            v=$(dig $h.$D @ns1.register.it +noall +answer | awk '{print $4"="$5}' | tr '\n' ' '); [ -n "$v" ] && r "$h: $v"; done
+          echo "::notice title=Zona Register::$R"
+          echo "::notice title=Pubblico::8.8.8.8 NS $(dig NS $D @8.8.8.8 +short | tr '\n' ' ') · MX $(dig MX $D @8.8.8.8 +short | tr '\n' ' ')"
