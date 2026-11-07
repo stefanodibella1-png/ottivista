@@ -58,23 +58,37 @@ document.addEventListener("keydown", e => {
   if (e.shiftKey && document.activeElement === f[0]){ e.preventDefault(); f[f.length - 1].focus(); }
   else if (!e.shiftKey && document.activeElement === f[f.length - 1]){ e.preventDefault(); f[0].focus(); }
 });
-function open(id){
-  if (![...document.querySelectorAll(".popup")].some(x => !x.hidden)) primaDelPopup = document.activeElement;
+// "Indietro": si torna alla finestra precedente (es. dal modulo cliente al menu del CAF o dell'ottico)
+const NON_IN_STORIA = ["passwordPopup", "otticoPopup"];
+let storia = [];
+document.querySelectorAll(".popup .popup-content").forEach(c => {
+  const b = document.createElement("button"); b.type = "button"; b.className = "back-btn"; b.hidden = true; b.textContent = "← Indietro"; b.setAttribute("aria-label", "Torna alla finestra precedente");
+  b.addEventListener("click", indietro); c.prepend(b);
+});
+function aggiornaIndietro(){
+  document.querySelectorAll(".popup").forEach(p => { const b = p.querySelector(".back-btn"), c = p.querySelector(".popup-content"); if (!b) return; const si = !p.hidden && storia.length > 0; b.hidden = !si; if (c) c.classList.toggle("con-indietro", si); });
+}
+function indietro(){ const prev = storia.pop(); if (prev) open(prev, true); else closeAll(); }
+function open(id, daIndietro){
+  const aperta = [...document.querySelectorAll(".popup")].find(x => !x.hidden);
+  if (!aperta) primaDelPopup = document.activeElement;
+  if (!daIndietro){ if (aperta && aperta.id !== id && !NON_IN_STORIA.includes(aperta.id)) storia.push(aperta.id); else if (!aperta) storia = []; }
+  setTimeout(aggiornaIndietro, 0);
   document.querySelectorAll(".popup").forEach(p => p.hidden = p.id !== id);
   const el = $(id); el.hidden = false;
   setTimeout(() => { if (!el.contains(document.activeElement)){ const t = el.querySelector("h2"); if (t){ t.tabIndex = -1; t.focus({preventScroll: true}); } } }, 60);
   const f = el.querySelector("input:not([disabled]):not([type=checkbox]):not([type=radio]),select:not([disabled])");
   if (f && !("ontouchstart" in window)) setTimeout(() => f.focus(), 50);
 }
-function closeAll(){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); ritornaFocus(); }
+function closeAll(){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); storia = []; ritornaFocus(); }
 function ritornaFocus(){ if (primaDelPopup && document.contains(primaDelPopup)) try { primaDelPopup.focus(); } catch(_){} primaDelPopup = null; }
 document.addEventListener("click", e => {
-  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; ritornaFocus(); return; }
+  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; storia = []; ritornaFocus(); return; }
   const o = e.target.closest("[data-open]");
   if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); if (o.dataset.open === "ordinePopup") resetOrdine(); return; }
   if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id"].forEach(k => sessionStorage.removeItem(k)); closeAll(); return; }
   if (e.target.closest("[data-clienti]")){ apriClienti(); return; }
-  if (e.target.classList && e.target.classList.contains("popup")) e.target.hidden = true;
+  if (e.target.classList && e.target.classList.contains("popup")){ e.target.hidden = true; storia = []; }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeAll(); stopScan(); } });
 function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.setAttribute("role", kind === "err" ? "alert" : "status"); el.hidden = !txt; }

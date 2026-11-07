@@ -19,14 +19,16 @@
 html{height:100%}
 body{
   margin:0;min-height:100%;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:var(--testo);
-  background-color:var(--fondo);
-  /* sfondo originale per computer; se manca resta la sfumatura */
-  background-image:url("assets/sfondo-socialglass.jpg"), linear-gradient(160deg,#f5f8fc 0%,#e6edf6 45%,#d6e1ef 100%);
-  background-size:cover;background-repeat:no-repeat;background-position:center center;background-attachment:fixed;
+  /* illustrazione: persone in basso a sinistra, logo a destra; il fondo bianco continua l'immagine */
+  background-color:#fff;
+  background-image:url("assets/sfondo-socialglass.jpg");
+  background-size:contain;background-repeat:no-repeat;background-position:left bottom;background-attachment:fixed;
+  min-height:100vh;
   position:relative;overflow-x:hidden;
 }
 @media (max-width:768px){
-  body{background-image:url("assets/sfondo-mobile-socialglass.jpg"), linear-gradient(170deg,#f5f8fc 0%,#e6edf6 50%,#d6e1ef 100%);background-size:100% 100%;min-height:100vh}
+  html{background:#fff}
+  body{--ill:max(260px,min(121vw,calc(100svh - 372px)));background-image:url("assets/sfondo-mobile-socialglass.jpg");background-size:auto var(--ill);background-position:center bottom;background-attachment:scroll;min-height:max(100svh,calc(var(--ill) + 372px))}
 }
 h2{font-size:20px;line-height:1.4;margin:0 0 14px}
 
@@ -50,8 +52,8 @@ input:disabled,select:disabled{background:#f3f3f3;opacity:.7}
 @media (max-width:768px){ .area-mobile{display:flex} }
 
 /* logo cadente (computer) e logo fisso (telefono) */
-#immagineCadente1{position:absolute;top:-600px;left:78%;transform:translateX(-50%);width:min(560px,40vw);height:auto;z-index:2;filter:drop-shadow(0 6px 18px rgba(10,31,92,.12))}
-#immagineCadente2{position:absolute;width:min(260px,18vw);height:auto;z-index:2;animation:ruota 6s linear infinite;left:84%;transform:translateX(-50%)}
+#immagineCadente1{position:absolute;top:-600px;left:85%;transform:translateX(-50%);width:min(520px,27vw);height:auto;z-index:2;filter:drop-shadow(0 6px 18px rgba(10,31,92,.12))}
+#immagineCadente2{position:absolute;width:min(240px,14vw);height:auto;z-index:2;animation:ruota 6s linear infinite;left:85%;transform:translateX(-50%)}
 @keyframes ruota{0%{transform:translateX(-50%) rotateY(0deg)}100%{transform:translateX(-50%) rotateY(360deg)}}
 #mobile-image{display:none}
 @media (max-width:768px){
@@ -69,6 +71,8 @@ body.cliente .slogan-mobile{display:none!important}
 @media (max-width:768px){
   .slogan-mobile{display:block;text-align:center;color:#0A1F5C;font-size:17px;line-height:1.45;margin:18px auto 0;padding:0 22px;max-width:420px}
   .slogan-mobile b{display:block;font-size:21px;margin-bottom:4px}
+  /* sopra l'illustrazione (alta ~121vw), senza cambiarne forma e dimensione */
+  body:not(.cliente) #come-funziona{top:auto;bottom:calc(var(--ill) + 12px)}
 }
 
 /* popup con sfocatura ed effetto 3D */
@@ -77,6 +81,9 @@ body.cliente .slogan-mobile{display:none!important}
 @media (hover:hover){ .popup-content:hover{transform:translate(-50%,-50%) rotateX(0deg)} }
 @media (hover:none){ .popup-content{transform:translate(-50%,-50%)} }
 .popup-content.alto{top:15px;transform:translate(-50%,0) rotateX(0deg)}
+.back-btn{position:absolute;left:10px;top:8px;cursor:pointer;font-size:14px;font-weight:700;color:#0062CC;background:none;border:0;box-shadow:none;padding:4px 6px;margin:0;line-height:1.2}
+.back-btn:hover{background:none;text-decoration:underline;transform:none}
+.popup-content.con-indietro h2{margin-top:22px}
 .close-btn{position:absolute;right:10px;top:5px;cursor:pointer;font-size:24px;color:#aaa;transition:color .3s;background:none;border:0;box-shadow:none;padding:0 6px;margin:0;line-height:1.2}
 .close-btn:hover{color:var(--blu);background:none;transform:none}
 .popup-content .full{display:block;width:100%}
@@ -445,8 +452,8 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1793300000"></script>
-<script src="listini.js?v=1793300000"></script>
-<script src="app.js?v=1793300000"></script>
+<script src="cf.js?v=1793400000"></script>
+<script src="listini.js?v=1793400000"></script>
+<script src="app.js?v=1793400000"></script>
 </body>
 </html>
