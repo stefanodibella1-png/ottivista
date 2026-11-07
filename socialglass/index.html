@@ -27,8 +27,10 @@ body{
   position:relative;overflow-x:hidden;
 }
 @media (max-width:768px){
+  /* illustrazione fissata sopra la barra "Accesso CAF / Accesso ottico", scalata nello spazio libero */
   html{background:#fff}
-  body{--ill:max(260px,min(121vw,calc(100svh - 372px)));background-image:url("assets/sfondo-mobile-socialglass.jpg");background-size:auto var(--ill);background-position:center bottom;background-attachment:scroll;min-height:max(100svh,calc(var(--ill) + 372px))}
+  body{--barra:calc(env(safe-area-inset-bottom,0px) + 76px);--ill:max(150px,min(110vw,calc(100svh - 380px - var(--barra))));background:transparent;min-height:100svh}
+  body:not(.cliente)::before{content:"";position:fixed;left:0;right:0;bottom:var(--barra);height:var(--ill);background:url("assets/sfondo-mobile-socialglass.jpg") center bottom/contain no-repeat;z-index:-1;pointer-events:none}
 }
 h2{font-size:20px;line-height:1.4;margin:0 0 14px}
 
@@ -71,8 +73,13 @@ body.cliente .slogan-mobile{display:none!important}
 @media (max-width:768px){
   .slogan-mobile{display:block;text-align:center;color:#0A1F5C;font-size:17px;line-height:1.45;margin:18px auto 0;padding:0 22px;max-width:420px}
   .slogan-mobile b{display:block;font-size:21px;margin-bottom:4px}
-  /* sopra l'illustrazione (alta ~121vw), senza cambiarne forma e dimensione */
-  body:not(.cliente) #come-funziona{top:auto;bottom:calc(var(--ill) + 12px)}
+  /* "Come funziona" sopra l'illustrazione, stessa forma e misura */
+  body:not(.cliente) #come-funziona{position:fixed;top:auto;bottom:calc(var(--ill) + var(--barra) + 10px)}
+}
+@media (max-width:768px) and (max-height:620px){
+  #mobile-image{width:min(70vw,300px);margin-top:calc(env(safe-area-inset-top,0px) + 16px)}
+  .slogan-mobile{font-size:15px;margin-top:10px}
+  .slogan-mobile b{font-size:18px}
 }
 
 /* popup con sfocatura ed effetto 3D */
