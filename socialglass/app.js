@@ -51,16 +51,18 @@ function campiPeriodo(pfx, st){
     <input type="date" id="${pfx}Da" aria-label="Dal" value="${esc(st.da)}" ${st.p === "libero" ? "" : "hidden"} style="grid-column:auto"><input type="date" id="${pfx}A" aria-label="Al" value="${esc(st.a)}" ${st.p === "libero" ? "" : "hidden"} style="grid-column:auto"></div>`;
 }
 const testoPeriodo = k => k && k.periodo && (k.periodo.da || k.periodo.a) ? `dal ${k.periodo.da ? new Date(k.periodo.da).toLocaleDateString("it-IT") : "inizio"} al ${k.periodo.a ? new Date(k.periodo.a).toLocaleDateString("it-IT") : "oggi"}` : "da sempre";
-// riquadro conteggi: incassi di SocialGlass dai clienti (Stripe) e compenso secondo l'accordo
-function contiCorpo(k){
-  const acc = k.accordo ? (k.accordo.tipo === "fisso" ? `${euro(k.accordo.valore)} per ogni abbonamento attivato` : `${String(k.accordo.valore).replace(".", ",")}% sui canoni incassati`) : "";
-  return `<div class="conti"><div>Nuovi clienti<b>${k.clienti}</b></div><div>Abbonamenti attivati<b>${k.attivati}</b></div><div>Attivi oggi<b>${k.attivi}</b></div><div>Occhiali consegnati<b>${k.consegnati}</b></div>
-    <div>Canoni pagati dai clienti<b>${euro(k.canoni)}</b></div><div>Spedizioni pagate<b>${euro(k.spedizioni)}</b></div>${k.riscatti ? `<div>Riscatti pagati<b>${euro(k.riscatti)}</b></div>` : ""}<div>Totale incassato<b>${euro(k.incassati)}</b></div>
-    ${acc ? `<div>Compenso maturato nel periodo<b>${euro(k.maturato)}</b></div><div>Compenso maturato in totale<b>${euro(k.maturatoTotale)}</b></div><div>Già liquidato<b>${euro(k.liquidato)}</b></div><div>Da liquidare<b>${euro(k.saldo)}</b></div>` : ""}</div>
-    <div class="hint" style="font-size:12.5px">Periodo: ${testoPeriodo(k)}. Gli importi sono pagati dai clienti a SocialGlass con la carta (Stripe): l'ottica e il CAF non incassano nulla direttamente.
-      ${acc ? "Accordo con SocialGlass: " + acc + "." : "L'accordo economico con SocialGlass non è ancora stato impostato."}${k.stima ? " Le date dei canoni pagati prima del 9/11/2026 sono ricostruite (un canone al mese dall'attivazione)." : ""}</div>`;
+// estratto conto del CAF o dell'ottica verso SocialGlass: compensi secondo l'accordo e pagamenti ricevuti
+const dataIt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
+function testoAccordo(acc){ return acc ? (acc.tipo === "fisso" ? `${euro(acc.valore)} per ogni abbonamento attivato` : `${String(acc.valore).replace(".", ",")}% su ogni canone pagato dai clienti`) : ""; }
+function estrattoCorpo(e, conCliente){
+  if (!e.accordo && !e.righe.length) return `<p class="hint">L'accordo economico con SocialGlass non è ancora stato impostato: chiedi all'amministratore.</p>`;
+  return `<div class="conti"><div>Saldo a inizio periodo<b>${euro(e.saldoIniziale)}</b></div><div>Compensi maturati<b>${euro(e.maturato)}</b></div><div>Pagamenti ricevuti<b>${euro(e.pagato)}</b></div><div>Saldo a fine periodo<b>${euro(e.saldoFinale)}</b></div></div>
+    <div class="hint" style="font-size:12.5px">Periodo: ${testoPeriodo(e)}. ${e.accordo ? "Accordo: " + testoAccordo(e.accordo) + "." : ""} Da sempre: maturati ${euro(e.maturatoTot)}, ricevuti ${euro(e.pagatoTot)}, <b>da ricevere ${euro(e.saldoAttuale)}</b>.${e.stima ? " Le date dei canoni pagati prima del 9/11/2026 sono ricostruite (un canone al mese dall'attivazione)." : ""}</div>
+    ${e.righe.length ? `<div style="overflow-x:auto"><table class="rx estr" style="width:100%;margin-top:6px"><tr><th style="text-align:left">Data</th><th style="text-align:left">Movimento</th>${conCliente ? '<th style="text-align:left">Cliente</th>' : ""}<th>Compenso</th><th>Pagamento</th><th>Saldo</th></tr>
+      ${e.righe.map(x => `<tr><td style="text-align:left">${dataIt(x.il)}</td><td style="text-align:left">${esc(x.descrizione)}</td>${conCliente ? `<td style="text-align:left">${esc(x.cliente || "")}${x.univoco ? `<br><small>${esc(x.univoco)}</small>` : ""}</td>` : ""}
+        <td>${x.tipo === "compenso" ? euro(x.importo) : ""}</td><td>${x.tipo === "pagamento" ? euro(x.importo) : ""}</td><td>${euro(x.saldo)}</td></tr>`).join("")}</table></div>` : '<p class="hint">Nessun movimento nel periodo.</p>'}`;
 }
-window.SG_STAMPA = {stampaDoc, pulisciStampa, periodoDa, campiPeriodo, contiCorpo, testoPeriodo};
+window.SG_STAMPA = {stampaDoc, pulisciStampa, periodoDa, campiPeriodo, estrattoCorpo, testoPeriodo, testoAccordo};
 
 /* ---------- immagini mancanti: segnaposto ---------- */
 const SVG = {
@@ -410,7 +412,7 @@ async function apriClienti(){
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
   const [da, a] = periodoDa(perCli.p, perCli.da, perCli.a);
   const r = await api(`api/clienti${da || a ? `?da=${da}&a=${a}` : ""}`); if (scaduta(r)) return;
-  clienti = r.ok ? r.data.clienti : []; disegnaConti(r.ok ? r.data.conteggi : null);
+  clienti = r.ok ? r.data.clienti : []; disegnaConti(r.ok ? r.data.estratto : null);
   { const n = clienti.filter(c => c.avviso).length; document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; }); }
   const sel = $("filtroStato"); sel.length = 1;
   ORDINE_STATI.forEach(s => { if (clienti.some(c => c.stato === s)){ const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); } });
@@ -447,7 +449,7 @@ function ricettaCli(r){
 let perCli = {p: "", da: "", a: ""};
 function disegnaConti(k){
   const box = $("clientiConti"); if (!k){ box.hidden = true; return; }
-  $("clientiContiCorpo").innerHTML = campiPeriodo("pc", perCli) + contiCorpo(k);
+  $("clientiContiCorpo").innerHTML = campiPeriodo("pc", perCli) + estrattoCorpo(k, true) + `<button type="button" class="no-stampa" data-stampa-estratto style="margin-top:6px">Stampa estratto conto</button>`;
   box.hidden = false;
 }
 $("clientiConti").addEventListener("change", e => {
@@ -460,7 +462,7 @@ let clientiVisti = [];
 function stampaElencoClienti(){
   const isOtt = ruolo() === "ottico", sel = $("filtroStato").value, sit = $("filtroSit");
   const filtri = [sel, sit.value ? sit.options[sit.selectedIndex].text : "", $("filtroClienti").value.trim()].filter(Boolean).join(" · ");
-  const conti = $("clientiConti").hidden ? "" : "<h2>Conteggi con SocialGlass</h2>" + pulisciStampa($("clientiContiCorpo"));
+  const conti = "";
   stampaDoc(`Clienti ${isOtt ? "dell'ottica" : "del CAF"} ${sessionStorage.getItem("sg_id") || ""} ${sessionStorage.getItem("sg_nome") || ""}`.trim(), `${filtri ? `<p class="hint">Filtri: ${esc(filtri)}</p>` : ""}${conti}
     <h2>${clientiVisti.length} clienti</h2><table><tr><th>Codice</th><th>Cliente</th>${isOtt ? "<th>CAF</th>" : "<th>Codice fiscale</th>"}<th>Stato</th><th>Montatura</th><th>Abbonamento dal</th><th>Scadenza</th><th>Consegnato</th><th>Note</th></tr>
     ${clientiVisti.map(c => `<tr><td>${esc(c.univoco)}</td><td>${esc(c.nome)} ${esc(c.cognome)}<br><small>${esc(c.cellulare)}</small></td><td>${esc(isOtt ? c.caf : c.cf)}</td><td>${esc(c.stato)}</td><td>${esc(c.montatura || "")}</td>
@@ -512,6 +514,7 @@ $("filtroSit").addEventListener("change", disegnaClienti);
 $("clientiPopup").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.hasAttribute("data-stampa-elenco")) stampaElencoClienti();
+  if (b.hasAttribute("data-stampa-estratto")) stampaDoc(`Estratto conto con SocialGlass · ${sessionStorage.getItem("sg_id") || ""} ${sessionStorage.getItem("sg_nome") || ""}`, pulisciStampa($("clientiContiCorpo")));
   if (b.dataset.stampaCli){ const d = document.querySelector(`#clientiLista details[data-u="${CSS.escape(b.dataset.stampaCli)}"]`); if (d) stampaDoc("Scheda cliente", `<div class="cli">${pulisciStampa(d)}</div>`); }
 });
 $("clientiLista").addEventListener("click", async e => {

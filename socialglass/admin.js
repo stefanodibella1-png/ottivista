@@ -39,7 +39,7 @@ async function carica(){
   const r = await call("dati", {da, a}); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
-const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
+const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["conteggi", "Conteggi"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
 let clientiAdm = null, schedaCli = null, filtriAdm = {q: "", caf: "", ottica: "", stato: "", sit: ""};
 const SIT = {
   morosi: ["Morosi", c => c.moroso], bloccati: ["Anagrafica bloccata", c => c.bloccato], attivi: ["Abbonamento attivo", c => c.abbonamentoAttivo],
@@ -57,16 +57,43 @@ function ricettaHtml(r){
 function campiCompenso(pfx){
   return `<fieldset style="border:1px solid #e3e6ea;border-radius:8px;padding:6px 10px;margin:8px 0"><legend style="font-size:13px;color:#555;padding:0 4px">Accordo economico con SocialGlass</legend>
     <label class="lbl" for="${pfx}CT">Compenso</label><select id="${pfx}CT" name="CompensoTipo"><option value="">Non ancora definito</option><option value="fisso">€ per ogni abbonamento attivato</option><option value="percentuale">% sui canoni incassati</option></select>
-    <div class="riga"><div style="flex:1"><label class="lbl" for="${pfx}CV">Valore (€ o %)</label><input id="${pfx}CV" name="CompensoValore" inputmode="decimal"></div>
-    <div style="flex:1"><label class="lbl" for="${pfx}CL">Già liquidato (€)</label><input id="${pfx}CL" name="CompensoLiquidato" inputmode="decimal"></div></div></fieldset>`;
+    <label class="lbl" for="${pfx}CV">Valore (€ o %)</label><input id="${pfx}CV" name="CompensoValore" inputmode="decimal">
+    <p class="hint" style="margin:4px 0;font-size:12.5px">I pagamenti al partner (acconti e saldi) si registrano nella sezione <b>Conteggi</b>.</p></fieldset>`;
 }
 let perAdm = {p: "", da: "", a: ""};
-function contiHtml(k){
-  if (!k) return "";
-  return window.SG_STAMPA.contiCorpo(k);
-  const acc = k.accordo ? (k.accordo.tipo === "fisso" ? `${euro(k.accordo.valore)} per abbonamento attivato` : `${String(k.accordo.valore).replace(".", ",")}% sui canoni incassati`) : "accordo non ancora definito";
-  return `<div class="conti"><div>Clienti<b>${k.clienti}</b></div><div>Abbonamenti attivati<b>${k.attivati}</b></div><div>Attivi ora<b>${k.attivi}</b></div><div>Canoni incassati<b>${euro(k.incassati)}</b></div>
-    <div>Compenso maturato<b>${euro(k.maturato)}</b></div><div>Già liquidato<b>${euro(k.liquidato)}</b></div><div>Da liquidare<b>${euro(k.saldo)}</b></div></div><div class="hint" style="font-size:12.5px">Accordo: ${acc}.</div>`;
+// riga breve nelle schede CAF/Ottici: il dettaglio è nella sezione Conteggi
+function contiHtml(x, tipo){
+  const e = x.estratto || {}, acc = e.accordo ? window.SG_STAMPA.testoAccordo(e.accordo) : "accordo non definito";
+  return `<div style="font-size:13.5px">Accordo: ${esc(acc)} · da liquidare <b>${euro(e.saldoAttuale)}</b> · <button type="button" class="linkbtn" data-conto="${tipo}:${esc(x.ID)}">estratto conto</button></div>`;
+}
+let contoAperto = null;
+function vistaConteggi(){
+  const d = dati, S = window.SG_STAMPA;
+  if (contoAperto){
+    const [tipo, id] = contoAperto.split(":"), x = (tipo === "caf" ? d.caf : d.ottici).find(y => y.ID === id);
+    if (!x){ contoAperto = null; return vistaConteggi(); }
+    const e = x.estratto, oggi = new Date().toISOString().slice(0, 10), pag = (e.righe || []).filter(r => r.tipo === "pagamento");
+    return `<div class="riga" style="justify-content:space-between;align-items:center"><button type="button" class="linkbtn" data-chiudi-conto style="margin:0">← Torna ai conteggi</button><button type="button" data-stampa-estratto-adm style="margin:0">Stampa estratto conto</button></div>
+      <div class="scheda" id="estrattoAdm"><b style="font-size:17px">${tipo === "caf" ? "CAF" : "Ottica"} ${esc(x.ID)} · ${esc(tipo === "caf" ? x.Nome : x.Intestatario)}</b>${S.campiPeriodo("pa", perAdm)}${S.estrattoCorpo(e, true)}</div>
+      <form data-f="liquidazione" data-tipo="${tipo}" data-id="${esc(x.ID)}" class="scheda"><b>Registra un pagamento al ${tipo === "caf" ? "CAF" : "l'ottica"}</b>
+        <div class="riga"><div style="flex:1"><label class="lbl" for="lqD">Data</label><input id="lqD" name="data" type="date" value="${oggi}" required></div><div style="flex:1"><label class="lbl" for="lqI">Importo (€)</label><input id="lqI" name="importo" inputmode="decimal" required></div></div>
+        <div class="riga"><div style="flex:1"><label class="lbl" for="lqC">Causale</label><select id="lqC" name="causale"><option value="acconto">Acconto</option><option value="saldo">Saldo</option><option value="rettifica">Rettifica</option></select></div><div style="flex:1"><label class="lbl" for="lqM">Metodo</label><input id="lqM" name="metodo" placeholder="es. bonifico" maxlength="40"></div></div>
+        <label class="lbl" for="lqN">Nota (es. riferimento fattura, periodo)</label><input id="lqN" name="nota" maxlength="200">
+        <button type="submit" class="verde full">Registra pagamento</button></form>
+      ${pag.length ? `<div class="scheda"><b>Pagamenti nel periodo</b>${pag.map(p => `<div class="riga" style="justify-content:space-between;align-items:center;border-bottom:1px solid #eef1f5;padding:3px 0"><span>${dt(p.il)} · ${euro(p.importo)} · ${esc(p.descrizione)}</span>${p.id !== "precedenti" ? `<button type="button" class="grigio" data-elimina-liq="${esc(p.id)}" style="margin:0">Elimina</button>` : ""}</div>`).join("")}</div>` : ""}`;
+  }
+  const somma = (l, f) => l.reduce((t, x) => t + (f(x) || 0), 0), tutti = d.caf.map(x => ["caf", x]).concat(d.ottici.map(x => ["ottico", x]));
+  // gli incassi si contano una volta sola (sui CAF: ogni cliente ha un CAF)
+  const inc = k => somma(d.caf, x => x.conti[k]), mat = somma(tutti, ([, x]) => x.estratto.maturato), pagato = somma(tutti, ([, x]) => x.estratto.pagato), daLiq = somma(tutti, ([, x]) => x.estratto.saldoAttuale);
+  const tab = (tipo, l) => `<div style="overflow-x:auto"><table class="rx" style="width:100%"><tr><th style="text-align:left">${tipo === "caf" ? "CAF" : "Ottica"}</th><th style="text-align:left">Accordo</th><th>Attivati</th><th>Canoni dei suoi clienti</th><th>Compensi maturati</th><th>Pagati</th><th>Da liquidare oggi</th></tr>
+    ${l.map(x => { const e = x.estratto, k = x.conti; return `<tr><td style="text-align:left"><b>${esc(x.ID)}</b> <button type="button" class="linkbtn" data-conto="${tipo}:${esc(x.ID)}">estratto</button><br><small>${esc(tipo === "caf" ? x.Nome : x.Intestatario)}</small></td>
+      <td style="text-align:left">${e.accordo ? esc(window.SG_STAMPA.testoAccordo(e.accordo)) : "<i>non definito</i>"}</td><td>${k.attivati}</td><td>${euro(k.canoni)}</td><td>${euro(e.maturato)}</td><td>${euro(e.pagato)}</td><td><b>${euro(e.saldoAttuale)}</b></td></tr>`; }).join("") || '<tr><td colspan="7">Nessuno</td></tr>'}</table></div>`;
+  return `<div class="scheda"><b>Periodo</b>${window.SG_STAMPA.campiPeriodo("pa", perAdm)}<span class="hint">${window.SG_STAMPA.testoPeriodo((d.caf[0] || d.ottici[0] || {}).conti || {})}</span></div>
+    <div class="scheda"><b>Riepilogo SocialGlass</b><div class="conti"><div>Canoni incassati<b>${euro(inc("canoni"))}</b></div><div>Spedizioni incassate<b>${euro(inc("spedizioni"))}</b></div><div>Riscatti incassati<b>${euro(inc("riscatti"))}</b></div><div>Totale incassato<b>${euro(inc("incassati"))}</b></div>
+      <div>Compensi maturati da CAF e ottiche<b>${euro(mat)}</b></div><div>Margine (incassato − compensi)<b>${euro(inc("incassati") - mat)}</b></div><div>Pagati a CAF e ottiche<b>${euro(pagato)}</b></div><div>Da liquidare oggi (totale)<b>${euro(daLiq)}</b></div></div>
+      <p class="hint" style="font-size:12.5px">Incassi pagati dai clienti con la carta (Stripe) nel periodo. Il margine non tiene conto dei costi (montature, lenti, commissioni Stripe). CAF e ottici vedono solo il proprio estratto conto, non questi totali.</p>
+      <button type="button" data-stampa-conti style="margin:0">Stampa report conteggi</button></div>
+    <div class="scheda"><b>CAF</b>${tab("caf", d.caf)}</div><div class="scheda"><b>Ottiche</b>${tab("ottico", d.ottici)}</div>`;
 }
 function disegnaScheda(c){
   const o = c.ordine || {}, pg = o.pagamento || {}, pr = o.prezzi || {}, m = o.montatura, p = c.periodo, si = c.situazione, b = si.blocco;
@@ -115,6 +142,7 @@ function disegna(){
       <div class="scheda"><b>Pronto per il pubblico?</b><ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></div>
       <div class="lista">${Object.entries(n.perStato).map(([s, c]) => `<div class="cli"><div class="top"><span>${esc(s)}</span><b>${c}</b></div></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div>`;
   }
+  if (scheda === "conteggi") h += vistaConteggi();
   if (scheda === "solleciti"){
     if (!sollecitiAdm){ h += '<div class="vuoto">Caricamento…</div>'; $("admCorpo").innerHTML = h; call("solleciti").then(r => { sollecitiAdm = r.ok ? r.data.solleciti : []; disegna(); }); return; }
     h += vistaSolleciti();
@@ -135,18 +163,16 @@ function disegna(){
         <span class="bad">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.moroso ? '<span class="chip s3">MOROSO</span>' : ""}${c.inScadenza ? '<span class="chip s2">IN SCADENZA</span>' : ""}<span class="chip">${esc(c.stato)}</span></span></button>`).join("") || '<div class="vuoto">Nessun cliente con questi filtri</div>'}</div>`;
   }
   if (scheda === "caf"){
-    h += `<div class="scheda"><b>Periodo dei conteggi</b>${window.SG_STAMPA.campiPeriodo("pa", perAdm)}</div><button type="button" data-stampa-conti="caf" style="margin:0 0 6px">Stampa conteggi dei CAF</button>`;
     h += `<form data-f="salvaCaf" class="scheda"><b>Nuovo CAF o modifica</b>
       <label class="lbl" for="aCafId">Codice CAF</label><input id="aCafId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aCafNome">Nome</label><input id="aCafNome" name="Nome">
       <label class="lbl" for="aCafPw">Password (almeno 8 caratteri; vuota = non cambiare)</label><input id="aCafPw" name="Password" type="text" autocomplete="off">
       ${campiCompenso("aCaf")}
       <button type="submit" class="verde full">Salva CAF</button></form>
-      <div class="lista">${d.caf.map(c => `<div class="cli"><div class="top"><div><b>${esc(c.ID)}</b> ${esc(c.Nome)}${c.prova ? ' <span class="chip">PROVA</span>' : ""}</div></div>${contiHtml(c.conti)}
+      <div class="lista">${d.caf.map(c => `<div class="cli"><div class="top"><div><b>${esc(c.ID)}</b> ${esc(c.Nome)}${c.prova ? ' <span class="chip">PROVA</span>' : ""}</div></div>${contiHtml(c, "caf")}
         <div class="az"><button type="button" class="grigio" data-mod-caf="${esc(c.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="caf" data-id="${esc(c.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "ottici"){
-    h += `<div class="scheda"><b>Periodo dei conteggi</b>${window.SG_STAMPA.campiPeriodo("pa", perAdm)}</div><button type="button" data-stampa-conti="ottici" style="margin:0 0 6px">Stampa conteggi ed esposizione delle ottiche</button>`;
     h += `<form data-f="salvaOttico" class="scheda"><b>Nuova ottica o modifica</b>
       <label class="lbl" for="aOId">Codice ottica (es. OTT20)</label><input id="aOId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aONome">Nome dell'ottica</label><input id="aONome" name="Intestatario" required>
@@ -159,7 +185,7 @@ function disegna(){
       <button type="submit" class="verde full">Salva ottica</button></form>
       <div class="lista">${d.ottici.map(o => `<div class="cli"><div class="top"><div><b>${esc(o.ID)}</b> ${esc(o.Intestatario)}${o.prova ? ' <span class="chip">PROVA</span>' : ""}</div>${o.accesso ? '<span class="chip s4">ACCESSO ATTIVO</span>' : '<span class="chip s3">SENZA PASSWORD</span>'}</div>
         <div>${esc(o.Indirizzo)}${esc(o.Citta)} · listino ${esc(o.Listino)}${o.Telefono ? " · " + esc(o.Telefono) : ""}</div>
-        <div>Montature esposte: <b>${d.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[o.ID] || 0), 0)}</b> pezzi · <button type="button" class="linkbtn" data-esposte="${esc(o.ID)}">vedi</button></div>${contiHtml(o.conti)}
+        <div>Montature esposte: <b>${d.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[o.ID] || 0), 0)}</b> pezzi · <button type="button" class="linkbtn" data-esposte="${esc(o.ID)}">vedi</button></div>${contiHtml(o, "ottico")}
         <div class="az"><button type="button" class="grigio" data-mod-ott="${esc(o.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="ottico" data-id="${esc(o.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "magazzino") h += vistaMagazzino();
@@ -213,12 +239,19 @@ async function clic(e){
   if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
+  if (b.dataset.conto){ contoAperto = b.dataset.conto; scheda = "conteggi"; disegna(); inCima(); return; }
+  if (b.hasAttribute("data-chiudi-conto")){ contoAperto = null; disegna(); return; }
+  if (b.hasAttribute("data-stampa-estratto-adm")) return ST().stampaDoc("Estratto conto con SocialGlass · " + contoAperto.replace(":", " "), ST().pulisciStampa($("estrattoAdm")));
+  if (b.dataset.eliminaLiq){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Tocca di nuovo"; return; }
+    const [tipo, id] = contoAperto.split(":"), r = await call("liquidazione", {tipo, id, op: "elimina", rid: b.dataset.eliminaLiq}); if (!r.ok) return msg(r.data.errore, "err"); await carica(); return msg("Pagamento eliminato.");
+  }
   if (b.hasAttribute("data-stampa-soll")) return stampaSolleciti();
   if (b.dataset.sollInvia){ b.disabled = true; const r = await call("sollecito", {op: "invia", id: b.dataset.sollInvia}); sollecitiAdm = null; disegna();
     return r.ok ? msg(r.data.esito && r.data.esito.inviato ? "Messaggio inviato al cliente." : "Messaggio NON inviato: " + ((r.data.esito || {}).motivo || ""), r.data.esito && r.data.esito.inviato ? "" : "err") : msg(r.data.errore, "err"); }
   if (b.dataset.schedaDaSoll){ const r = await call("scheda", {id: b.dataset.schedaDaSoll}); if (!r.ok) return msg(r.data.errore, "err"); scheda = "clienti"; clientiAdm = null; schedaCli = r.data.cliente; disegna(); inCima(); return; }
   if (b.dataset.stampaOrd) return stampaOrdine(b.dataset.stampaOrd);
-  if (b.dataset.stampaConti) return stampaConti(b.dataset.stampaConti);
+  if (b.hasAttribute("data-stampa-conti")) return stampaConti();
   if (b.hasAttribute("data-stampa-cli-elenco")) return stampaElencoAdm();
   if (b.dataset.stampaScheda){ const blocchi = [...$("admCorpo").querySelectorAll(".scheda")].filter(x => !x.matches("form")).map(x => `<div class="scheda">${ST().pulisciStampa(x)}</div>`).join("");
     return ST().stampaDoc(b.dataset.stampaScheda === "cliente" ? `Scheda cliente ${schedaCli.nome} ${schedaCli.cognome}` : `Scheda montatura ${artAperto}`, blocchi); }
@@ -290,6 +323,10 @@ async function invio(e){
     if (k === "imposta" && pw !== $("admPw2").value) return msg("Le due password non coincidono.", "err");
     const r = await call(k, {password: pw}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     tok = r.data.token; sessionStorage.setItem("sg_admin", tok); await carica(); return;
+  }
+  if (k === "liquidazione"){
+    const r = await call("liquidazione", Object.assign({tipo: f.dataset.tipo, id: f.dataset.id}, v)); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    await carica(); return msg("Pagamento registrato: compare anche nell'estratto conto del partner.");
   }
   if (k === "notaSoll"){
     const r = await call("sollecito", {op: "nota", id: f.dataset.id, nota: v.nota}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
@@ -373,15 +410,10 @@ function stampaOrdine(id){
     ${o.Righe.map(r => `<tr><td>${esc(r.codiceFornitore)}</td><td>${esc(r.codice)}</td><td>${esc(r.descrizione)}</td><td class="n">${r.qta}</td><td class="n">${r.costo ? euro(r.costo) : ""}</td><td class="n">${r.costo ? euro(r.qta * r.costo) : ""}</td></tr>`).join("")}
     <tr><th colspan="3">Totale</th><th class="n">${o.Righe.reduce((s, r) => s + r.qta, 0)}</th><th></th><th class="n">${tot ? euro(tot) : ""}</th></tr></table>${o.Note ? `<p>Note: ${esc(o.Note)}</p>` : ""}`);
 }
-function stampaConti(tipo){
-  const caf = tipo === "caf", l = caf ? dati.caf : dati.ottici, per = l[0] && l[0].conti ? ST().testoPeriodo(l[0].conti) : "da sempre";
-  const accordo = x => x.CompensoTipo === "fisso" ? `${euro(x.CompensoValore)} per abbonamento` : x.CompensoTipo === "percentuale" ? `${n2(x.CompensoValore)}% sui canoni` : "non definito";
-  const somma = k => l.reduce((t, x) => t + ((x.conti || {})[k] || 0), 0);
-  ST().stampaDoc(caf ? "Conteggi CAF" : "Conteggi ed esposizione ottiche", `<p class="hint">Periodo: ${per}</p><table><tr><th>Codice</th><th>Nome</th>${caf ? "" : "<th class=\"n\">Esposte</th>"}<th class="n">Nuovi clienti</th><th class="n">Attivati</th><th class="n">Canoni</th><th class="n">Spedizioni</th><th class="n">Totale incassato</th><th>Accordo</th><th class="n">Maturato nel periodo</th><th class="n">Liquidato</th><th class="n">Da liquidare</th></tr>
-    ${l.map(x => { const k = x.conti || {}; return `<tr><td>${esc(x.ID)}</td><td>${esc(caf ? x.Nome : x.Intestatario)}</td>${caf ? "" : `<td class="n">${dati.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[x.ID] || 0), 0)}</td>`}
-      <td class="n">${k.clienti || 0}</td><td class="n">${k.attivati || 0}</td><td class="n">${euro(k.canoni)}</td><td class="n">${euro(k.spedizioni)}</td><td class="n">${euro(k.incassati)}</td><td>${accordo(x)}</td><td class="n">${euro(k.maturato)}</td><td class="n">${euro(k.liquidato)}</td><td class="n">${euro(k.saldo)}</td></tr>`; }).join("")}
-    <tr><th colspan="${caf ? 2 : 3}">Totale</th><th class="n">${somma("clienti")}</th><th class="n">${somma("attivati")}</th><th class="n">${euro(somma("canoni"))}</th><th class="n">${euro(somma("spedizioni"))}</th><th class="n">${euro(somma("incassati"))}</th><th></th><th class="n">${euro(somma("maturato"))}</th><th class="n">${euro(somma("liquidato"))}</th><th class="n">${euro(somma("saldo"))}</th></tr></table>
-    <p class="hint">Importi pagati dai clienti a SocialGlass con la carta (Stripe). «Liquidato» e «Da liquidare» sono sempre sul totale, non sul periodo.</p>`);
+function stampaConti(){
+  const corpo = $("admCorpo").cloneNode(true); corpo.querySelectorAll(".esito,.tabs,[role=tablist]").forEach(x => x.remove());
+  const blocchi = [...corpo.querySelectorAll(".scheda")].slice(1).map(x => `<div class="scheda">${ST().pulisciStampa(x)}</div>`).join("");
+  ST().stampaDoc("Report conteggi con CAF e ottiche", `<p class="hint">Periodo: ${ST().testoPeriodo((dati.caf[0] || dati.ottici[0] || {}).conti || {})}</p>${blocchi}`);
 }
 function stampaElencoAdm(){
   const F = filtriAdm, filtri = [F.q, F.caf, F.ottica, F.stato, F.sit ? SIT[F.sit][0] : ""].filter(Boolean).join(" · ");

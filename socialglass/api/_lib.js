@@ -508,6 +508,47 @@ function incassi(o){
   if (pg.riscatto && pg.riscatto.pagato) out.push({il: pg.riscatto.pagato, canone: 0, spedizione: 0, riscatto: Number(pr.riscatto) || 0, stima: true});
   return out;
 }
+/* ---------- estratto conto di CAF e ottiche verso SocialGlass ----------
+   Movimenti a credito del partner: compensi secondo l'accordo (fisso per abbonamento attivato, oppure % su ogni canone pagato).
+   Movimenti a debito: pagamenti di SocialGlass al partner (acconti, saldi), registrati dall'amministratore. */
+const e2 = x => Number(x || 0).toFixed(2).replace(".", ",") + " €";
+function liquidazioniDi(acc){
+  const l = Array.isArray(acc && acc.Liquidazioni) ? acc.Liquidazioni.slice() : [];
+  const vecchio = Number(((acc && acc.Compenso) || {}).liquidato) || 0;
+  if (!l.length && vecchio > 0) l.push({id: "precedenti", il: "2000-01-01", importo: vecchio, causale: "pagamenti precedenti", metodo: "", nota: ""});
+  return l;
+}
+function righeCompenso(utenti, acc){
+  const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, out = []; if (!c.tipo || !v) return out;
+  for (const f of utenti){
+    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, cli = `${f.Nome || ""} ${f.Cognome || ""}`.trim(), base = {univoco: f.Univoco, cliente: cli};
+    if (c.tipo === "fisso"){
+      for (const st of o.storico || []) if (st.inizio) out.push(Object.assign({il: st.inizio, descrizione: "Abbonamento attivato (periodo precedente)", importo: v}, base));
+      if (pg.attivatoIl && pg.stato !== "SIMULATO") out.push(Object.assign({il: pg.attivatoIl, descrizione: "Abbonamento attivato", importo: v}, base));
+    } else for (const x of incassi(o)) if (x.canone > 0) out.push(Object.assign({il: x.il, descrizione: `Canone pagato ${e2(x.canone)} × ${String(v).replace(".", ",")}%`, importo: Math.round(x.canone * v) / 100, stima: !!x.stima}, base));
+  }
+  return out;
+}
+function estratto(utenti, acc, da, a){
+  const g = d => String(d || "").slice(0, 10), r2 = x => Math.round(x * 100) / 100, c = (acc && acc.Compenso) || {};
+  const tutte = righeCompenso(utenti, acc).map(x => Object.assign({tipo: "compenso"}, x))
+    .concat(liquidazioniDi(acc).map(x => ({tipo: "pagamento", id: x.id, il: x.il, descrizione: [x.causale || "pagamento", x.metodo, x.nota].filter(Boolean).join(" · "), importo: Number(x.importo) || 0})))
+    .sort((x, y) => g(x.il).localeCompare(g(y.il)) || (x.tipo === "pagamento") - (y.tipo === "pagamento"));
+  let saldoIniziale = 0, maturato = 0, pagato = 0, maturatoTot = 0, pagatoTot = 0, stima = false; const righe = [];
+  for (const x of tutte){
+    const segno = x.tipo === "compenso" ? 1 : -1;
+    if (x.tipo === "compenso") maturatoTot += x.importo; else pagatoTot += x.importo;
+    if (da && g(x.il) < da){ saldoIniziale += segno * x.importo; continue; }
+    if (a && g(x.il) > a) continue;
+    if (x.tipo === "compenso") maturato += x.importo; else pagato += x.importo;
+    if (x.stima) stima = true;
+    righe.push(Object.assign({}, x, {importo: r2(x.importo)}));
+  }
+  let prog = saldoIniziale; righe.forEach(x => { prog += (x.tipo === "compenso" ? 1 : -1) * x.importo; x.saldo = r2(prog); });
+  return {accordo: c.tipo ? {tipo: c.tipo, valore: Number(c.valore) || 0} : null, periodo: {da: da || "", a: a || ""}, righe, stima,
+    saldoIniziale: r2(saldoIniziale), maturato: r2(maturato), pagato: r2(pagato), saldoFinale: r2(saldoIniziale + maturato - pagato),
+    maturatoTot: r2(maturatoTot), pagatoTot: r2(pagatoTot), saldoAttuale: r2(maturatoTot - pagatoTot)};
+}
 // Conteggi con CAF e ottiche, filtrabili per periodo (da/a = AAAA-MM-GG, inclusi).
 // Compenso secondo l'accordo: fisso per abbonamento attivato nel periodo, oppure percentuale sui canoni incassati nel periodo.
 function conteggi(utenti, acc, da, a){
@@ -528,4 +569,4 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

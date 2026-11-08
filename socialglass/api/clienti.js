@@ -35,5 +35,6 @@ module.exports = L.wrap(async (req, res) => {
   // conteggi economici con SocialGlass secondo l'accordo impostato dall'amministratore
   let acc = null; try { acc = isOtt ? await L.DB.ottico(s.id) : await L.DB.login("caf", s.id); } catch(e){ console.error(e); }
   const q = new URL(req.url, "http://x").searchParams, gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
-  L.send(res, 200, {clienti: list, conteggi: L.conteggi(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
+  // solo i propri conteggi (compensi secondo l'accordo e pagamenti ricevuti): gli incassi di SocialGlass non si mostrano
+  L.send(res, 200, {clienti: list, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
 });

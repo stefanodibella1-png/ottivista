@@ -9,7 +9,7 @@ function compenso(b){
   const tipo = ["fisso", "percentuale"].includes(b.CompensoTipo) ? b.CompensoTipo : "";
   const valore = numero(b.CompensoValore);
   if (tipo === "percentuale" && valore > 100) return {errore: "La percentuale non può superare 100."};
-  return {tipo, valore: tipo ? valore : 0, liquidato: numero(b.CompensoLiquidato)};
+  return {tipo, valore: tipo ? valore : 0};
 }
 module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
@@ -54,11 +54,11 @@ module.exports = L.wrap(async (req, res) => {
       ["Condizioni e informativa privacy verificate da un consulente", !!((await L.DB.meta("config")) || {}).legale],
       ["Avvisi automatici ai clienti collegati (WhatsApp Business o SMS)", L.canaliCollegati().whatsapp || L.canaliCollegati().sms]
     ];
-    const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || "", CompensoLiquidato: c.liquidato || ""}; };
+    const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || ""}; };
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
@@ -72,6 +72,19 @@ module.exports = L.wrap(async (req, res) => {
       prova, titolare: tit, pronto: lista, canali: L.canaliCollegati(), canaleSolleciti: (((await L.DB.meta("config")) || {}).canaleSolleciti) || "whatsapp",
       listini: Object.keys(L.PREZZI.LISTINI.convenzioni || {A: 1})
     });
+  }
+  // pagamenti di SocialGlass al CAF o all'ottica (acconti, saldi): entrano nel loro estratto conto
+  if (az === "liquidazione"){
+    const k = b.tipo === "caf" ? "caf" : b.tipo === "ottico" ? "ottici" : null, id = pulito(b.id, 20).toUpperCase(); if (!k) return L.send(res, 400, {errore: "Tipo non valido."});
+    const acc = k === "caf" ? (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id) : await L.DB.ottico(id); if (!acc) return L.send(res, 404, {errore: "Non trovato."});
+    let l = L.liquidazioniDi(acc);
+    if (b.op === "elimina") l = l.filter(x => x.id !== b.rid);
+    else {
+      const imp = numero(b.importo), il = gg(b.data); if (!(imp > 0)) return L.send(res, 400, {errore: "Importo non valido."}); if (!il) return L.send(res, 400, {errore: "Data non valida."});
+      l.push({id: require("crypto").randomBytes(4).toString("hex"), il, importo: imp, causale: ["acconto", "saldo", "rettifica"].includes(b.causale) ? b.causale : "acconto",
+        metodo: pulito(b.metodo, 40), nota: pulito(b.nota, 200), registrato: new Date().toISOString()});
+    }
+    await L.DB.salva(k, id, {Liquidazioni: l}); return L.send(res, 200, {ok: true});
   }
   if (az === "canaleSolleciti"){
     const c = ["whatsapp", "sms", "spento"].includes(b.canale) ? b.canale : null; if (!c) return L.send(res, 400, {errore: "Canale non valido."});
@@ -121,7 +134,8 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "salvaCaf"){
     const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(id)) return L.send(res, 400, {errore: "Codice CAF: 3-20 lettere o cifre."});
     const cp = compenso(b); if (cp.errore) return L.send(res, 400, cp);
-    const d = {ID: id, Nome: pulito(b.Nome), Compenso: cp}; if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.Password = L.hashPw(b.Password); }
+    const d = {ID: id, Nome: pulito(b.Nome), Compenso: cp};
+    { const prima = (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id); if (prima && !prima.Liquidazioni && L.liquidazioniDi(prima).length) d.Liquidazioni = L.liquidazioniDi(prima); } if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.Password = L.hashPw(b.Password); }
     const esiste = (await L.DB.lista("caf")).some(x => (x.ID || x._id) === id);
     if (!esiste && !d.Password) return L.send(res, 400, {errore: "Per un nuovo CAF serve la password."});
     await L.DB.salva("caf", id, d); return L.send(res, 200, {ok: true});
@@ -130,6 +144,7 @@ module.exports = L.wrap(async (req, res) => {
     const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(id)) return L.send(res, 400, {errore: "Codice ottica: 3-20 lettere o cifre."});
     if (!pulito(b.Intestatario)) return L.send(res, 400, {errore: "Serve il nome dell'ottica."});
     const ind = pulito(b.Indirizzo), cp = compenso(b); if (cp.errore) return L.send(res, 400, cp);
+    { const prima = await L.DB.ottico(id); if (prima && !prima.Liquidazioni && L.liquidazioniDi(prima).length) await L.DB.salva("ottici", id, {Liquidazioni: L.liquidazioniDi(prima)}); }
     await L.DB.salva("ottici", id, {Compenso: cp, ID: id, Intestatario: pulito(b.Intestatario), Indirizzo: ind && !/,\s*$/.test(ind) ? ind + ", " : ind, Citta: pulito(b.Citta, 60), Telefono: pulito(b.Telefono, 20).replace(/[^\d+]/g, ""), Listino: pulito(b.Listino, 4) || "A"});
     if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); await L.DB.salva("ottLogin", id, {ID: id, Password: L.hashPw(b.Password)}); }
     return L.send(res, 200, {ok: true});
