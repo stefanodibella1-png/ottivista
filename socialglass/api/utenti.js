@@ -26,7 +26,7 @@ module.exports = L.wrap(async (req, res) => {
       const o = u ? L.parseOrdine(u.f.Ordine) : null, per = o ? L.PREZZI.periodo(o) : null;
       return L.send(res, 200, {valido: true, stato: u ? u.f.Stato || "REGISTRATO" : null, nome: u ? `${u.f.Nome} ${u.f.Cognome}` : null, univoco: u ? u.f.Univoco : null,
         ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: u ? u.f.Stato === L.STATI.CONSEGNATO && L.PREZZI.rinnovabile(o) : false,
-        rinnovoDal: per && !per.chiuso ? per.preavviso : null});
+        rinnovoDal: per && !per.chiuso ? per.preavviso : null, bloccato: u ? L.situazione(u.f).bloccato : false});
     }
     if (uv){
       const s = L.verify(req, "ottico"); if (!s) return L.send(res, 401, L.NOAUTH);
@@ -46,6 +46,7 @@ module.exports = L.wrap(async (req, res) => {
     if (!u) return L.send(res, 404, {errore: "Cliente non trovato. Controlla il codice fiscale."});
     // l'ottico può rinnovare per codice univoco solo i propri clienti; per un cliente di un'altra ottica serve il codice fiscale
     if (so && b.univoco && !String(u.f.Ottica1 || "").startsWith(so.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i tuoi clienti."});
+    if (L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
     const ord = L.parseOrdine(u.f.Ordine);
     if (ord.rinnovo && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato))
       return L.send(res, 409, {errore: `Rinnovo già avviato il ${new Date(ord.rinnovo.il).toLocaleDateString("it-IT")} (${ord.rinnovo.da}): il cliente deve solo scegliere la montatura dal suo link.`, univoco: u.f.Univoco});

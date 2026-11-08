@@ -9,7 +9,7 @@ module.exports = L.wrap(async (req, res) => {
     if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
     const o = await L.DB.ottico(s.id);
     const conv = L.PREZZI.conv(u.f.Listino || (o && o.Listino));
-    return L.send(res, 200, {nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato, ordine: L.parseOrdine(u.f.Ordine),
+    return L.send(res, 200, {nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato, bloccato: L.situazione(u.f).bloccato, ordine: L.parseOrdine(u.f.Ordine),
       listino: {id: u.f.Listino || "", lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: L.PREZZI.LISTINI.mesi, spedizione: L.PREZZI.LISTINI.spedizione}});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
@@ -38,6 +38,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   if (b.azione === "pronto" || b.azione === "consegnato"){
+    if (b.azione === "consegnato" && L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});
     ord.aggiornato = new Date().toISOString(); ord[b.azione === "pronto" ? "prontoIl" : "consegnatoIl"] = ord.aggiornato;
     await L.DB.aggiorna(u, {Stato: b.azione === "pronto" ? L.STATI.PRONTO : L.STATI.CONSEGNATO, Ordine: JSON.stringify(ord)});
@@ -45,6 +46,7 @@ module.exports = L.wrap(async (req, res) => {
     const av = b.azione === "pronto" ? await L.avvisa(u, `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`) : null;
     return L.send(res, 200, {ok: true, stato: u.f.Stato, avviso: av});
   }
+  if (L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
   if (![L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato) || !ord.montatura) return L.send(res, 409, {errore: "Il cliente deve prima scegliere la montatura con il QR."});
   const r = b.ricetta || {};
   const occhio = e => ({sf: num(e && e.sf), cil: num(e && e.cil), ax: num(e && e.ax), add: num(e && e.add)});

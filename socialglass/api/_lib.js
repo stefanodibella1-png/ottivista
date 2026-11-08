@@ -335,4 +335,31 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
-module.exports = {hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+// Situazione dell'anagrafica: morosità (canone non pagato o chiusura per mancato pagamento) e blocco.
+// Blocco.stato: "bloccato" (deciso dall'amministratore), "sbloccato" (sblocco forzato nonostante la morosità), assente = automatico.
+const dataIt = d => d ? new Date(d).toLocaleDateString("it-IT", {timeZone: "Europe/Rome"}) : "";
+function situazione(f){
+  const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, b = f.Blocco || {};
+  const chiusoMoroso = /MANCATO PAGAMENTO/.test(pg.esito || "");
+  const moroso = !!pg.insoluto || chiusoMoroso, motivi = [];
+  if (pg.insoluto) motivi.push(`${pg.insoluto.tipo === "riscatto" ? "Riscatto" : "Canone"} non pagato dal ${dataIt(pg.insoluto.dal)}${pg.insoluto.importo ? ` (${Number(pg.insoluto.importo).toFixed(2).replace(".", ",")} €)` : ""}`);
+  if (chiusoMoroso) motivi.push(pg.esito);
+  if (b.stato === "bloccato") motivi.push("Blocco dell'amministratore: " + (b.motivo || "senza motivo indicato"));
+  if (b.stato === "sbloccato" && moroso) motivi.push("Sbloccato dall'amministratore: " + (b.motivo || "senza nota"));
+  return {moroso, bloccato: b.stato === "bloccato" || (moroso && b.stato !== "sbloccato"), motivi, blocco: b.stato ? b : null};
+}
+const BLOCCATO = {errore: "Anagrafica bloccata: nessuna operazione è possibile. Contatta l'amministratore di SocialGlass.", bloccato: true};
+// Accordo economico con CAF e ottiche: compenso per abbonamento attivato (fisso) o percentuale sui canoni incassati
+function conteggi(utenti, acc){
+  let attivati = 0, attivi = 0, consegnati = 0, incassati = 0;
+  for (const f of utenti){
+    const o = parseOrdine(f.Ordine), pg = o.pagamento || {};
+    if (pg.attivatoIl && pg.stato !== "SIMULATO"){ attivati++; if (!pg.chiuso) attivi++; incassati += (pg.ratePagate || 0) * ((o.prezzi && o.prezzi.rata) || 0); }
+    if (f.Stato === STATI.CONSEGNATO) consegnati++;
+  }
+  const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, r2 = x => Math.round(x * 100) / 100;
+  const maturato = c.tipo === "fisso" ? v * attivati : c.tipo === "percentuale" ? incassati * v / 100 : 0;
+  return {clienti: utenti.length, attivati, attivi, consegnati, incassati: r2(incassati), accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
+    maturato: r2(maturato), liquidato: r2(Number(c.liquidato) || 0), saldo: r2(maturato - (Number(c.liquidato) || 0))};
+}
+module.exports = {situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

@@ -324,6 +324,7 @@ $("formRinnovo").addEventListener("submit", async e => {
   const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
   if (!r.data.stato){ esito(box, "Nessun cliente con questo codice fiscale: inseriscilo come nuovo utente.", "info"); return; }
   const d = r.data;
+  if (d.bloccato){ box.hidden = false; box.className = "esito"; box.removeAttribute("role"); box.innerHTML = `${esc(d.nome)} · codice ${esc(d.univoco)}` + contattoAdmin(); return; }
   if (!d.rinnovabile){
     const perche = d.stato !== STATI.CONSEGNATO ? "ha un ordine in corso: il rinnovo si fa dopo la consegna degli occhiali."
       : d.rinnovoDal ? `il rinnovo è possibile dal ${new Date(d.rinnovoDal).toLocaleDateString("it-IT")} (30 giorni prima della scadenza).` : "il rinnovo non è ancora possibile.";
@@ -353,7 +354,7 @@ let clienti = [];
 async function apriClienti(){
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
   const r = await api("api/clienti"); if (scaduta(r)) return;
-  clienti = r.ok ? r.data.clienti : [];
+  clienti = r.ok ? r.data.clienti : []; disegnaConti(r.ok ? r.data.conteggi : null);
   { const n = clienti.filter(c => c.avviso).length; document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; }); }
   const sel = $("filtroStato"); sel.length = 1;
   ORDINE_STATI.forEach(s => { if (clienti.some(c => c.stato === s)){ const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); } });
@@ -365,38 +366,78 @@ function rinnovoBtn(c, attr){
     : c.periodo ? `<span class="chip">Rinnovo dal ${new Date(c.periodo.preavviso).toLocaleDateString("it-IT")}</span>` : "";
 }
 // prima dell'attivazione serve rimandare il link; dopo basta un messaggio
+// reinvia al cliente il link della sua scheda personale (WhatsApp)
 function linkBtn(c){
-  const n = String(c.cellulare || "").replace(/\D/g, ""); if (!n) return "";
-  const prima = [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO].includes(c.stato);
-  const testo = prima ? `SocialGlass: ciao ${c.nome}, ecco di nuovo il tuo link personale: ${c.link}` : `SocialGlass: ciao ${c.nome}, `;
-  return `<a class="btn-link" style="flex:0 0 auto" target="_blank" rel="noopener" href="https://wa.me/39${esc(n)}?text=${encodeURIComponent(testo)}">${prima ? "Reinvia link" : "WhatsApp"}</a>`;
+  const n = String(c.cellulare || "").replace(/\D/g, ""); if (!n || !c.link) return "";
+  const testo = `SocialGlass: ciao ${c.nome}, ecco il link della tua scheda personale: ${c.link}`;
+  return `<a class="btn-link" style="flex:0 0 auto" target="_blank" rel="noopener" href="https://wa.me/39${esc(n)}?text=${encodeURIComponent(testo)}">Reinvia link</a>`;
+}
+const SIT_P = {
+  bloccati: c => c.bloccato, scadenza: c => c.periodo && !c.esito && c.periodo.aperto && !c.periodo.scaduto,
+  ultimati: c => c.periodo && c.periodo.scaduto, consegnati: c => !!c.consegnatoIl || c.stato === STATI.CONSEGNATO, avvisi: c => !!c.avviso
+};
+const dIt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
+const voce = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : "";
+function contattoAdmin(){
+  const t = (window.SG_INFO && SG_INFO.titolare) || {};
+  const c = [t.telefono ? `<a href="tel:${esc(t.telefono)}">${esc(t.telefono)}</a>` : "", t.email ? `<a href="mailto:${esc(t.email)}">${esc(t.email)}</a>` : ""].filter(Boolean).join(" · ");
+  return `<div class="blocco"><b>Anagrafica bloccata.</b> Non è possibile fare operazioni per questo cliente (rinnovo, preventivo, consegna). Contatta l'amministratore di SocialGlass${c ? ": " + c : ""}.</div>`;
+}
+function ricettaCli(r){
+  if (!r) return "";
+  const n = v => v == null ? "" : (v > 0 ? "+" : "") + String(v).replace(".", ",");
+  return `<table class="rx"><tr><th></th><th>Sf</th><th>Cil</th><th>Asse</th><th>Add</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf)}</td><td>${n(r[e] && r[e].cil)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add)}</td></tr>`).join("")}</table>${r.pd ? `<div>DP ${esc(r.pd)} mm${r.note ? " · " + esc(r.note) : ""}</div>` : ""}`;
+}
+function disegnaConti(k){
+  const box = $("clientiConti"); if (!k){ box.hidden = true; return; }
+  const acc = k.accordo ? (k.accordo.tipo === "fisso" ? `${euro(k.accordo.valore)} per ogni abbonamento attivato` : `${String(k.accordo.valore).replace(".", ",")}% sui canoni incassati`) : "";
+  $("clientiContiCorpo").innerHTML = `<div class="conti"><div>Clienti<b>${k.clienti}</b></div><div>Abbonamenti attivati<b>${k.attivati}</b></div><div>Attivi ora<b>${k.attivi}</b></div><div>Occhiali consegnati<b>${k.consegnati}</b></div>
+    <div>Canoni incassati<b>${euro(k.incassati)}</b></div>${acc ? `<div>Compenso maturato<b>${euro(k.maturato)}</b></div><div>Già liquidato<b>${euro(k.liquidato)}</b></div><div>Da ricevere<b>${euro(k.saldo)}</b></div>` : ""}</div>
+    <div class="hint" style="font-size:12.5px">${acc ? "Accordo con SocialGlass: " + acc + "." : "L'accordo economico con SocialGlass non è ancora stato impostato: chiedi all'amministratore."} Canoni incassati = canoni pagati × importo mensile.</div>`;
+  box.hidden = false;
 }
 function disegnaClienti(){
-  const q = $("filtroClienti").value.trim().toUpperCase(), st = $("filtroStato").value, isOtt = ruolo() === "ottico";
-  const l = clienti.filter(c => (!st || c.stato === st) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
-  $("clientiLista").innerHTML = l.length ? l.map(c => `<div class="cli">
-      <div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div><div>${chip(c.stato)}${c.insoluto ? ' <span class="chip s3">CANONE NON PAGATO</span>' : ""}</div></div>
-      ${c.montatura ? `<div>Montatura: ${esc(c.montatura)}${c.totale ? ` · valore ${euro(c.totale)} · canone ${euro(c.rata)}/mese` : ""}</div>` : ""}
-      ${c.periodo && !c.esito ? `<div>Abbonamento dal ${new Date(c.periodo.inizio).toLocaleDateString("it-IT")} · durata minima fino al <b>${new Date(c.periodo.scadenza).toLocaleDateString("it-IT")}</b>${c.periodo.aperto && !c.periodo.scaduto ? ` <span class="chip s2">SCADE TRA ${c.periodo.giorni} GIORNI</span>` : c.periodo.scaduto ? ' <span class="chip s2">MESE PER MESE</span>' : ""}</div>` : ""}
+  const q = $("filtroClienti").value.trim().toUpperCase(), st = $("filtroStato").value, sit = $("filtroSit").value, isOtt = ruolo() === "ottico";
+  const aperti = new Set([...document.querySelectorAll("#clientiLista details[open]")].map(d => d.dataset.u));
+  const l = clienti.filter(c => (!st || c.stato === st) && (!sit || SIT_P[sit](c)) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
+  $("clientiNum").textContent = clienti.length ? `${l.length} di ${clienti.length} clienti · tocca un cliente per aprire la scheda` : "";
+  $("clientiLista").innerHTML = l.length ? l.map(c => {
+    const p = c.periodo, sc = p && !c.esito ? (p.scaduto ? '<span class="chip s2">MESE PER MESE</span>' : p.aperto ? `<span class="chip s2">SCADE TRA ${p.giorni} GG</span>` : "") : "";
+    const ultimato = p ? (p.scaduto ? `sì, il ${dIt(p.scadenza)}` : `no, scade il ${dIt(p.scadenza)}`) : "";
+    const az = c.bloccato ? linkBtn(c) : isOtt
+      ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
+        + (c.stato === STATI.ATTIVO ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
+        + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
+        + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
+        + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
+        + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Recesso (14 giorni)</button>` : "")
+        + linkBtn(c)
+      : rinnovoBtn(c, `data-rinnovo="${esc(c.cf)}"`) + linkBtn(c);
+    // ritiro e recesso restano possibili anche con l'anagrafica bloccata
+    const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Recesso (14 giorni)</button>` : "") : "";
+    return `<details class="cli" data-u="${esc(c.univoco)}" ${aperti.has(c.univoco) ? "open" : ""}><summary><div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>
+        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${sc}${chip(c.stato)}</div></div></summary>
+      <div class="corpo">
+      ${c.bloccato ? contattoAdmin() : ""}
+      <dl class="dl">${voce("Cellulare", esc(c.cellulare))}${voce(isOtt ? "CAF" : "Ottica", esc(isOtt ? c.caf : c.ottica))}${voce("Registrato il", dIt(c.creato))}
+        ${voce("Montatura", esc(c.montatura))}${isOtt ? voce("Codice e calibro", esc([c.montaturaCodice, c.calibro].filter(Boolean).join(" · "))) + voce("Lenti", esc(c.lenti)) + voce("Trattamenti", esc((c.trattamenti || []).join(", "))) : ""}
+        ${voce("Valore occhiale", c.totale ? euro(c.totale) : "")}${voce("Canone", c.rata ? euro(c.rata) + "/mese" : "")}${isOtt ? voce("Riscatto", c.riscatto ? euro(c.riscatto) : "") : ""}
+        ${voce("Abbonamento dal", dIt(c.attivatoIl))}${voce("Canoni pagati", c.attivatoIl ? String(c.ratePagate) : "")}${voce("Durata minima completata", c.esito ? "" : ultimato)}
+        ${isOtt ? voce("Pronto il", dIt(c.prontoIl)) : ""}${voce("Occhiale ricevuto", c.consegnatoIl ? "sì, il " + dIt(c.consegnatoIl) : c.attivatoIl ? "non ancora" : "")}
+        ${voce("Chiuso il", dIt(c.chiuso))}</dl>
+      ${isOtt && c.ricetta ? "<b>Ricetta</b>" + ricettaCli(c.ricetta) : ""}
       ${c.esito ? `<div><span class="chip s4">${esc(c.esito)}</span></div>` : ""}
       ${c.finePeriodo ? `<div><span class="chip s2">SCELTA DEL CLIENTE: ${esc(c.finePeriodo)}</span></div>` : ""}
       ${c.daRitirare ? `<div><span class="chip s3">OCCHIALE DA RITIRARE${c.ritiroInRitardo ? " · IN RITARDO" : ""}</span></div>` : ""}
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
       ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
         : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
-      <div class="az">${isOtt
-        ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
-          + (c.stato === STATI.ATTIVO ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
-          + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
-          + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
-          + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
-          + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Recesso (14 giorni)</button>` : "")
-          + linkBtn(c)
-        : rinnovoBtn(c, `data-rinnovo="${esc(c.cf)}"`) + linkBtn(c)}</div>
-    </div>`).join("") : `<div class="vuoto">Nessun cliente${isOtt ? " assegnato a questa ottica. Il cliente vede l'ottica scelta dal CAF nella sua pagina: se è un'altra, accedi con quel codice ottico." : "."}</div>`;
+      <div class="az">${az}${azBlocco}</div></div></details>`;
+  }).join("") : `<div class="vuoto">${clienti.length ? "Nessun cliente con questi filtri." : `Nessun cliente${isOtt ? " assegnato a questa ottica. Il cliente vede l'ottica scelta dal CAF nella sua pagina: se è un'altra, accedi con quel codice ottico." : "."}`}</div>`;
 }
 $("filtroClienti").addEventListener("input", disegnaClienti);
 $("filtroStato").addEventListener("change", disegnaClienti);
+$("filtroSit").addEventListener("change", disegnaClienti);
 $("clientiLista").addEventListener("click", async e => {
   const av = e.target.closest("[data-avvisato]");
   if (av){ post("api/clienti", {univoco: av.dataset.avvisato}).then(() => setTimeout(apriClienti, av.tagName === "A" ? 1500 : 100)); return; }
@@ -449,6 +490,7 @@ async function caricaOrdine(cod){
   const r = await api(`api/ordine?univoco=${encodeURIComponent(cod.toUpperCase())}`); if (scaduta(r)) return;
   if (!r.ok){ esito($("ordineEsito"), r.data.errore, "err"); return; }
   const d = r.data, o = d.ordine || {}; ordCorrente = Object.assign({univoco: cod.toUpperCase()}, d);
+  if (d.bloccato){ const e = $("ordineEsito"); e.hidden = false; e.className = "esito"; e.removeAttribute("role"); e.innerHTML = `${esc(d.nome)} ${esc(d.cognome)}` + contattoAdmin(); return; }
   const m = o.montatura;
   if (!m || ![STATI.MONTATURA, STATI.PAGAMENTO].includes(d.stato)){
     esito($("ordineEsito"), `${d.nome} ${d.cognome} · ${d.stato}. ` + (!m ? "Il cliente deve prima scegliere la montatura con il QR (pulsante «Ho scelto la montatura» sul suo link)." : "L'ordine è già confermato."), m ? "ok" : "info");

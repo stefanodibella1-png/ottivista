@@ -3,6 +3,13 @@
 const L = require("./_lib");
 const S = L.STATI;
 const pulito = (v, n = 120) => String(v == null ? "" : v).trim().slice(0, n);
+const numero = v => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) && x >= 0 ? Math.round(x * 100) / 100 : 0; };
+function compenso(b){
+  const tipo = ["fisso", "percentuale"].includes(b.CompensoTipo) ? b.CompensoTipo : "";
+  const valore = numero(b.CompensoValore);
+  if (tipo === "percentuale" && valore > 100) return {errore: "La percentuale non può superare 100."};
+  return {tipo, valore: tipo ? valore : 0, liquidato: numero(b.CompensoLiquidato)};
+}
 module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   if (L.MODO === "airtable") return L.send(res, 400, {errore: "Il pannello funziona con Firestore."});
@@ -46,9 +53,11 @@ module.exports = L.wrap(async (req, res) => {
       ["Condizioni e informativa privacy verificate da un consulente", !!((await L.DB.meta("config")) || {}).legale],
       ["Invio SMS automatico collegato (facoltativo)", !!L.CFG.smsWebhook]
     ];
+    const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || "", CompensoLiquidato: c.liquidato || ""}; };
+    const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     return L.send(res, 200, {
-      caf: caf.map(x => ({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id)})),
-      ottici: ottici.map(x => ({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id)})),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x)}, comp(x))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x)}, comp(x))),
       montature: mont.map(x => ({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Stato: x.Stato || "DISPONIBILE"})).sort((a, b) => a.Codice.localeCompare(b.Codice)),
       numeri: {clienti: utenti.length, perStato, abbonamentiAttivi: attivi, canoniMensili: Math.round(canoni * 100) / 100},
       prova, titolare: tit, pronto: lista,
@@ -64,7 +73,8 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (az === "salvaCaf"){
     const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(id)) return L.send(res, 400, {errore: "Codice CAF: 3-20 lettere o cifre."});
-    const d = {ID: id, Nome: pulito(b.Nome)}; if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.Password = L.hashPw(b.Password); }
+    const cp = compenso(b); if (cp.errore) return L.send(res, 400, cp);
+    const d = {ID: id, Nome: pulito(b.Nome), Compenso: cp}; if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.Password = L.hashPw(b.Password); }
     const esiste = (await L.DB.lista("caf")).some(x => (x.ID || x._id) === id);
     if (!esiste && !d.Password) return L.send(res, 400, {errore: "Per un nuovo CAF serve la password."});
     await L.DB.salva("caf", id, d); return L.send(res, 200, {ok: true});
@@ -72,8 +82,8 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "salvaOttico"){
     const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(id)) return L.send(res, 400, {errore: "Codice ottica: 3-20 lettere o cifre."});
     if (!pulito(b.Intestatario)) return L.send(res, 400, {errore: "Serve il nome dell'ottica."});
-    const ind = pulito(b.Indirizzo);
-    await L.DB.salva("ottici", id, {ID: id, Intestatario: pulito(b.Intestatario), Indirizzo: ind && !/,\s*$/.test(ind) ? ind + ", " : ind, Citta: pulito(b.Citta, 60), Telefono: pulito(b.Telefono, 20).replace(/[^\d+]/g, ""), Listino: pulito(b.Listino, 4) || "A"});
+    const ind = pulito(b.Indirizzo), cp = compenso(b); if (cp.errore) return L.send(res, 400, cp);
+    await L.DB.salva("ottici", id, {Compenso: cp, ID: id, Intestatario: pulito(b.Intestatario), Indirizzo: ind && !/,\s*$/.test(ind) ? ind + ", " : ind, Citta: pulito(b.Citta, 60), Telefono: pulito(b.Telefono, 20).replace(/[^\d+]/g, ""), Listino: pulito(b.Listino, 4) || "A"});
     if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); await L.DB.salva("ottLogin", id, {ID: id, Password: L.hashPw(b.Password)}); }
     return L.send(res, 200, {ok: true});
   }
@@ -85,10 +95,26 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (az === "clienti"){
     const tutti = await L.DB.tutti();
-    return L.send(res, 200, {clienti: tutti.map(({f}) => { const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {};
+    return L.send(res, 200, {clienti: tutti.map(({f}) => { const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, si = L.situazione(f), per = L.PREZZI.periodo(o);
       return {univoco: f.Univoco, nome: `${f.Nome || ""} ${f.Cognome || ""}`.trim(), cf: f["Codice Fiscale"] || "", caf: f.CAF || "", ottica: String(f.Ottica1 || "").split(" - ")[0],
-        stato: f.Stato || "", abbonamentoAttivo: !!(pg.abbonamento && !pg.chiuso), creato: f.Creato || ""}; })
+        stato: f.Stato || "", abbonamentoAttivo: !!(pg.abbonamento && !pg.chiuso), creato: f.Creato || "", moroso: si.moroso, bloccato: si.bloccato,
+        scadenza: per && !per.chiuso ? per.scadenza : "", inScadenza: !!(per && !per.chiuso && per.aperto && !per.scaduto), chiuso: !!pg.chiuso, esito: pg.esito || ""}; })
       .sort((a, b) => String(b.creato).localeCompare(String(a.creato)))});
+  }
+  if (az === "scheda"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const f = u.f, o = L.parseOrdine(f.Ordine), ott = String(f.Ottica1 || "").split(" - ")[0];
+    return L.send(res, 200, {cliente: {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
+      genere: f.Genere || "", caf: f.CAF || "", ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
+      situazione: L.situazione(f), link: L.linkCliente(f.Univoco, ott, f.CAF, f.Listino)}});
+  }
+  if (az === "blocco"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const st = ["bloccato", "sbloccato", "auto"].includes(b.stato) ? b.stato : null; if (!st) return L.send(res, 400, {errore: "Scelta non valida."});
+    const motivo = pulito(b.motivo, 300);
+    if (st !== "auto" && !motivo) return L.send(res, 400, {errore: st === "bloccato" ? "Scrivi il motivo del blocco." : "Scrivi perché sblocchi l'anagrafica."});
+    await L.DB.aggiorna(u, {Blocco: st === "auto" ? null : {stato: st, motivo, il: new Date().toISOString()}});
+    return L.send(res, 200, {ok: true, situazione: L.situazione(u.f)});
   }
   if (az === "elimina"){
     const id = pulito(b.id, 20).toUpperCase();

@@ -139,6 +139,19 @@ h2[tabindex="-1"]:focus{outline:none}
 .chip.s1{background:#fff4e0;color:#8a5a00} .chip.s2{background:#e7f0ff;color:#0b4fb3} .chip.s3{background:#fdecea;color:#b3261e}
 .chip.s4{background:#e8f5e9;color:#2e7d32} .chip.s5{background:#e0f7f4;color:#00695c} .chip.s6{background:#eceff1;color:#455a64}
 .vuoto{color:#666;text-align:center;padding:18px 6px}
+/* elenco snello: una riga per cliente, i dettagli si aprono nella scheda */
+.riga-cli{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left;margin:0;padding:9px 12px;border:1px solid #e3e6ea;border-radius:8px;background:#fff;box-shadow:none;font-size:14px;line-height:1.35;cursor:pointer;color:var(--testo)}
+.riga-cli:hover{background:#f6f8fb;transform:none}
+.riga-cli .nome{font-weight:700}.riga-cli .cod{display:block;font-family:"Courier New",monospace;font-size:12.5px;color:#555;font-weight:400}
+.riga-cli .bad{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+details.cli{padding:0}details.cli>summary{list-style:none;cursor:pointer;padding:9px 12px}details.cli>summary::-webkit-details-marker{display:none}
+details.cli>summary .top{align-items:center}details.cli[open]>summary{border-bottom:1px solid #eef1f5}
+details.cli .corpo{display:grid;gap:6px;padding:8px 12px 12px}
+.filtri{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin:6px 0}.filtri select,.filtri input{margin:0;width:100%}.filtri input{grid-column:1/-1}
+.dl{display:grid;grid-template-columns:minmax(110px,max-content) 1fr;gap:3px 12px;font-size:14px;margin:4px 0}.dl dt{color:#666}.dl dd{margin:0;font-weight:600;word-break:break-word}
+table.rx{width:auto;justify-self:start;border-collapse:collapse;font-size:13.5px;margin:4px 0}table.rx th,table.rx td{border:1px solid #e3e6ea;padding:3px 8px;text-align:center}table.rx th{background:#f6f8fb;font-weight:600}
+.blocco{background:#fdecea;color:#7a1c16;border-radius:8px;padding:8px 10px;font-size:14px;line-height:1.45}
+.conti{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin:6px 0}.conti div{background:#f6f8fb;border-radius:8px;padding:6px 10px;font-size:12.5px;color:#555}.conti b{display:block;font-size:16px;color:var(--testo)}
 .scheda{background:#f6f8fb;border-radius:8px;padding:10px 12px;line-height:1.5;margin:8px 0}
 .scelte{display:grid;gap:6px}
 .scelta{display:flex;gap:10px;align-items:center;border:1px solid #dcdcdc;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:14px;line-height:1.35}
@@ -402,7 +415,10 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
   <!-- elenco clienti (CAF e ottico) -->
   <div class="popup" id="clientiPopup" hidden><div class="popup-content alto largo">
     <h2>I miei clienti</h2>
-    <div class="riga"><input type="text" id="filtroClienti" aria-label="Cerca cliente" placeholder="Cerca per nome o codice" autocomplete="off" style="flex:1"><select id="filtroStato" aria-label="Filtra per stato"><option value="">Tutti gli stati</option></select></div>
+    <details id="clientiConti" class="scheda" hidden><summary style="cursor:pointer;font-weight:700">Conteggi con SocialGlass</summary><div id="clientiContiCorpo"></div></details>
+    <div class="filtri"><input type="text" id="filtroClienti" aria-label="Cerca cliente" placeholder="Cerca per nome o codice" autocomplete="off"><select id="filtroStato" aria-label="Filtra per stato"><option value="">Tutti gli stati</option></select>
+      <select id="filtroSit" aria-label="Filtra per situazione"><option value="">Ogni situazione</option><option value="bloccati">Anagrafica bloccata</option><option value="scadenza">In scadenza (30 giorni)</option><option value="ultimati">Durata minima completata</option><option value="consegnati">Occhiale consegnato</option><option value="avvisi">Avvisi da inviare</option></select></div>
+    <p class="hint" id="clientiNum" style="margin:2px 0 4px"></p>
     <div id="clientiLista" class="lista"></div>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
   </div></div>
@@ -459,8 +475,8 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1793400000"></script>
-<script src="listini.js?v=1793400000"></script>
-<script src="app.js?v=1793400000"></script>
+<script src="cf.js?v=1793500000"></script>
+<script src="listini.js?v=1793500000"></script>
+<script src="app.js?v=1793500000"></script>
 </body>
 </html>
