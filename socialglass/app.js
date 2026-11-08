@@ -6,6 +6,35 @@ const P = new URLSearchParams(location.search);
 const par = k => P.get(k) || P.get(k.toLowerCase()) || "";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const euro = v => Number(v || 0).toLocaleString("it-IT", {style: "currency", currency: "EUR"});
+// stampa: apre un foglio pulito (senza pulsanti né campi) e lancia la stampa; da lì si può anche salvare in PDF
+function pulisciStampa(nodo){
+  const c = nodo.cloneNode(true);
+  c.querySelectorAll("button,form,input,select,textarea,a.btn-link,.no-stampa,script").forEach(x => x.remove());
+  c.querySelectorAll("details").forEach(d => d.setAttribute("open", ""));
+  c.querySelectorAll("[style]").forEach(x => { x.style.maxHeight = ""; x.style.overflow = ""; });
+  return c.innerHTML;
+}
+function stampaDoc(titolo, corpo){
+  const w = window.open("", "_blank");
+  if (!w){ alertStampa(); return false; }
+  const t = (window.SG_INFO && SG_INFO.titolare) || {}, ora = new Date().toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"});
+  w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>${esc(titolo)} · SocialGlass</title><style>
+    @page{margin:12mm}body{font-family:Arial,Helvetica,sans-serif;font-size:10.5pt;color:#111;margin:0}
+    header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #0069D9;padding-bottom:4px;margin-bottom:10px}
+    header b{font-size:15pt;color:#0069D9}header small{color:#555}h1{font-size:13pt;margin:0 0 8px}h2,h3{font-size:11.5pt;margin:12px 0 4px}
+    table{border-collapse:collapse;width:100%;margin:4px 0 8px;page-break-inside:auto}th,td{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top}th{background:#eef2f7}tr{page-break-inside:avoid}
+    td.n,th.n{text-align:right}.dl{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;margin:4px 0}.dl dt{color:#555}.dl dd{margin:0;font-weight:600}
+    .scheda,.cli{border:1px solid #ccc;border-radius:6px;padding:6px 10px;margin:0 0 8px;page-break-inside:avoid}.chip{border:1px solid #888;border-radius:10px;padding:0 6px;font-size:8.5pt;margin-right:3px;white-space:nowrap}
+    .conti{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0}.conti div{border:1px solid #ccc;border-radius:5px;padding:3px 6px;font-size:9pt}.conti b{display:block;font-size:11pt}
+    .blocco{border:1px solid #c00;padding:4px 8px;border-radius:5px}.hint{color:#555;font-size:9pt}ul{margin:4px 0;padding-left:18px}summary{list-style:none;font-weight:600}
+    footer{margin-top:14px;color:#777;font-size:8.5pt;border-top:1px solid #ddd;padding-top:4px}
+  </style></head><body><header><b>SocialGlass</b><small>${esc(t.ragione || "")}${t.ragione ? " · " : ""}stampato il ${ora}</small></header><h1>${esc(titolo)}</h1>${corpo}
+  <footer>Documento riservato: contiene dati personali, da conservare e distruggere secondo il GDPR.</footer>
+  <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
+  w.document.close(); return true;
+}
+function alertStampa(){ const e = document.querySelector(".popup:not([hidden]) .esito") ; if (e){ e.hidden = false; e.className = "esito err"; e.textContent = "Il browser ha bloccato la finestra di stampa: consenti le finestre popup per questo sito."; } }
+window.SG_STAMPA = {stampaDoc, pulisciStampa};
 
 /* ---------- immagini mancanti: segnaposto ---------- */
 const SVG = {
@@ -396,11 +425,22 @@ function disegnaConti(k){
     <div class="hint" style="font-size:12.5px">${acc ? "Accordo con SocialGlass: " + acc + "." : "L'accordo economico con SocialGlass non è ancora stato impostato: chiedi all'amministratore."} Canoni incassati = canoni pagati × importo mensile.</div>`;
   box.hidden = false;
 }
+let clientiVisti = [];
+function stampaElencoClienti(){
+  const isOtt = ruolo() === "ottico", sel = $("filtroStato").value, sit = $("filtroSit");
+  const filtri = [sel, sit.value ? sit.options[sit.selectedIndex].text : "", $("filtroClienti").value.trim()].filter(Boolean).join(" · ");
+  const conti = $("clientiConti").hidden ? "" : "<h2>Conteggi con SocialGlass</h2>" + pulisciStampa($("clientiContiCorpo"));
+  stampaDoc(`Clienti ${isOtt ? "dell'ottica" : "del CAF"} ${sessionStorage.getItem("sg_id") || ""} ${sessionStorage.getItem("sg_nome") || ""}`.trim(), `${filtri ? `<p class="hint">Filtri: ${esc(filtri)}</p>` : ""}${conti}
+    <h2>${clientiVisti.length} clienti</h2><table><tr><th>Codice</th><th>Cliente</th>${isOtt ? "<th>CAF</th>" : "<th>Codice fiscale</th>"}<th>Stato</th><th>Montatura</th><th>Abbonamento dal</th><th>Scadenza</th><th>Consegnato</th><th>Note</th></tr>
+    ${clientiVisti.map(c => `<tr><td>${esc(c.univoco)}</td><td>${esc(c.nome)} ${esc(c.cognome)}<br><small>${esc(c.cellulare)}</small></td><td>${esc(isOtt ? c.caf : c.cf)}</td><td>${esc(c.stato)}</td><td>${esc(c.montatura || "")}</td>
+      <td>${dIt(c.attivatoIl)}</td><td>${c.periodo ? dIt(c.periodo.scadenza) : ""}</td><td>${dIt(c.consegnatoIl)}</td><td>${c.bloccato ? "ANAGRAFICA BLOCCATA" : ""}${c.esito ? esc(c.esito) : ""}</td></tr>`).join("")}</table>`);
+}
 function disegnaClienti(){
   const q = $("filtroClienti").value.trim().toUpperCase(), st = $("filtroStato").value, sit = $("filtroSit").value, isOtt = ruolo() === "ottico";
   const aperti = new Set([...document.querySelectorAll("#clientiLista details[open]")].map(d => d.dataset.u));
   const l = clienti.filter(c => (!st || c.stato === st) && (!sit || SIT_P[sit](c)) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
-  $("clientiNum").textContent = clienti.length ? `${l.length} di ${clienti.length} clienti · tocca un cliente per aprire la scheda` : "";
+  clientiVisti = l;
+  $("clientiNum").innerHTML = clienti.length ? `${l.length} di ${clienti.length} clienti · tocca un cliente per aprire la scheda · <button type="button" class="linkbtn" data-stampa-elenco>Stampa elenco</button>` : "";
   $("clientiLista").innerHTML = l.length ? l.map(c => {
     const p = c.periodo, sc = p && !c.esito ? (p.scaduto ? '<span class="chip s2">MESE PER MESE</span>' : p.aperto ? `<span class="chip s2">SCADE TRA ${p.giorni} GG</span>` : "") : "";
     const ultimato = p ? (p.scaduto ? `sì, il ${dIt(p.scadenza)}` : `no, scade il ${dIt(p.scadenza)}`) : "";
@@ -432,12 +472,17 @@ function disegnaClienti(){
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
       ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
         : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
-      <div class="az">${az}${azBlocco}</div></div></details>`;
+      <div class="az">${az}${azBlocco}<button type="button" class="grigio" data-stampa-cli="${esc(c.univoco)}">Stampa scheda</button></div></div></details>`;
   }).join("") : `<div class="vuoto">${clienti.length ? "Nessun cliente con questi filtri." : `Nessun cliente${isOtt ? " assegnato a questa ottica. Il cliente vede l'ottica scelta dal CAF nella sua pagina: se è un'altra, accedi con quel codice ottico." : "."}`}</div>`;
 }
 $("filtroClienti").addEventListener("input", disegnaClienti);
 $("filtroStato").addEventListener("change", disegnaClienti);
 $("filtroSit").addEventListener("change", disegnaClienti);
+$("clientiPopup").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.hasAttribute("data-stampa-elenco")) stampaElencoClienti();
+  if (b.dataset.stampaCli){ const d = document.querySelector(`#clientiLista details[data-u="${CSS.escape(b.dataset.stampaCli)}"]`); if (d) stampaDoc("Scheda cliente", `<div class="cli">${pulisciStampa(d)}</div>`); }
+});
 $("clientiLista").addEventListener("click", async e => {
   const av = e.target.closest("[data-avvisato]");
   if (av){ post("api/clienti", {univoco: av.dataset.avvisato}).then(() => setTimeout(apriClienti, av.tagName === "A" ? 1500 : 100)); return; }

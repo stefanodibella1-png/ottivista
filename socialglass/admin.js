@@ -68,7 +68,7 @@ function contiHtml(k){
 function disegnaScheda(c){
   const o = c.ordine || {}, pg = o.pagamento || {}, pr = o.prezzi || {}, m = o.montatura, p = c.periodo, si = c.situazione, b = si.blocco;
   const ins = pg.insoluto;
-  return `<button type="button" class="linkbtn" data-chiudi-scheda style="margin:0 0 6px">← Torna all'elenco</button>
+  return `<div class="riga" style="justify-content:space-between;align-items:center"><button type="button" class="linkbtn" data-chiudi-scheda style="margin:0">← Torna all'elenco</button><button type="button" data-stampa-scheda="cliente" style="margin:0">Stampa scheda</button></div>
     <div class="scheda"><div class="top" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">${esc(c.nome)} ${esc(c.cognome)}</b><span class="chip">${esc(c.stato)}</span></div>
     ${si.bloccato ? '<span class="chip s3">ANAGRAFICA BLOCCATA</span> ' : ""}${si.moroso ? '<span class="chip s3">MOROSO</span>' : ""}
     <dl class="dl">${riga("Codice cliente", esc(c.univoco))}${riga("Codice fiscale", esc(c.cf))}${riga("Cellulare", esc(c.cellulare))}${riga("Nato a", esc(c.natoA))}${riga("Data di nascita", c.dataNascita ? dt(c.dataNascita) : "")}${riga("Registrato il", dt(c.creato))}
@@ -115,18 +115,19 @@ function disegna(){
     if (!clientiAdm){ h += '<div class="vuoto">Caricamento…</div>'; $("admCorpo").innerHTML = h; call("clienti").then(r => { clientiAdm = r.ok ? r.data.clienti : []; disegna(); }); return; }
     if (schedaCli){ h += disegnaScheda(schedaCli); $("admCorpo").innerHTML = h; return; }
     const F = filtriAdm, q = F.q.toUpperCase();
-    const l = clientiAdm.filter(c => (!q || `${c.nome} ${c.cf} ${c.univoco}`.toUpperCase().includes(q)) && (!F.caf || c.caf === F.caf) && (!F.ottica || c.ottica === F.ottica)
+    const l = clientiVisti = clientiAdm.filter(c => (!q || `${c.nome} ${c.cf} ${c.univoco}`.toUpperCase().includes(q)) && (!F.caf || c.caf === F.caf) && (!F.ottica || c.ottica === F.ottica)
       && (!F.stato || c.stato === F.stato) && (!F.sit || SIT[F.sit][1](c)));
     const uniq = k => [...new Set(clientiAdm.map(c => c[k]).filter(Boolean))].sort();
     const sel = (k, tutti, vals) => `<select data-filtro="${k}" aria-label="${tutti}"><option value="">${tutti}</option>${vals.map(([v, t]) => `<option value="${esc(v)}" ${F[k] === v ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
     h += `<div class="filtri"><input id="admCerca" value="${esc(F.q)}" autocomplete="off" placeholder="Nome, codice fiscale o codice" aria-label="Cerca cliente">
       ${sel("caf", "Tutti i CAF", uniq("caf").map(v => [v, v]))}${sel("ottica", "Tutte le ottiche", uniq("ottica").map(v => [v, v]))}
       ${sel("stato", "Tutti gli stati", uniq("stato").map(v => [v, v]))}${sel("sit", "Ogni situazione", Object.entries(SIT).map(([k, v]) => [k, v[0]]))}</div>
-      <p class="hint" style="margin:2px 0 4px">${l.length} di ${clientiAdm.length} clienti · tocca un cliente per aprire la scheda</p>
+      <p class="hint" style="margin:2px 0 4px">${l.length} di ${clientiAdm.length} clienti · tocca un cliente per aprire la scheda · <button type="button" class="linkbtn" data-stampa-cli-elenco>Stampa elenco</button></p>
       <div class="lista">${l.slice(0, 300).map(c => `<button type="button" class="riga-cli" data-scheda="${esc(c.univoco)}"><span><span class="nome">${esc(c.nome)}</span><span class="cod">${esc(c.univoco)} · ${esc(c.caf)} · ${esc(c.ottica)}</span></span>
         <span class="bad">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.moroso ? '<span class="chip s3">MOROSO</span>' : ""}${c.inScadenza ? '<span class="chip s2">IN SCADENZA</span>' : ""}<span class="chip">${esc(c.stato)}</span></span></button>`).join("") || '<div class="vuoto">Nessun cliente con questi filtri</div>'}</div>`;
   }
   if (scheda === "caf"){
+    h += `<button type="button" data-stampa-conti="caf" style="margin:0 0 6px">Stampa conteggi dei CAF</button>`;
     h += `<form data-f="salvaCaf" class="scheda"><b>Nuovo CAF o modifica</b>
       <label class="lbl" for="aCafId">Codice CAF</label><input id="aCafId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aCafNome">Nome</label><input id="aCafNome" name="Nome">
@@ -137,6 +138,7 @@ function disegna(){
         <div class="az"><button type="button" class="grigio" data-mod-caf="${esc(c.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="caf" data-id="${esc(c.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "ottici"){
+    h += `<button type="button" data-stampa-conti="ottici" style="margin:0 0 6px">Stampa conteggi ed esposizione delle ottiche</button>`;
     h += `<form data-f="salvaOttico" class="scheda"><b>Nuova ottica o modifica</b>
       <label class="lbl" for="aOId">Codice ottica (es. OTT20)</label><input id="aOId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aONome">Nome dell'ottica</label><input id="aONome" name="Intestatario" required>
@@ -192,6 +194,14 @@ async function clic(e){
   if (b.dataset.art || b.dataset.artDaForn){ artAperto = b.dataset.art || b.dataset.artDaForn; if (b.dataset.artDaForn) scheda = "magazzino"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
+  if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
+  if (b.dataset.stampaOrd) return stampaOrdine(b.dataset.stampaOrd);
+  if (b.dataset.stampaConti) return stampaConti(b.dataset.stampaConti);
+  if (b.hasAttribute("data-stampa-cli-elenco")) return stampaElencoAdm();
+  if (b.dataset.stampaScheda){ const blocchi = [...$("admCorpo").querySelectorAll(".scheda")].filter(x => !x.matches("form")).map(x => `<div class="scheda">${ST().pulisciStampa(x)}</div>`).join("");
+    return ST().stampaDoc(b.dataset.stampaScheda === "cliente" ? `Scheda cliente ${schedaCli.nome} ${schedaCli.cognome}` : `Scheda montatura ${artAperto}`, blocchi); }
+  if (b.hasAttribute("data-stampa-forn")){ const f = dati.fornitori.find(x => x.ID === fornAperto), blocchi = [...$("admCorpo").querySelectorAll(".scheda")].filter(x => !x.matches("form")).map(x => `<div class="scheda">${ST().pulisciStampa(x)}</div>`).join("");
+    return ST().stampaDoc(`Fornitore ${f.Nome}`, blocchi); }
   if (b.dataset.esposte){ scheda = "magazzino"; artAperto = null; magF = {q: "", forn: "", dove: b.dataset.esposte, stato: "attive"}; disegna(); return; }
   if (b.dataset.forn){ fornAperto = b.dataset.forn; disegna(); inCima(); return; }
   if (b.hasAttribute("data-forn-nuovo")){ fornAperto = "nuovo"; disegna(); inCima(); return; }
@@ -281,6 +291,42 @@ async function invio(e){
   await carica(); msg(k === "cambiaPassword" ? "Password cambiata." : k === "magazzino" ? "Movimento registrato." : "Salvato.");
 }
 /* ---------- magazzino montature e fornitori ---------- */
+let magVisti = [], clientiVisti = [];
+const ST = () => window.SG_STAMPA;
+const n2 = v => Number(v || 0).toLocaleString("it-IT", {maximumFractionDigits: 2});
+function stampaMagazzino(){
+  const l = magVisti, filtri = [magF.q, magF.forn ? nomeForn(magF.forn) : "", magF.dove ? (magF.dove === "MAG" ? "in magazzino" : "esposte da " + nomeSede(magF.dove)) : "", MAG_STATI[magF.stato][0]].filter(Boolean).join(" · ");
+  const tot = l.reduce((s, m) => s + m.tot, 0), pren = l.reduce((s, m) => s + m.riservate.length, 0), val = l.reduce((s, m) => s + (m.tot + m.riservate.length) * (Number(m.Costo) || 0), 0);
+  ST().stampaDoc("Report di magazzino", `<p class="hint">Filtri: ${esc(filtri)}</p>
+    <div class="conti"><div>Articoli<b>${l.length}</b></div><div>Pezzi disponibili<b>${tot}</b></div><div>Pezzi prenotati<b>${pren}</b></div><div>Valore a costo<b>${euro(val)}</b></div></div>
+    <table><tr><th>Codice</th><th>Articolo</th><th>Fornitore</th><th>Dove</th><th class="n">Disp.</th><th class="n">Pren.</th><th class="n">Min.</th><th class="n">Costo</th><th class="n">Valore</th><th>Note</th></tr>
+    ${l.map(m => `<tr><td>${esc(m.Codice)}</td><td>${esc(m.Modello)} ${esc(m.Colore)}<br><small>${esc(m.Calibro)}${m.Asse ? "-" + esc(m.Asse) : ""}</small></td><td>${esc(nomeForn(m.Fornitore))}${m.CodiceFornitore ? "<br><small>" + esc(m.CodiceFornitore) + "</small>" : ""}</td>
+      <td>${Object.entries(m.giacenze).map(([k, n]) => `${esc(k === "MAG" ? "Magazzino" : k)}: ${n}`).join("<br>") || "—"}</td><td class="n">${m.tot}</td><td class="n">${m.riservate.length}</td><td class="n">${m.ScortaMinima || ""}</td>
+      <td class="n">${m.Costo ? euro(m.Costo) : ""}</td><td class="n">${m.Costo ? euro((m.tot + m.riservate.length) * m.Costo) : ""}</td><td>${m.archiviata ? "ARCHIVIATA" : m.esaurita ? "ESAURITA" : m.sottoScorta ? "SOTTO SCORTA" : ""}</td></tr>`).join("")}</table>`);
+}
+function stampaOrdine(id){
+  const o = dati.ordiniFornitori.find(x => x.ID === id), f = dati.fornitori.find(x => x.ID === o.Fornitore) || {Nome: o.Fornitore}, t = dati.titolare || {};
+  const tot = o.Righe.reduce((s, r) => s + r.qta * (r.costo || 0), 0);
+  ST().stampaDoc(`Ordine ${o.ID}`, `<div class="dl"><dt>Fornitore</dt><dd>${esc(f.Nome)}${f.Referente ? " · " + esc(f.Referente) : ""}</dd>${f.Email ? `<dt>Email</dt><dd>${esc(f.Email)}</dd>` : ""}${f.Telefono ? `<dt>Telefono</dt><dd>${esc(f.Telefono)}</dd>` : ""}
+      <dt>Ordinante</dt><dd>${esc(t.ragione || "SocialGlass")}${t.piva ? " · P.IVA " + esc(t.piva) : ""}${t.indirizzo ? " · " + esc(t.indirizzo) : ""}</dd><dt>Data</dt><dd>${dt(o.Creato)}</dd><dt>Stato</dt><dd>${esc(o.Stato)}</dd></div>
+    <table><tr><th>Codice fornitore</th><th>Nostro codice</th><th>Descrizione</th><th class="n">Quantità</th><th class="n">Costo unit.</th><th class="n">Totale</th></tr>
+    ${o.Righe.map(r => `<tr><td>${esc(r.codiceFornitore)}</td><td>${esc(r.codice)}</td><td>${esc(r.descrizione)}</td><td class="n">${r.qta}</td><td class="n">${r.costo ? euro(r.costo) : ""}</td><td class="n">${r.costo ? euro(r.qta * r.costo) : ""}</td></tr>`).join("")}
+    <tr><th colspan="3">Totale</th><th class="n">${o.Righe.reduce((s, r) => s + r.qta, 0)}</th><th></th><th class="n">${tot ? euro(tot) : ""}</th></tr></table>${o.Note ? `<p>Note: ${esc(o.Note)}</p>` : ""}`);
+}
+function stampaConti(tipo){
+  const caf = tipo === "caf", l = caf ? dati.caf : dati.ottici;
+  const accordo = x => x.CompensoTipo === "fisso" ? `${euro(x.CompensoValore)} per abbonamento` : x.CompensoTipo === "percentuale" ? `${n2(x.CompensoValore)}% sui canoni` : "non definito";
+  ST().stampaDoc(caf ? "Conteggi CAF" : "Conteggi ed esposizione ottiche", `<table><tr><th>Codice</th><th>Nome</th>${caf ? "" : "<th class=\"n\">Montature esposte</th>"}<th class="n">Clienti</th><th class="n">Attivati</th><th class="n">Attivi</th><th class="n">Canoni incassati</th><th>Accordo</th><th class="n">Maturato</th><th class="n">Liquidato</th><th class="n">Da liquidare</th></tr>
+    ${l.map(x => { const k = x.conti || {}; return `<tr><td>${esc(x.ID)}</td><td>${esc(caf ? x.Nome : x.Intestatario)}</td>${caf ? "" : `<td class="n">${dati.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[x.ID] || 0), 0)}</td>`}
+      <td class="n">${k.clienti || 0}</td><td class="n">${k.attivati || 0}</td><td class="n">${k.attivi || 0}</td><td class="n">${euro(k.incassati)}</td><td>${accordo(x)}</td><td class="n">${euro(k.maturato)}</td><td class="n">${euro(k.liquidato)}</td><td class="n">${euro(k.saldo)}</td></tr>`; }).join("")}</table>
+    <p class="hint">Canoni incassati = canoni pagati × importo mensile.</p>`);
+}
+function stampaElencoAdm(){
+  const F = filtriAdm, filtri = [F.q, F.caf, F.ottica, F.stato, F.sit ? SIT[F.sit][0] : ""].filter(Boolean).join(" · ");
+  ST().stampaDoc("Elenco clienti", `${filtri ? `<p class="hint">Filtri: ${esc(filtri)}</p>` : ""}<table><tr><th>Codice</th><th>Cliente</th><th>Codice fiscale</th><th>CAF</th><th>Ottica</th><th>Stato</th><th>Scadenza</th><th>Situazione</th></tr>
+    ${clientiVisti.map(c => `<tr><td>${esc(c.univoco)}</td><td>${esc(c.nome)}</td><td>${esc(c.cf)}</td><td>${esc(c.caf)}</td><td>${esc(c.ottica)}</td><td>${esc(c.stato)}</td><td>${c.scadenza ? dt(c.scadenza) : ""}</td>
+      <td>${[c.bloccato ? "bloccato" : "", c.moroso ? "moroso" : "", c.chiuso ? "chiuso" : c.abbonamentoAttivo ? "attivo" : ""].filter(Boolean).join(", ")}</td></tr>`).join("")}</table><p class="hint">${clientiVisti.length} clienti.</p>`);
+}
 let artAperto = null, fornAperto = null, magSel = new Set(), magF = {q: "", forn: "", dove: "", stato: "attive"};
 const sedi = () => [["MAG", "Magazzino"]].concat(dati.ottici.map(o => [o.ID, `${o.ID} · ${o.Intestatario}`]));
 const nomeSede = id => id === "MAG" ? "Magazzino" : ((dati.ottici.find(o => o.ID === id) || {}).Intestatario ? `${id} · ${dati.ottici.find(o => o.ID === id).Intestatario}` : id);
@@ -298,13 +344,14 @@ function vistaMagazzino(){
   const d = dati;
   if (artAperto) return schedaArticolo(artAperto === "nuovo" ? null : d.montature.find(m => m.Codice === artAperto));
   const avvisi = d.montature.filter(m => m.sottoScorta || m.esaurita);
-  const q = magF.q.toUpperCase(), l = d.montature.filter(m => MAG_STATI[magF.stato][1](m) && (!magF.forn || m.Fornitore === magF.forn) && (!magF.dove || (m.giacenze[magF.dove] || 0) > 0)
+  const q = magF.q.toUpperCase(), l = magVisti = d.montature.filter(m => MAG_STATI[magF.stato][1](m) && (!magF.forn || m.Fornitore === magF.forn) && (!magF.dove || (m.giacenze[magF.dove] || 0) > 0)
     && (!q || `${m.Codice} ${m.Modello} ${m.Colore} ${m.Calibro} ${m.CodiceFornitore}`.toUpperCase().includes(q)));
   const sel = (k, vals) => `<select data-magf="${k}" aria-label="${k}">${vals.map(([v, t]) => `<option value="${esc(v)}" ${magF[k] === v ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
   return `${avvisi.length ? `<div class="esito err" style="display:block"><b>${avvisi.length} ${avvisi.length === 1 ? "articolo sotto scorta o esaurito" : "articoli sotto scorta o esauriti"}</b>: ${avvisi.slice(0, 8).map(m => `<button type="button" class="linkbtn" data-art="${esc(m.Codice)}">${esc(m.Codice)}</button>`).join(" ")}${avvisi.length > 8 ? " …" : ""}
       <br><span style="font-size:13px">Il riordino si prepara nella pagina del fornitore (scheda <b>Fornitori</b>).</span></div>` : ""}
     <div class="riga"><button type="button" class="verde" data-art-nuovo style="margin:0">+ Nuova montatura</button>
-      <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button></div>
+      <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button>
+      <button type="button" data-stampa-mag style="margin:0">Stampa report</button></div>
     <div class="filtri"><input id="magCerca" value="${esc(magF.q)}" placeholder="Codice, modello, colore, calibro" aria-label="Cerca montatura" autocomplete="off">
       ${sel("forn", [["", "Tutti i fornitori"]].concat(d.fornitori.map(f => [f.ID, f.Nome])))}${sel("dove", [["", "Ogni sede"]].concat(sedi().map(([k, t]) => [k, k === "MAG" ? "In magazzino" : "Esposte da " + t])))}
       ${sel("stato", Object.entries(MAG_STATI).map(([k, v]) => [k, v[0]]))}</div>
@@ -317,7 +364,7 @@ function vistaMagazzino(){
 function schedaArticolo(m){
   const nuovo = !m; m = m || {Codice: "", giacenze: {}, riservate: [], Movimenti: [], tot: 0};
   const pezzi = Object.entries(m.giacenze);
-  return `<button type="button" class="linkbtn" data-chiudi-art style="margin:0 0 6px">← Torna al magazzino</button>
+  return `<div class="riga" style="justify-content:space-between;align-items:center"><button type="button" class="linkbtn" data-chiudi-art style="margin:0">← Torna al magazzino</button>${nuovo ? "" : `<button type="button" data-stampa-scheda="articolo" style="margin:0">Stampa scheda</button>`}</div>
     ${nuovo ? "" : `<div class="scheda"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">${esc(m.Codice)} · ${esc(m.Modello)} ${esc(m.Colore)}</b><span class="bad" style="display:flex;gap:4px;flex-wrap:wrap">${badgeMont(m)}</span></div>
       <dl class="dl">${riga("Fornitore", esc(nomeForn(m.Fornitore)) + (m.CodiceFornitore ? " · art. " + esc(m.CodiceFornitore) : ""))}${riga("Scorta minima", m.ScortaMinima ? esc(m.ScortaMinima) + (m.AvvisoScorta ? " · avviso attivo" : " · avviso spento") : "non impostata")}
         ${riga("Sotto scorta dal", m.SottoScortaDal ? dt(m.SottoScortaDal) : "")}</dl>
@@ -364,7 +411,7 @@ function vistaFornitori(){
 function schedaFornitore(f){
   const nuovo = !f; f = f || {ID: "", proposta: []};
   const art = nuovo ? [] : dati.montature.filter(m => m.Fornitore === f.ID && !m.archiviata), ord = nuovo ? [] : dati.ordiniFornitori.filter(o => o.Fornitore === f.ID);
-  return `<button type="button" class="linkbtn" data-chiudi-forn style="margin:0 0 6px">← Torna ai fornitori</button>
+  return `<div class="riga" style="justify-content:space-between;align-items:center"><button type="button" class="linkbtn" data-chiudi-forn style="margin:0">← Torna ai fornitori</button>${nuovo ? "" : `<button type="button" data-stampa-forn style="margin:0">Stampa riepilogo fornitore</button>`}</div>
     ${nuovo ? "" : `<div class="scheda"><b style="font-size:17px">${esc(f.Nome)}</b><div class="az" style="margin-top:6px">${f.Sito ? `<a class="btn-link" target="_blank" rel="noopener" href="${esc(f.Sito)}">Apri il sito per gli ordini</a>` : ""}${f.Email ? `<a class="btn-link" href="mailto:${esc(f.Email)}">${esc(f.Email)}</a>` : ""}${f.Telefono ? `<a class="btn-link" href="tel:${esc(f.Telefono)}">${esc(f.Telefono)}</a>` : ""}</div></div>
     <div class="scheda"><b>Riordino</b> ${f.RiordinoAuto ? '<span class="chip s4">AUTOMATICO</span>' : ""}
       <p class="hint" style="margin:4px 0">${f.RiordinoAuto ? "Quando un articolo scende alla scorta minima si crea da solo una bozza d'ordine qui sotto (controllo anche ogni mattina): tu la controlli e la invii." : "Attiva il riordino automatico nei dati del fornitore per avere la bozza pronta da sola."}</p>
@@ -374,7 +421,7 @@ function schedaFornitore(f){
     <div class="scheda"><b>Ordini</b>${ord.length ? ord.map(o => { const tot = o.Righe.reduce((s, r) => s + r.qta * (r.costo || 0), 0), pz = o.Righe.reduce((s, r) => s + r.qta, 0), testo = testoOrdine(o, f);
         return `<div class="cli" style="margin-top:6px"><div class="top"><div><b>${esc(o.ID)}</b>${o.Auto ? ' <span class="chip">AUTOMATICO</span>' : ""}<div class="cod">creato ${dt(o.Creato)}${o.Inviato ? " · inviato " + dt(o.Inviato) : ""}${o.Ricevuto ? " · ricevuto " + dt(o.Ricevuto) : ""}</div></div><span class="chip ${STATO_ORD[o.Stato] || ""}">${esc(o.Stato)}</span></div>
           <div style="font-size:13.5px">${o.Righe.map(r => `${r.qta} × ${esc(r.codice)}${r.codiceFornitore ? " (" + esc(r.codiceFornitore) + ")" : ""} ${esc(r.descrizione)}`).join("<br>")}</div>
-          <div style="font-size:13px;color:#555">${pz} pezzi${tot ? " · costo stimato " + euro(tot) : ""}</div>
+          <div style="font-size:13px;color:#555">${pz} pezzi${tot ? " · costo stimato " + euro(tot) : ""} · <button type="button" class="linkbtn" data-stampa-ord="${esc(o.ID)}">Stampa ordine</button></div>
           ${o.Stato === "BOZZA" ? `<div class="az">${f.Email ? `<a class="btn-link" data-invia-ord="${esc(o.ID)}" href="mailto:${esc(f.Email)}?subject=${encodeURIComponent("Ordine " + o.ID)}&body=${encodeURIComponent(testo)}">Invia per email</a>` : ""}
               ${f.Telefono ? `<a class="btn-link" data-invia-ord="${esc(o.ID)}" target="_blank" rel="noopener" href="https://wa.me/${esc(String(f.Telefono).replace(/\D/g, ""))}?text=${encodeURIComponent(testo)}">Invia su WhatsApp</a>` : ""}
               <button type="button" data-ord-op="invia" data-id="${esc(o.ID)}">Segna come inviato</button><button type="button" class="grigio" data-ord-op="annulla" data-id="${esc(o.ID)}">Annulla</button></div>` : ""}
