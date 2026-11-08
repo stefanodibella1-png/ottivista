@@ -1,0 +1,19 @@
+name: socialglass-dati-prova
+# Crea o elimina il cliente moroso di prova (solo a mano)
+on:
+  workflow_dispatch:
+    inputs:
+      azione: { description: "crea oppure elimina", required: true, default: "crea" }
+permissions: { contents: read }
+jobs:
+  moroso:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: cd socialglass && npm i --no-audit --no-fund >/dev/null
+      - env: { AZIONE: "${{ github.event.inputs.azione }}" }
+        run: case "$AZIONE" in crea|elimina) node scripts/sg-moroso-prova.cjs "$AZIONE";; *) echo "azione non valida"; exit 1;; esac
