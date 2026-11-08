@@ -34,7 +34,33 @@ function stampaDoc(titolo, corpo){
   w.document.close(); return true;
 }
 function alertStampa(){ const e = document.querySelector(".popup:not([hidden]) .esito") ; if (e){ e.hidden = false; e.className = "esito err"; e.textContent = "Il browser ha bloccato la finestra di stampa: consenti le finestre popup per questo sito."; } }
-window.SG_STAMPA = {stampaDoc, pulisciStampa};
+// periodi per i conteggi
+function periodoDa(p, da, a){
+  const o = new Date(), y = o.getFullYear(), m = o.getMonth(), f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (p === "mese") return [f(new Date(y, m, 1)), f(new Date(y, m + 1, 0))];
+  if (p === "mesePrec") return [f(new Date(y, m - 1, 1)), f(new Date(y, m, 0))];
+  if (p === "tre") return [f(new Date(y, m - 2, 1)), f(new Date(y, m + 1, 0))];
+  if (p === "anno") return [f(new Date(y, 0, 1)), f(new Date(y, 11, 31))];
+  if (p === "annoPrec") return [f(new Date(y - 1, 0, 1)), f(new Date(y - 1, 11, 31))];
+  if (p === "libero") return [da || "", a || ""];
+  return ["", ""];
+}
+const PERIODI = [["", "Da sempre"], ["mese", "Questo mese"], ["mesePrec", "Mese scorso"], ["tre", "Ultimi 3 mesi"], ["anno", "Quest'anno"], ["annoPrec", "Anno scorso"], ["libero", "Dal… al…"]];
+function campiPeriodo(pfx, st){
+  return `<div class="filtri no-stampa" style="margin:4px 0 8px"><select id="${pfx}P" aria-label="Periodo">${PERIODI.map(([v, t]) => `<option value="${v}" ${st.p === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+    <input type="date" id="${pfx}Da" aria-label="Dal" value="${esc(st.da)}" ${st.p === "libero" ? "" : "hidden"} style="grid-column:auto"><input type="date" id="${pfx}A" aria-label="Al" value="${esc(st.a)}" ${st.p === "libero" ? "" : "hidden"} style="grid-column:auto"></div>`;
+}
+const testoPeriodo = k => k && k.periodo && (k.periodo.da || k.periodo.a) ? `dal ${k.periodo.da ? new Date(k.periodo.da).toLocaleDateString("it-IT") : "inizio"} al ${k.periodo.a ? new Date(k.periodo.a).toLocaleDateString("it-IT") : "oggi"}` : "da sempre";
+// riquadro conteggi: incassi di SocialGlass dai clienti (Stripe) e compenso secondo l'accordo
+function contiCorpo(k){
+  const acc = k.accordo ? (k.accordo.tipo === "fisso" ? `${euro(k.accordo.valore)} per ogni abbonamento attivato` : `${String(k.accordo.valore).replace(".", ",")}% sui canoni incassati`) : "";
+  return `<div class="conti"><div>Nuovi clienti<b>${k.clienti}</b></div><div>Abbonamenti attivati<b>${k.attivati}</b></div><div>Attivi oggi<b>${k.attivi}</b></div><div>Occhiali consegnati<b>${k.consegnati}</b></div>
+    <div>Canoni pagati dai clienti<b>${euro(k.canoni)}</b></div><div>Spedizioni pagate<b>${euro(k.spedizioni)}</b></div>${k.riscatti ? `<div>Riscatti pagati<b>${euro(k.riscatti)}</b></div>` : ""}<div>Totale incassato<b>${euro(k.incassati)}</b></div>
+    ${acc ? `<div>Compenso maturato nel periodo<b>${euro(k.maturato)}</b></div><div>Compenso maturato in totale<b>${euro(k.maturatoTotale)}</b></div><div>Già liquidato<b>${euro(k.liquidato)}</b></div><div>Da liquidare<b>${euro(k.saldo)}</b></div>` : ""}</div>
+    <div class="hint" style="font-size:12.5px">Periodo: ${testoPeriodo(k)}. Gli importi sono pagati dai clienti a SocialGlass con la carta (Stripe): l'ottica e il CAF non incassano nulla direttamente.
+      ${acc ? "Accordo con SocialGlass: " + acc + "." : "L'accordo economico con SocialGlass non è ancora stato impostato."}${k.stima ? " Le date dei canoni pagati prima del 9/11/2026 sono ricostruite (un canone al mese dall'attivazione)." : ""}</div>`;
+}
+window.SG_STAMPA = {stampaDoc, pulisciStampa, periodoDa, campiPeriodo, contiCorpo, testoPeriodo};
 
 /* ---------- immagini mancanti: segnaposto ---------- */
 const SVG = {
@@ -382,7 +408,8 @@ $("come-funziona").addEventListener("click", () => open("comePopup"));
 let clienti = [];
 async function apriClienti(){
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
-  const r = await api("api/clienti"); if (scaduta(r)) return;
+  const [da, a] = periodoDa(perCli.p, perCli.da, perCli.a);
+  const r = await api(`api/clienti${da || a ? `?da=${da}&a=${a}` : ""}`); if (scaduta(r)) return;
   clienti = r.ok ? r.data.clienti : []; disegnaConti(r.ok ? r.data.conteggi : null);
   { const n = clienti.filter(c => c.avviso).length; document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; }); }
   const sel = $("filtroStato"); sel.length = 1;
@@ -414,17 +441,21 @@ function contattoAdmin(){
 }
 function ricettaCli(r){
   if (!r) return "";
-  const n = v => v == null ? "" : (v > 0 ? "+" : "") + String(v).replace(".", ",");
-  return `<table class="rx"><tr><th></th><th>Sf</th><th>Cil</th><th>Asse</th><th>Add</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf)}</td><td>${n(r[e] && r[e].cil)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add)}</td></tr>`).join("")}</table>${r.pd ? `<div>DP ${esc(r.pd)} mm${r.note ? " · " + esc(r.note) : ""}</div>` : ""}`;
+  const n = (v, max) => { if (v == null || v === "") return ""; let x = Number(v); if (Math.abs(x) > max && Number.isInteger(x)) x /= 100; return (x > 0 ? "+" : "") + x.toFixed(2).replace(".", ","); };
+  return `<table class="rx"><tr><th></th><th>Sf</th><th>Cil</th><th>Asse</th><th>Add</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf, 30)}</td><td>${n(r[e] && r[e].cil, 10)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add, 4)}</td></tr>`).join("")}</table>${r.pd ? `<div>DP ${esc(r.pd)} mm${r.note ? " · " + esc(r.note) : ""}</div>` : ""}`;
 }
+let perCli = {p: "", da: "", a: ""};
 function disegnaConti(k){
   const box = $("clientiConti"); if (!k){ box.hidden = true; return; }
-  const acc = k.accordo ? (k.accordo.tipo === "fisso" ? `${euro(k.accordo.valore)} per ogni abbonamento attivato` : `${String(k.accordo.valore).replace(".", ",")}% sui canoni incassati`) : "";
-  $("clientiContiCorpo").innerHTML = `<div class="conti"><div>Clienti<b>${k.clienti}</b></div><div>Abbonamenti attivati<b>${k.attivati}</b></div><div>Attivi ora<b>${k.attivi}</b></div><div>Occhiali consegnati<b>${k.consegnati}</b></div>
-    <div>Canoni incassati<b>${euro(k.incassati)}</b></div>${acc ? `<div>Compenso maturato<b>${euro(k.maturato)}</b></div><div>Già liquidato<b>${euro(k.liquidato)}</b></div><div>Da ricevere<b>${euro(k.saldo)}</b></div>` : ""}</div>
-    <div class="hint" style="font-size:12.5px">${acc ? "Accordo con SocialGlass: " + acc + "." : "L'accordo economico con SocialGlass non è ancora stato impostato: chiedi all'amministratore."} Canoni incassati = canoni pagati × importo mensile.</div>`;
+  $("clientiContiCorpo").innerHTML = campiPeriodo("pc", perCli) + contiCorpo(k);
   box.hidden = false;
 }
+$("clientiConti").addEventListener("change", e => {
+  if (e.target.id === "pcP"){ perCli.p = e.target.value; if (perCli.p === "libero"){ $("pcDa").hidden = $("pcA").hidden = false; return; } }
+  else if (e.target.id === "pcDa") perCli.da = e.target.value; else if (e.target.id === "pcA") perCli.a = e.target.value; else return;
+  if (perCli.p === "libero" && !(perCli.da || perCli.a)) return;
+  apriClienti().then(() => { $("clientiConti").open = true; });
+});
 let clientiVisti = [];
 function stampaElencoClienti(){
   const isOtt = ruolo() === "ottico", sel = $("filtroStato").value, sit = $("filtroSit");

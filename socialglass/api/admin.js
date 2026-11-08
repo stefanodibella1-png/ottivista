@@ -3,6 +3,7 @@
 const L = require("./_lib");
 const S = L.STATI;
 const pulito = (v, n = 120) => String(v == null ? "" : v).trim().slice(0, n);
+const gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
 const numero = v => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) && x >= 0 ? Math.round(x * 100) / 100 : 0; };
 function compenso(b){
   const tipo = ["fisso", "percentuale"].includes(b.CompensoTipo) ? b.CompensoTipo : "";
@@ -56,8 +57,8 @@ module.exports = L.wrap(async (req, res) => {
     const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || "", CompensoLiquidato: c.liquidato || ""}; };
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x)}, comp(x))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x)}, comp(x))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),

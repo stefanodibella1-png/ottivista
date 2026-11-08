@@ -282,7 +282,7 @@ async function stripeApi(method, path, params, chiave){
 /* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
 async function rinnova(u, {otticoId, caf} = {}){
   const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
-  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString()}] : []);
+  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
   // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
   const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl}
@@ -493,17 +493,39 @@ function situazione(f){
   return {moroso, bloccato: b.stato === "bloccato" || (moroso && b.stato !== "sbloccato"), motivi, blocco: b.stato ? b : null};
 }
 const BLOCCATO = {errore: "Anagrafica bloccata: nessuna operazione è possibile. Contatta l'amministratore di SocialGlass.", bloccato: true};
-// Accordo economico con CAF e ottiche: compenso per abbonamento attivato (fisso) o percentuale sui canoni incassati
-function conteggi(utenti, acc){
-  let attivati = 0, attivi = 0, consegnati = 0, incassati = 0;
+// Incassi di un ordine (pagati dal cliente a SocialGlass tramite Stripe): dallo storico dei pagamenti se c'è,
+// altrimenti ricostruiti dai canoni pagati (un canone al mese dall'attivazione, la spedizione con il primo)
+function incassi(o){
+  const pg = o.pagamento || {}, pr = o.prezzi || {}, rata = Number(pr.rata) || 0, out = [];
+  for (const s of o.storico || []) for (const x of s.incassi || []) out.push(x);
+  if (!pg.attivatoIl || pg.stato === "SIMULATO") return out;
+  const reali = Array.isArray(pg.pagamenti) ? pg.pagamenti : [];
+  // canoni pagati prima che esistesse lo storico: ricostruiti
+  const mancanti = Math.max(0, (pg.ratePagate || 0) - reali.filter(x => x.canone > 0).length);
+  for (let i = 0; i < mancanti; i++) out.push({il: PREZZI.addMesi(pg.attivatoIl, i).toISOString(), canone: rata, spedizione: i === 0 ? Number(pr.spedizione) || 0 : 0, riscatto: 0, stima: true});
+  if (reali.length) return out.concat(reali.map(x => ({il: x.il, canone: x.canone || 0, spedizione: x.spedizione || 0, riscatto: x.riscatto || 0})));
+  for (let i = mancanti; i < (pg.ratePagate || 0); i++) out.push({il: PREZZI.addMesi(pg.attivatoIl, i).toISOString(), canone: rata, spedizione: i === 0 ? Number(pr.spedizione) || 0 : 0, riscatto: 0, stima: true});
+  if (pg.riscatto && pg.riscatto.pagato) out.push({il: pg.riscatto.pagato, canone: 0, spedizione: 0, riscatto: Number(pr.riscatto) || 0, stima: true});
+  return out;
+}
+// Conteggi con CAF e ottiche, filtrabili per periodo (da/a = AAAA-MM-GG, inclusi).
+// Compenso secondo l'accordo: fisso per abbonamento attivato nel periodo, oppure percentuale sui canoni incassati nel periodo.
+function conteggi(utenti, acc, da, a){
+  const dentro = d => d && (!da || String(d).slice(0, 10) >= da) && (!a || String(d).slice(0, 10) <= a);
+  const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, r2 = x => Math.round(x * 100) / 100;
+  let clienti = 0, attivati = 0, attivi = 0, consegnati = 0, canoni = 0, spedizioni = 0, riscatti = 0, stima = false, attTot = 0, canTot = 0;
   for (const f of utenti){
     const o = parseOrdine(f.Ordine), pg = o.pagamento || {};
-    if (pg.attivatoIl && pg.stato !== "SIMULATO"){ attivati++; if (!pg.chiuso) attivi++; incassati += (pg.ratePagate || 0) * ((o.prezzi && o.prezzi.rata) || 0); }
-    if (f.Stato === STATI.CONSEGNATO) consegnati++;
+    if (dentro(f.Creato) || (!da && !a)) clienti++;
+    const reale = pg.attivatoIl && pg.stato !== "SIMULATO";
+    if (reale){ attTot++; if (dentro(pg.attivatoIl)) attivati++; if (!pg.chiuso) attivi++; }
+    if (o.consegnatoIl ? dentro(o.consegnatoIl) : (!da && !a && f.Stato === STATI.CONSEGNATO)) consegnati++;
+    for (const x of incassi(o)){ canTot += x.canone || 0; if (!dentro(x.il)) continue; canoni += x.canone || 0; spedizioni += x.spedizione || 0; riscatti += x.riscatto || 0; if (x.stima) stima = true; }
   }
-  const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, r2 = x => Math.round(x * 100) / 100;
-  const maturato = c.tipo === "fisso" ? v * attivati : c.tipo === "percentuale" ? incassati * v / 100 : 0;
-  return {clienti: utenti.length, attivati, attivi, consegnati, incassati: r2(incassati), accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
-    maturato: r2(maturato), liquidato: r2(Number(c.liquidato) || 0), saldo: r2(maturato - (Number(c.liquidato) || 0))};
+  const comp = (n, can) => c.tipo === "fisso" ? v * n : c.tipo === "percentuale" ? can * v / 100 : 0;
+  const maturatoTot = comp(attTot, canTot), liquidato = Number(c.liquidato) || 0;
+  return {periodo: {da: da || "", a: a || ""}, clienti, attivati, attivi, consegnati, canoni: r2(canoni), spedizioni: r2(spedizioni), riscatti: r2(riscatti),
+    incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
+    maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

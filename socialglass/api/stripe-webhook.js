@@ -24,11 +24,15 @@ module.exports = L.wrap(async (req, res) => {
     if (u){
       const ord = L.parseOrdine(u.f.Ordine); ord.pagamento = ord.pagamento || {};
       const pg = ord.pagamento, ora = new Date().toISOString();
-      if (ev.type === "invoice.paid" && o.amount_paid > 0 && meta.tipo === "riscatto") pg.riscatto = Object.assign(pg.riscatto || {}, {pagato: ora});
+      if (ev.type === "invoice.paid" && o.amount_paid > 0 && meta.tipo === "riscatto"){ pg.riscatto = Object.assign(pg.riscatto || {}, {pagato: ora});
+        pg.pagamenti = (pg.pagamenti || []).filter(x => x.id !== o.id).concat([{id: o.id, il: ora, canone: 0, spedizione: 0, riscatto: (o.amount_paid || 0) / 100}]).slice(-60); }
       else if (ev.type === "invoice.paid" && o.amount_paid > 0){
         // il primo canone può essere già stato contato all'attivazione
         pg.ratePagate = o.billing_reason === "subscription_create" ? Math.max(pg.ratePagate || 0, 1) : (pg.ratePagate || 0) + 1;
         pg.ultimaRata = ora; delete pg.insoluto;
+        // storico dei pagamenti (per i conteggi per periodo): la parte oltre il canone è spedizione
+        const imp = (o.amount_paid || 0) / 100, rata = Number((ord.prezzi || {}).rata) || imp, sped = Math.max(0, Math.round((imp - rata) * 100) / 100);
+        pg.pagamenti = (pg.pagamenti || []).filter(x => x.id !== o.id).concat([{id: o.id, il: ora, canone: Math.round((imp - sped) * 100) / 100, spedizione: sped, riscatto: 0}]).slice(-60);
       }
       if (ev.type === "invoice.payment_failed"){
         // morosità: compare nell'elenco Solleciti dell'amministratore; al cliente parte il primo messaggio del conto alla rovescia

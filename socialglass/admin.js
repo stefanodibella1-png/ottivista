@@ -35,7 +35,8 @@ async function apri(){
        <label class="lbl" for="admPw2">Ripeti la password</label><input type="password" id="admPw2" autocomplete="new-password" minlength="10" required><div class="esito" id="admMsg" hidden></div><button type="submit" class="full verde">Salva e entra</button></form>`;
 }
 async function carica(){
-  const r = await call("dati"); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
+  const [da, a] = window.SG_STAMPA.periodoDa(perAdm.p, perAdm.da, perAdm.a);
+  const r = await call("dati", {da, a}); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
 const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
@@ -48,8 +49,8 @@ const dt = d => d ? new Date(d).toLocaleDateString("it-IT") : "—";
 const riga = (k, v) => v === "" || v == null ? "" : `<dt>${k}</dt><dd>${v}</dd>`;
 function ricettaHtml(r){
   if (!r) return "";
-  const n = v => v == null ? "" : (v > 0 ? "+" : "") + String(v).replace(".", ",");
-  return `<table class="rx"><tr><th></th><th>Sfero</th><th>Cilindro</th><th>Asse</th><th>Add.</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf)}</td><td>${n(r[e] && r[e].cil)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add)}</td></tr>`).join("")}</table>
+  const n = (v, max) => { if (v == null || v === "") return ""; let x = Number(v); if (Math.abs(x) > max && Number.isInteger(x)) x /= 100; return (x > 0 ? "+" : "") + x.toFixed(2).replace(".", ","); };
+  return `<table class="rx"><tr><th></th><th>Sfero</th><th>Cilindro</th><th>Asse</th><th>Add.</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf, 30)}</td><td>${n(r[e] && r[e].cil, 10)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add, 4)}</td></tr>`).join("")}</table>
     ${r.pd ? `<div>Distanza pupillare: <b>${esc(r.pd)} mm</b></div>` : ""}${r.note ? `<div>Note: ${esc(r.note)}</div>` : ""}`;
 }
 // accordo economico con il CAF o l'ottica e riepilogo dei conti
@@ -59,8 +60,10 @@ function campiCompenso(pfx){
     <div class="riga"><div style="flex:1"><label class="lbl" for="${pfx}CV">Valore (€ o %)</label><input id="${pfx}CV" name="CompensoValore" inputmode="decimal"></div>
     <div style="flex:1"><label class="lbl" for="${pfx}CL">Già liquidato (€)</label><input id="${pfx}CL" name="CompensoLiquidato" inputmode="decimal"></div></div></fieldset>`;
 }
+let perAdm = {p: "", da: "", a: ""};
 function contiHtml(k){
   if (!k) return "";
+  return window.SG_STAMPA.contiCorpo(k);
   const acc = k.accordo ? (k.accordo.tipo === "fisso" ? `${euro(k.accordo.valore)} per abbonamento attivato` : `${String(k.accordo.valore).replace(".", ",")}% sui canoni incassati`) : "accordo non ancora definito";
   return `<div class="conti"><div>Clienti<b>${k.clienti}</b></div><div>Abbonamenti attivati<b>${k.attivati}</b></div><div>Attivi ora<b>${k.attivi}</b></div><div>Canoni incassati<b>${euro(k.incassati)}</b></div>
     <div>Compenso maturato<b>${euro(k.maturato)}</b></div><div>Già liquidato<b>${euro(k.liquidato)}</b></div><div>Da liquidare<b>${euro(k.saldo)}</b></div></div><div class="hint" style="font-size:12.5px">Accordo: ${acc}.</div>`;
@@ -132,7 +135,7 @@ function disegna(){
         <span class="bad">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.moroso ? '<span class="chip s3">MOROSO</span>' : ""}${c.inScadenza ? '<span class="chip s2">IN SCADENZA</span>' : ""}<span class="chip">${esc(c.stato)}</span></span></button>`).join("") || '<div class="vuoto">Nessun cliente con questi filtri</div>'}</div>`;
   }
   if (scheda === "caf"){
-    h += `<button type="button" data-stampa-conti="caf" style="margin:0 0 6px">Stampa conteggi dei CAF</button>`;
+    h += `<div class="scheda"><b>Periodo dei conteggi</b>${window.SG_STAMPA.campiPeriodo("pa", perAdm)}</div><button type="button" data-stampa-conti="caf" style="margin:0 0 6px">Stampa conteggi dei CAF</button>`;
     h += `<form data-f="salvaCaf" class="scheda"><b>Nuovo CAF o modifica</b>
       <label class="lbl" for="aCafId">Codice CAF</label><input id="aCafId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aCafNome">Nome</label><input id="aCafNome" name="Nome">
@@ -143,7 +146,7 @@ function disegna(){
         <div class="az"><button type="button" class="grigio" data-mod-caf="${esc(c.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="caf" data-id="${esc(c.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "ottici"){
-    h += `<button type="button" data-stampa-conti="ottici" style="margin:0 0 6px">Stampa conteggi ed esposizione delle ottiche</button>`;
+    h += `<div class="scheda"><b>Periodo dei conteggi</b>${window.SG_STAMPA.campiPeriodo("pa", perAdm)}</div><button type="button" data-stampa-conti="ottici" style="margin:0 0 6px">Stampa conteggi ed esposizione delle ottiche</button>`;
     h += `<form data-f="salvaOttico" class="scheda"><b>Nuova ottica o modifica</b>
       <label class="lbl" for="aOId">Codice ottica (es. OTT20)</label><input id="aOId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aONome">Nome dell'ottica</label><input id="aONome" name="Intestatario" required>
@@ -269,6 +272,10 @@ async function clic(e){
 }
 document.addEventListener("change", e => {
   const t = e.target; if (!t.dataset || !$("adminPopup") || !$("adminPopup").contains(t)) return;
+  if (["paP", "paDa", "paA"].includes(t.id)){
+    if (t.id === "paP"){ perAdm.p = t.value; if (t.value === "libero"){ $("paDa").hidden = $("paA").hidden = false; return; } } else perAdm[t.id === "paDa" ? "da" : "a"] = t.value;
+    if (perAdm.p === "libero" && !(perAdm.da || perAdm.a)) return; carica(); return;
+  }
   if (t.name === "canaleSoll"){ call("canaleSolleciti", {canale: t.value}).then(async r => { if (!r.ok) return msg(r.data.errore, "err"); await carica(); msg(t.value === "spento" ? "Invio automatico disattivato." : r.data.collegato ? "Canale salvato." : "Canale salvato. Non è ancora collegato: i messaggi restano da inviare a mano in Solleciti.", r.data.collegato ? "" : "err"); }); return; }
   if (t.dataset.magf){ magF[t.dataset.magf] = t.value; disegna(); }
   if (t.dataset.selart){ t.checked ? magSel.add(t.dataset.selart) : magSel.delete(t.dataset.selart); const q = document.querySelector("[data-qr-sel]"); if (q){ q.disabled = !magSel.size; q.textContent = `Stampa QR selezionati (${magSel.size})`; } }
@@ -367,12 +374,14 @@ function stampaOrdine(id){
     <tr><th colspan="3">Totale</th><th class="n">${o.Righe.reduce((s, r) => s + r.qta, 0)}</th><th></th><th class="n">${tot ? euro(tot) : ""}</th></tr></table>${o.Note ? `<p>Note: ${esc(o.Note)}</p>` : ""}`);
 }
 function stampaConti(tipo){
-  const caf = tipo === "caf", l = caf ? dati.caf : dati.ottici;
+  const caf = tipo === "caf", l = caf ? dati.caf : dati.ottici, per = l[0] && l[0].conti ? ST().testoPeriodo(l[0].conti) : "da sempre";
   const accordo = x => x.CompensoTipo === "fisso" ? `${euro(x.CompensoValore)} per abbonamento` : x.CompensoTipo === "percentuale" ? `${n2(x.CompensoValore)}% sui canoni` : "non definito";
-  ST().stampaDoc(caf ? "Conteggi CAF" : "Conteggi ed esposizione ottiche", `<table><tr><th>Codice</th><th>Nome</th>${caf ? "" : "<th class=\"n\">Montature esposte</th>"}<th class="n">Clienti</th><th class="n">Attivati</th><th class="n">Attivi</th><th class="n">Canoni incassati</th><th>Accordo</th><th class="n">Maturato</th><th class="n">Liquidato</th><th class="n">Da liquidare</th></tr>
+  const somma = k => l.reduce((t, x) => t + ((x.conti || {})[k] || 0), 0);
+  ST().stampaDoc(caf ? "Conteggi CAF" : "Conteggi ed esposizione ottiche", `<p class="hint">Periodo: ${per}</p><table><tr><th>Codice</th><th>Nome</th>${caf ? "" : "<th class=\"n\">Esposte</th>"}<th class="n">Nuovi clienti</th><th class="n">Attivati</th><th class="n">Canoni</th><th class="n">Spedizioni</th><th class="n">Totale incassato</th><th>Accordo</th><th class="n">Maturato nel periodo</th><th class="n">Liquidato</th><th class="n">Da liquidare</th></tr>
     ${l.map(x => { const k = x.conti || {}; return `<tr><td>${esc(x.ID)}</td><td>${esc(caf ? x.Nome : x.Intestatario)}</td>${caf ? "" : `<td class="n">${dati.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[x.ID] || 0), 0)}</td>`}
-      <td class="n">${k.clienti || 0}</td><td class="n">${k.attivati || 0}</td><td class="n">${k.attivi || 0}</td><td class="n">${euro(k.incassati)}</td><td>${accordo(x)}</td><td class="n">${euro(k.maturato)}</td><td class="n">${euro(k.liquidato)}</td><td class="n">${euro(k.saldo)}</td></tr>`; }).join("")}</table>
-    <p class="hint">Canoni incassati = canoni pagati × importo mensile.</p>`);
+      <td class="n">${k.clienti || 0}</td><td class="n">${k.attivati || 0}</td><td class="n">${euro(k.canoni)}</td><td class="n">${euro(k.spedizioni)}</td><td class="n">${euro(k.incassati)}</td><td>${accordo(x)}</td><td class="n">${euro(k.maturato)}</td><td class="n">${euro(k.liquidato)}</td><td class="n">${euro(k.saldo)}</td></tr>`; }).join("")}
+    <tr><th colspan="${caf ? 2 : 3}">Totale</th><th class="n">${somma("clienti")}</th><th class="n">${somma("attivati")}</th><th class="n">${euro(somma("canoni"))}</th><th class="n">${euro(somma("spedizioni"))}</th><th class="n">${euro(somma("incassati"))}</th><th></th><th class="n">${euro(somma("maturato"))}</th><th class="n">${euro(somma("liquidato"))}</th><th class="n">${euro(somma("saldo"))}</th></tr></table>
+    <p class="hint">Importi pagati dai clienti a SocialGlass con la carta (Stripe). «Liquidato» e «Da liquidare» sono sempre sul totale, non sul periodo.</p>`);
 }
 function stampaElencoAdm(){
   const F = filtriAdm, filtri = [F.q, F.caf, F.ottica, F.stato, F.sit ? SIT[F.sit][0] : ""].filter(Boolean).join(" · ");
