@@ -30,7 +30,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!L.verify(req, "admin")) return L.send(res, 401, L.NOAUTH);
 
   if (az === "dati"){
-    const [caf, ottLogin, ottici, mont, utenti] = await Promise.all(["caf", "ottLogin", "ottici", "mont"].map(k => L.DB.lista(k)).concat([L.DB.tutti()]));
+    const [caf, ottLogin, ottici, mont, forn, ordForn, utenti] = await Promise.all(["caf", "ottLogin", "ottici", "mont", "forn", "ordForn"].map(k => L.DB.lista(k)).concat([L.DB.tutti()]));
     const perStato = {}; let attivi = 0, canoni = 0;
     for (const u of utenti){
       perStato[u.f.Stato || "—"] = (perStato[u.f.Stato || "—"] || 0) + 1;
@@ -58,8 +58,15 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {
       caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x)}, comp(x))),
       ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x)}, comp(x))),
-      montature: mont.map(x => ({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Stato: x.Stato || "DISPONIBILE"})).sort((a, b) => a.Codice.localeCompare(b.Codice)),
-      numeri: {clienti: utenti.length, perStato, abbonamentiAttivi: attivi, canoniMensili: Math.round(canoni * 100) / 100},
+      montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "",
+        Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
+        Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
+      fornitori: forn.map(x => ({ID: x.ID || x._id, Nome: x.Nome || "", Referente: x.Referente || "", Email: x.Email || "", Telefono: x.Telefono || "", Sito: x.Sito || "", Consegna: x.Consegna || "", Note: x.Note || "",
+        RiordinoAuto: !!x.RiordinoAuto, proposta: L.proposta(mont, ordForn, x.ID || x._id)})).sort((a, b) => a.Nome.localeCompare(b.Nome)),
+      ordiniFornitori: ordForn.map(x => ({ID: x.ID || x._id, Fornitore: x.Fornitore || "", Stato: x.Stato || "BOZZA", Righe: x.Righe || [], Creato: x.Creato || "", Inviato: x.Inviato || "", Ricevuto: x.Ricevuto || "", Auto: !!x.Auto, Note: x.Note || ""}))
+        .sort((a, b) => String(b.Creato).localeCompare(String(a.Creato))),
+      numeri: {clienti: utenti.length, perStato, abbonamentiAttivi: attivi, canoniMensili: Math.round(canoni * 100) / 100,
+        sottoScorta: mont.filter(x => { const i = L.infoMont(x); return i.sottoScorta || i.esaurita; }).filter(x => !x.Eliminata).length},
       prova, titolare: tit, pronto: lista,
       listini: Object.keys(L.PREZZI.LISTINI.convenzioni || {A: 1})
     });
@@ -89,9 +96,77 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (az === "salvaMontatura"){
     const cod = pulito(b.Codice, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(cod)) return L.send(res, 400, {errore: "Codice montatura: 3-20 lettere o cifre."});
-    const st = ["DISPONIBILE", "RISERVATA", "NON DISPONIBILE"].includes(b.Stato) ? b.Stato : "DISPONIBILE";
-    await L.DB.salva("mont", cod, {Codice: cod, Modello: pulito(b.Modello, 60), Colore: pulito(b.Colore, 40), Calibro: pulito(b.Calibro, 10), Asse: pulito(b.Asse, 10), Prezzo: Number(b.Prezzo) > 0 ? Number(b.Prezzo) : null, Stato: st});
+    const prima = await L.DB.montatura(cod), intero = v => Math.max(0, Math.floor(Number(v) || 0));
+    if (prima && b.nuova) return L.send(res, 409, {errore: `Il codice ${cod} esiste già${prima.f.Eliminata ? " (archiviato: ripristinalo dall'archivio)" : ""}.`});
+    const d = {Codice: cod, Modello: pulito(b.Modello, 60), Colore: pulito(b.Colore, 40), Calibro: pulito(b.Calibro, 10), Asse: pulito(b.Asse, 10),
+      Prezzo: numero(b.Prezzo) || null, Costo: numero(b.Costo) || null, Fornitore: pulito(b.Fornitore, 20), CodiceFornitore: pulito(b.CodiceFornitore, 40),
+      ScortaMinima: intero(b.ScortaMinima), RiordinoQta: intero(b.RiordinoQta), AvvisoScorta: !!b.AvvisoScorta, Note: pulito(b.Note, 300)};
+    if (!prima){
+      // nuovo articolo: carico iniziale nella sede indicata
+      const q = intero(b.Quantita), dove = pulito(b.Dove, 20) || L.MAG, g = q ? {[dove]: q} : {};
+      Object.assign(d, L.campiScorte(d, g, [], {tipo: "carico iniziale", qta: q, dove}));
+    }
+    await L.DB.salva("mont", cod, d);
+    if (prima){ const f = Object.assign({}, prima.f, d), {g, r} = L.scorte(f); await L.DB.salva("mont", cod, {Stato: L.campiScorte(f, g, r, {}).Stato, SottoScortaDal: L.campiScorte(f, g, r, {}).SottoScortaDal}); }
     return L.send(res, 200, {ok: true});
+  }
+  // movimenti di magazzino: carico, scarico, trasferimento tra sedi, rettifica inventario
+  if (az === "magazzino"){
+    const m = await L.DB.montatura(pulito(b.codice, 20).toUpperCase()); if (!m) return L.send(res, 404, {errore: "Montatura non trovata."});
+    const q = Math.floor(Number(b.qta)), op = b.op, da = pulito(b.da, 20) || L.MAG, a = pulito(b.a, 20) || L.MAG, nota = pulito(b.nota, 160);
+    if (!["carico", "scarico", "trasferisci", "rettifica"].includes(op)) return L.send(res, 400, {errore: "Operazione non valida."});
+    if (!(q >= (op === "rettifica" ? 0 : 1)) || q > 9999) return L.send(res, 400, {errore: "Quantità non valida."});
+    let errore = "", sotto = null;
+    await L.DB.tx("mont", m.id, f => {
+      errore = ""; sotto = null; const {g, r} = L.scorte(f);
+      if (op === "carico") g[a] = (g[a] || 0) + q;
+      if (op === "scarico" || op === "trasferisci"){ if ((g[da] || 0) < q){ errore = `In ${da === L.MAG ? "magazzino" : da} ci sono solo ${g[da] || 0} pezzi.`; return null; } g[da] -= q; if (op === "trasferisci") g[a] = (g[a] || 0) + q; }
+      if (op === "rettifica") g[a] = q;
+      const out = L.campiScorte(f, g, r, {tipo: op, qta: op === "scarico" ? -q : q, dove: op === "trasferisci" ? `${da} → ${a}` : op === "scarico" ? da : a, nota});
+      if (!f.SottoScortaDal && out.SottoScortaDal) sotto = Object.assign({}, f, out);
+      return out;
+    });
+    if (errore) return L.send(res, 409, {errore});
+    if (sotto) await L.sottoScorta(sotto).catch(e => console.error(e));
+    return L.send(res, 200, {ok: true});
+  }
+  if (az === "salvaFornitore"){
+    const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{2,20}$/.test(id)) return L.send(res, 400, {errore: "Codice fornitore: 2-20 lettere o cifre."});
+    if (!pulito(b.Nome)) return L.send(res, 400, {errore: "Serve il nome del fornitore."});
+    const em = pulito(b.Email, 120); if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return L.send(res, 400, {errore: "Email non valida."});
+    let sito = pulito(b.Sito, 300); if (sito && !/^https?:\/\//i.test(sito)) sito = "https://" + sito;
+    await L.DB.salva("forn", id, {ID: id, Nome: pulito(b.Nome), Referente: pulito(b.Referente, 80), Email: em, Telefono: pulito(b.Telefono, 20).replace(/[^\d+]/g, ""), Sito: sito,
+      Consegna: pulito(b.Consegna, 60), Note: pulito(b.Note, 300), RiordinoAuto: !!b.RiordinoAuto});
+    if (b.RiordinoAuto) await L.riordinoAuto(id);
+    return L.send(res, 200, {ok: true});
+  }
+  // ordini ai fornitori: bozza (anche automatica) → inviato → ricevuto (carica il magazzino) o annullato
+  if (az === "ordineFornitore"){
+    const op = b.op, ora = new Date().toISOString();
+    const righe = (Array.isArray(b.righe) ? b.righe : []).map(x => ({codice: pulito(x.codice, 20).toUpperCase(), codiceFornitore: pulito(x.codiceFornitore, 40), descrizione: pulito(x.descrizione, 120), qta: Math.max(0, Math.floor(Number(x.qta) || 0)), costo: numero(x.costo)})).filter(x => x.codice && x.qta > 0);
+    if (op === "crea"){
+      const fo = pulito(b.fornitore, 20).toUpperCase(); if (!(await L.DB.lista("forn")).some(x => (x.ID || x._id) === fo)) return L.send(res, 404, {errore: "Fornitore non trovato."});
+      if (!righe.length) return L.send(res, 400, {errore: "L'ordine non ha righe."});
+      const id = `RO-${ora.slice(0, 10).replace(/-/g, "")}-${require("crypto").randomBytes(2).toString("hex").toUpperCase()}`;
+      await L.DB.salva("ordForn", id, {ID: id, Fornitore: fo, Stato: "BOZZA", Righe: righe, Creato: ora, Aggiornato: ora, Auto: false, Note: pulito(b.note, 300)});
+      return L.send(res, 200, {ok: true, id});
+    }
+    const o = (await L.DB.lista("ordForn")).find(x => (x.ID || x._id) === pulito(b.id, 40)); if (!o) return L.send(res, 404, {errore: "Ordine non trovato."});
+    const id = o.ID || o._id;
+    if (op === "modifica"){ if (o.Stato !== "BOZZA") return L.send(res, 409, {errore: "Si modificano solo le bozze."}); if (!righe.length) return L.send(res, 400, {errore: "L'ordine non ha righe."}); await L.DB.salva("ordForn", id, {Righe: righe, Aggiornato: ora}); return L.send(res, 200, {ok: true}); }
+    if (op === "invia"){ if (o.Stato !== "BOZZA") return L.send(res, 409, {errore: "Ordine già inviato."}); await L.DB.salva("ordForn", id, {Stato: "INVIATO", Inviato: ora, Aggiornato: ora}); return L.send(res, 200, {ok: true}); }
+    if (op === "annulla"){ if (o.Stato === "RICEVUTO") return L.send(res, 409, {errore: "Ordine già ricevuto."}); await L.DB.salva("ordForn", id, {Stato: "ANNULLATO", Aggiornato: ora}); return L.send(res, 200, {ok: true}); }
+    if (op === "ricevi"){
+      if (!["INVIATO", "BOZZA"].includes(o.Stato)) return L.send(res, 409, {errore: "Ordine già chiuso."});
+      const dove = pulito(b.dove, 20) || L.MAG, ric = righe.length ? righe : (o.Righe || []), mancanti = [];
+      for (const x of ric){
+        const m = await L.DB.montatura(x.codice); if (!m){ mancanti.push(x.codice); continue; }
+        await L.DB.tx("mont", m.id, f => { const {g, r} = L.scorte(f); g[dove] = (g[dove] || 0) + x.qta; return L.campiScorte(f, g, r, {tipo: "carico da ordine " + id, qta: x.qta, dove}); });
+      }
+      await L.DB.salva("ordForn", id, {Stato: "RICEVUTO", Ricevuto: ora, Aggiornato: ora, Arrivati: ric});
+      return L.send(res, 200, {ok: true, mancanti});
+    }
+    return L.send(res, 400, {errore: "Operazione non valida."});
   }
   if (az === "clienti"){
     const tutti = await L.DB.tutti();
@@ -125,12 +200,24 @@ module.exports = L.wrap(async (req, res) => {
       // con un abbonamento attivo si elimina solo chiudendolo, per non lasciare addebiti senza cliente
       if (abb && !b.chiudiAbbonamento) return L.send(res, 409, {errore: "Il cliente ha un abbonamento attivo.", abbonamento: true});
       if (abb && L.CFG.stripeKey){ try { await L.stripeApi("DELETE", `subscriptions/${abb}`); } catch(e){ if (!/No such subscription/i.test(e.message)) return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco."}); } }
-      if (o.montatura && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){ const m = await L.DB.montatura(o.montatura.codice); if (m && m.f.Stato === "RISERVATA") await L.DB.aggiornaMontatura(m, {Stato: "DISPONIBILE"}); }
+      if (o.montatura && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)) await L.liberaMontatura(o.montatura.codice, u.f.Univoco);
       await L.DB.elimina("utenti", u.id);
       return L.send(res, 200, {ok: true, abbonamentoChiuso: !!abb});
     }
-    const k = {caf: "caf", ottico: "ottici", montatura: "mont"}[b.tipo]; if (!k) return L.send(res, 400, {errore: "Tipo non valido"});
-    if (k === "mont"){ const m = await L.DB.montatura(id); if (m && m.f.Stato === "RISERVATA") return L.send(res, 409, {errore: "Montatura prenotata da un cliente: non si può eliminare."}); }
+    // montatura: si archivia (sparisce da elenchi e QR, le schede clienti restano intatte); si può ripristinare
+    if (b.tipo === "montatura"){
+      const m = await L.DB.montatura(id); if (!m) return L.send(res, 404, {errore: "Montatura non trovata."});
+      const pren = L.scorte(m.f).r.length;
+      await L.DB.salva("mont", m.id, {Eliminata: b.ripristina ? null : new Date().toISOString()});
+      const f = Object.assign({}, m.f, {Eliminata: b.ripristina ? null : "x"}), {g, r} = L.scorte(f);
+      await L.DB.salva("mont", m.id, L.campiScorte(f, g, r, {tipo: b.ripristina ? "ripristinata" : "archiviata", qta: 0, dove: ""}));
+      return L.send(res, 200, {ok: true, prenotate: pren});
+    }
+    if (b.tipo === "fornitore"){
+      const n = (await L.DB.lista("mont")).filter(x => x.Fornitore === id && !x.Eliminata).length;
+      await L.DB.elimina("forn", id); return L.send(res, 200, {ok: true, articoli: n});
+    }
+    const k = {caf: "caf", ottico: "ottici"}[b.tipo]; if (!k) return L.send(res, 400, {errore: "Tipo non valido"});
     if (k === "ottici" || k === "caf"){
       // i clienti restano: un'ottica con clienti in corso non si elimina (perderebbero indirizzo e ordini), si toglie solo l'accesso
       const legati = (await L.DB.tutti()).filter(({f}) => k === "caf" ? f.CAF === id : String(f.Ottica1 || "").startsWith(id + " "));
@@ -152,7 +239,7 @@ module.exports = L.wrap(async (req, res) => {
     // accessi, ottiche e montature libere di prova; clienti creati con gli accessi di prova
     for (const id of L.PROVA.caf) await L.DB.elimina("caf", id);
     for (const id of L.PROVA.ottici){ await L.DB.elimina("ottLogin", id); await L.DB.elimina("ottici", id); }
-    for (const c of L.PROVA.montature){ const m = await L.DB.montatura(c); if (m && m.f.Stato !== "RISERVATA") await L.DB.elimina("mont", c); }
+    for (const c of L.PROVA.montature){ const m = await L.DB.montatura(c); if (m && !L.scorte(m.f).r.length) await L.DB.elimina("mont", c); }
     let n = 0;
     for (const u of await L.DB.tutti()) if (L.PROVA.caf.includes(u.f.CAF) || L.PROVA.ottici.some(o => String(u.f.Ottica1 || "").startsWith(o + " "))){ await L.DB.elimina("utenti", u.id); n++; }
     await L.DB.meta("config", {provaRimossa: new Date().toISOString()});

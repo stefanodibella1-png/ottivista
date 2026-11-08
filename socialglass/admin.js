@@ -38,7 +38,7 @@ async function carica(){
   const r = await call("dati"); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
-const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["caf", "CAF"], ["ottici", "Ottici"], ["montature", "Montature"], ["impostazioni", "Impostazioni"]];
+const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
 let clientiAdm = null, schedaCli = null, filtriAdm = {q: "", caf: "", ottica: "", stato: "", sit: ""};
 const SIT = {
   morosi: ["Morosi", c => c.moroso], bloccati: ["Anagrafica bloccata", c => c.bloccato], attivi: ["Abbonamento attivo", c => c.abbonamentoAttivo],
@@ -106,6 +106,7 @@ function disegna(){
   if (d.prova) h += `<div class="esito info">Sono ancora attivi gli accessi di prova (CAF001, OTT07, OTT12 con password «demo»). Prima di aprire il servizio al pubblico rimuovili da <b>Impostazioni</b>.</div>`;
   if (scheda === "numeri"){
     const n = d.numeri;
+    if (n.sottoScorta) h += `<div class="esito err" style="display:block">Magazzino: <b>${n.sottoScorta}</b> ${n.sottoScorta === 1 ? "montatura sotto scorta o esaurita" : "montature sotto scorta o esaurite"}. <button type="button" class="linkbtn" data-tab="magazzino">Apri il magazzino</button></div>`;
     h += `<div class="scheda"><div class="date"><span>Clienti <b>${n.clienti}</b></span><span>Abbonamenti attivi <b>${n.abbonamentiAttivi}</b></span><span>Canoni al mese <b>${euro(n.canoniMensili)}</b></span></div></div>
       <div class="scheda"><b>Pronto per il pubblico?</b><ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></div>
       <div class="lista">${Object.entries(n.perStato).map(([s, c]) => `<div class="cli"><div class="top"><span>${esc(s)}</span><b>${c}</b></div></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div>`;
@@ -147,22 +148,12 @@ function disegna(){
       ${campiCompenso("aO")}
       <button type="submit" class="verde full">Salva ottica</button></form>
       <div class="lista">${d.ottici.map(o => `<div class="cli"><div class="top"><div><b>${esc(o.ID)}</b> ${esc(o.Intestatario)}${o.prova ? ' <span class="chip">PROVA</span>' : ""}</div>${o.accesso ? '<span class="chip s4">ACCESSO ATTIVO</span>' : '<span class="chip s3">SENZA PASSWORD</span>'}</div>
-        <div>${esc(o.Indirizzo)}${esc(o.Citta)} · listino ${esc(o.Listino)}${o.Telefono ? " · " + esc(o.Telefono) : ""}</div>${contiHtml(o.conti)}
+        <div>${esc(o.Indirizzo)}${esc(o.Citta)} · listino ${esc(o.Listino)}${o.Telefono ? " · " + esc(o.Telefono) : ""}</div>
+        <div>Montature esposte: <b>${d.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[o.ID] || 0), 0)}</b> pezzi · <button type="button" class="linkbtn" data-esposte="${esc(o.ID)}">vedi</button></div>${contiHtml(o.conti)}
         <div class="az"><button type="button" class="grigio" data-mod-ott="${esc(o.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="ottico" data-id="${esc(o.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
-  if (scheda === "montature"){
-    h += `<form data-f="salvaMontatura" class="scheda"><b>Nuova montatura o modifica</b>
-      <label class="lbl" for="aMCod">Codice (sul cartellino, es. SG-2001)</label><input id="aMCod" name="Codice" required style="text-transform:uppercase">
-      <div class="riga"><div style="flex:1"><label class="lbl" for="aMMod">Modello</label><input id="aMMod" name="Modello"></div><div style="flex:1"><label class="lbl" for="aMCol">Colore</label><input id="aMCol" name="Colore"></div></div>
-      <div class="riga"><div style="flex:1"><label class="lbl" for="aMCal">Calibro (es. 52-18)</label><input id="aMCal" name="Calibro"></div><div style="flex:1"><label class="lbl" for="aMAs">Asta</label><input id="aMAs" name="Asse"></div></div>
-      <div class="riga"><div style="flex:1"><label class="lbl" for="aMPr">Prezzo (vuoto = da listino)</label><input id="aMPr" name="Prezzo" inputmode="decimal"></div>
-        <div style="flex:1"><label class="lbl" for="aMSt">Stato</label><select id="aMSt" name="Stato"><option>DISPONIBILE</option><option>RISERVATA</option><option>NON DISPONIBILE</option></select></div></div>
-      <button type="submit" class="verde full">Salva montatura</button></form>
-      <button type="button" class="full" data-stampa>Stampa i cartellini QR delle montature disponibili</button>
-      <div class="lista">${d.montature.map(m => `<div class="cli"><div class="top"><div><b>${esc(m.Codice)}</b> ${esc(m.Modello)} ${esc(m.Colore)}</div><span class="chip ${m.Stato === "DISPONIBILE" ? "s4" : "s2"}">${esc(m.Stato)}</span></div>
-        <div>${esc(m.Calibro)}${m.Asse ? "-" + esc(m.Asse) : ""}${m.Prezzo ? " · " + euro(m.Prezzo) : ""}</div>
-        <div class="az"><button type="button" class="grigio" data-mod-mon="${esc(m.Codice)}">Modifica</button><button type="button" class="grigio" data-elimina="montatura" data-id="${esc(m.Codice)}">Elimina</button></div></div>`).join("")}</div>`;
-  }
+  if (scheda === "magazzino") h += vistaMagazzino();
+  if (scheda === "fornitori") h += vistaFornitori();
   if (scheda === "impostazioni"){
     const t = d.titolare || {};
     h += `<form data-f="salvaTitolare" class="scheda"><b>Titolare del servizio</b><p style="margin:4px 0">Compare nell'informativa privacy e nelle condizioni dell'abbonamento.</p>
@@ -185,22 +176,42 @@ function disegna(){
   $("admCorpo").innerHTML = h;
   if (ultimo && Date.now() - ultimo.il < 8000){ const u = ultimo; msg(u.t, u.k); ultimo.il = u.il; }
 }
+function inCima(){ const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); }
 function riempi(f, o){ for (const [k, v] of Object.entries(o)) if (f.elements[k]) f.elements[k].value = v ?? ""; f.scrollIntoView({behavior: "smooth", block: "start"}); }
 document.addEventListener("change", async e => { if (e.target.matches && e.target.matches("[data-legale]")){ await call("legale", {valore: e.target.checked}); await carica(); msg("Salvato."); } });
 async function clic(e){
+  const inv = e.target.closest("[data-invia-ord]");
+  // email o WhatsApp aperti: l'ordine si segna come inviato
+  if (inv){ setTimeout(async () => { const r = await call("ordineFornitore", {op: "invia", id: inv.dataset.inviaOrd}); if (r.ok){ await carica(); msg("Ordine segnato come inviato. Se non l'hai spedito davvero, annullalo e ricrealo."); } }, 400); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; disegna(); return; }
   if (b.dataset.scheda){ const r = await call("scheda", {id: b.dataset.scheda}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); schedaCli = r.data.cliente; disegna(); $("admCorpo").scrollTop = 0; b.blur(); const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); return; }
   if (b.hasAttribute("data-chiudi-scheda")){ schedaCli = null; disegna(); return; }
   if (b.dataset.modCaf){ riempi(document.querySelector('[data-f="salvaCaf"]'), dati.caf.find(x => x.ID === b.dataset.modCaf)); return; }
   if (b.dataset.modOtt){ riempi(document.querySelector('[data-f="salvaOttico"]'), dati.ottici.find(x => x.ID === b.dataset.modOtt)); return; }
-  if (b.dataset.modMon){ riempi(document.querySelector('[data-f="salvaMontatura"]'), dati.montature.find(x => x.Codice === b.dataset.modMon)); return; }
+  if (b.dataset.art || b.dataset.artDaForn){ artAperto = b.dataset.art || b.dataset.artDaForn; if (b.dataset.artDaForn) scheda = "magazzino"; disegna(); inCima(); return; }
+  if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
+  if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
+  if (b.dataset.esposte){ scheda = "magazzino"; artAperto = null; magF = {q: "", forn: "", dove: b.dataset.esposte, stato: "attive"}; disegna(); return; }
+  if (b.dataset.forn){ fornAperto = b.dataset.forn; disegna(); inCima(); return; }
+  if (b.hasAttribute("data-forn-nuovo")){ fornAperto = "nuovo"; disegna(); inCima(); return; }
+  if (b.hasAttribute("data-chiudi-forn")){ fornAperto = null; disegna(); return; }
+  if (b.dataset.qr){ const m = dati.montature.find(x => x.Codice === b.dataset.qr); stampa([Object.assign({}, m, {copie: Number(($("qrCopie") || {}).value) || 1})]); return; }
+  if (b.hasAttribute("data-qr-sel")){ stampa(dati.montature.filter(m => magSel.has(m.Codice)).map(m => Object.assign({}, m, {copie: Math.max(1, m.tot)}))); return; }
+  if (b.hasAttribute("data-sel-tutti")){ const vis = [...document.querySelectorAll("[data-selart]")].map(x => x.dataset.selart); const tutti = vis.length && vis.every(c => magSel.has(c)); vis.forEach(c => tutti ? magSel.delete(c) : magSel.add(c)); disegna(); return; }
+  if (b.dataset.ripristina){ const r = await call("elimina", {tipo: "montatura", id: b.dataset.ripristina, ripristina: true}); if (!r.ok) return msg(r.data.errore, "err"); await carica(); msg("Montatura ripristinata."); return; }
+  if (b.dataset.ordOp){
+    if (b.dataset.ordOp === "annulla" && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi l'annullamento? Tocca di nuovo"; return; }
+    const r = await call("ordineFornitore", {op: b.dataset.ordOp, id: b.dataset.id}); if (!r.ok) return msg(r.data.errore, "err");
+    await carica(); msg(b.dataset.ordOp === "invia" ? "Ordine segnato come inviato." : "Ordine annullato."); return;
+  }
   if (b.dataset.elimina){
     const tipo = b.dataset.elimina;
     if (!b.dataset.ok){
       b.dataset.ok = "1"; b.className = "verde";
       b.textContent = tipo === "cliente" ? (b.dataset.attivo ? "Chiudo l'abbonamento su Stripe ed elimino? Tocca di nuovo" : "Elimino il cliente e i suoi dati? Tocca di nuovo")
-        : tipo === "ottico" ? "Elimino l'ottica? Tocca di nuovo" : tipo === "caf" ? "Elimino il CAF? I suoi clienti restano. Tocca di nuovo" : "Confermi? Tocca di nuovo";
+        : tipo === "ottico" ? "Elimino l'ottica? Tocca di nuovo" : tipo === "caf" ? "Elimino il CAF? I suoi clienti restano. Tocca di nuovo"
+        : tipo === "montatura" ? "Archivio la montatura? Le schede clienti restano. Tocca di nuovo" : tipo === "fornitore" ? "Elimino il fornitore? Le montature restano. Tocca di nuovo" : "Confermi? Tocca di nuovo";
       return;
     }
     const extra = {tipo, id: b.dataset.id};
@@ -212,7 +223,10 @@ async function clic(e){
       return msg(r.data.errore, "err");
     }
     if (tipo === "cliente"){ clientiAdm = null; schedaCli = null; }
+    if (tipo === "montatura") artAperto = null; if (tipo === "fornitore") fornAperto = null;
     await carica();
+    if (tipo === "montatura") return msg(`Montatura archiviata${r.data.prenotate ? `: ${r.data.prenotate} ${r.data.prenotate === 1 ? "cliente l'aveva" : "clienti l'avevano"} già prenotata, i loro ordini proseguono normalmente` : ""}. La trovi in «Archiviate».`);
+    if (tipo === "fornitore") return msg(`Fornitore eliminato${r.data.articoli ? `: ${r.data.articoli} montature restano in magazzino senza fornitore` : ""}.`);
     msg(tipo === "cliente" ? `Cliente eliminato${r.data.abbonamentoChiuso ? " e abbonamento chiuso su Stripe" : ""}.` : r.data.soloAccesso ? "Accesso dell'ottica tolto: i suoi clienti restano visibili." : r.data.clientiRestano ? `Eliminato. I suoi ${r.data.clientiRestano} clienti restano nell'archivio.` : "Eliminato.");
     return;
   }
@@ -223,10 +237,15 @@ async function clic(e){
     await carica(); msg(`Dati di prova rimossi (${r.data.clientiRimossi} clienti di prova).`); return;
   }
   if (b.hasAttribute("data-esci")){ tok = ""; sessionStorage.removeItem("sg_admin"); $("adminPopup").hidden = true; return; }
-  if (b.hasAttribute("data-stampa")) stampa();
 }
+document.addEventListener("change", e => {
+  const t = e.target; if (!t.dataset || !$("adminPopup") || !$("adminPopup").contains(t)) return;
+  if (t.dataset.magf){ magF[t.dataset.magf] = t.value; disegna(); }
+  if (t.dataset.selart){ t.checked ? magSel.add(t.dataset.selart) : magSel.delete(t.dataset.selart); const q = document.querySelector("[data-qr-sel]"); if (q){ q.disabled = !magSel.size; q.textContent = `Stampa QR selezionati (${magSel.size})`; } }
+});
 document.addEventListener("change", e => { const k = e.target.dataset && e.target.dataset.filtro; if (k && $("adminPopup") && $("adminPopup").contains(e.target)){ filtriAdm[k] = e.target.value; disegna(); } });
-document.addEventListener("input", e => { if (e.target.id === "admCerca"){ filtriAdm.q = e.target.value; const pos = e.target.selectionStart; disegna(); const n = $("admCerca"); if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(_){} } } });
+document.addEventListener("input", e => { if (e.target.id === "magCerca"){ magF.q = e.target.value; const pos = e.target.selectionStart; disegna(); const n = $("magCerca"); if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(_){} } return; }
+  if (e.target.id === "admCerca"){ filtriAdm.q = e.target.value; const pos = e.target.selectionStart; disegna(); const n = $("admCerca"); if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(_){} } } });
 async function invio(e){
   e.preventDefault(); const f = e.target, k = f.dataset.f, v = Object.fromEntries(new FormData(f));
   if (k === "imposta" || k === "accedi"){
@@ -235,6 +254,23 @@ async function invio(e){
     const r = await call(k, {password: pw}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     tok = r.data.token; sessionStorage.setItem("sg_admin", tok); await carica(); return;
   }
+  if (k === "creaOrdine"){
+    const fo = dati.fornitori.find(x => x.ID === f.dataset.forn), righe = fo.proposta.map(p => Object.assign({}, p, {qta: Number(v["q_" + p.codice]) || 0})).filter(p => p.qta > 0);
+    const r = await call("ordineFornitore", {op: "crea", fornitore: fo.ID, righe}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    await carica(); return msg(`Bozza ${r.data.id} creata: controllala e inviala al fornitore.`);
+  }
+  if (k === "riceviOrdine"){
+    const r = await call("ordineFornitore", {op: "ricevi", id: f.dataset.id, dove: v.dove}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    await carica(); return msg(`Merce caricata in ${v.dove === "MAG" ? "magazzino" : v.dove}${r.data.mancanti.length ? `. Articoli non trovati (archiviati o eliminati): ${r.data.mancanti.join(", ")}` : ""}.`);
+  }
+  if (k === "salvaFornitore" && fornAperto === "nuovo"){
+    const r = await call(k, v); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    fornAperto = String(v.ID).trim().toUpperCase(); await carica(); return msg("Fornitore creato. Ora collega le montature scegliendolo nella loro scheda.");
+  }
+  if (k === "salvaMontatura" && v.nuova){
+    const r = await call(k, v); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    artAperto = String(v.Codice).trim().toUpperCase(); await carica(); return msg("Montatura creata.");
+  }
   if (k === "blocco"){
     const st = e.submitter ? e.submitter.value : ""; const r = await call("blocco", {id: f.dataset.id, stato: st, motivo: v.motivo});
     if (!r.ok) return msg(r.data.errore || "Errore", "err");
@@ -242,18 +278,132 @@ async function invio(e){
     return msg(st === "bloccato" ? "Anagrafica bloccata." : st === "sbloccato" ? "Anagrafica sbloccata." : "Torna al controllo automatico della morosità.");
   }
   const r = await call(k, v); if (!r.ok) return msg(r.data.errore || "Errore", "err");
-  await carica(); msg(k === "cambiaPassword" ? "Password cambiata." : "Salvato.");
+  await carica(); msg(k === "cambiaPassword" ? "Password cambiata." : k === "magazzino" ? "Movimento registrato." : "Salvato.");
 }
-// cartellini da stampare: QR con il codice della montatura, da attaccare sull'espositore
-function stampa(){
-  const m = dati.montature.filter(x => x.Stato === "DISPONIBILE");
+/* ---------- magazzino montature e fornitori ---------- */
+let artAperto = null, fornAperto = null, magSel = new Set(), magF = {q: "", forn: "", dove: "", stato: "attive"};
+const sedi = () => [["MAG", "Magazzino"]].concat(dati.ottici.map(o => [o.ID, `${o.ID} · ${o.Intestatario}`]));
+const nomeSede = id => id === "MAG" ? "Magazzino" : ((dati.ottici.find(o => o.ID === id) || {}).Intestatario ? `${id} · ${dati.ottici.find(o => o.ID === id).Intestatario}` : id);
+const nomeForn = id => id ? ((dati.fornitori.find(f => f.ID === id) || {}).Nome || id + " (eliminato)") : "—";
+const optSedi = (v, vuota) => (vuota ? `<option value="">${vuota}</option>` : "") + sedi().map(([k, t]) => `<option value="${esc(k)}" ${k === v ? "selected" : ""}>${esc(t)}</option>`).join("");
+const optForn = v => `<option value="">Nessun fornitore</option>` + dati.fornitori.map(f => `<option value="${esc(f.ID)}" ${f.ID === v ? "selected" : ""}>${esc(f.Nome)}</option>`).join("");
+const MAG_STATI = {attive: ["Tutte (non archiviate)", m => !m.archiviata], disponibili: ["Disponibili", m => !m.archiviata && m.tot > 0], sotto: ["Sotto scorta o esaurite", m => m.sottoScorta || m.esaurita],
+  prenotate: ["Con prenotazioni", m => m.riservate.length > 0], archiviate: ["Archiviate", m => m.archiviata]};
+function badgeMont(m){
+  return (m.archiviata ? '<span class="chip s6">ARCHIVIATA</span>' : "") + (m.esaurita ? '<span class="chip s3">ESAURITA</span>' : m.sottoScorta ? '<span class="chip s3">SOTTO SCORTA</span>' : "")
+    + (m.riservate.length ? `<span class="chip s2">PRENOTATE ${m.riservate.length}</span>` : "") + (!m.archiviata ? `<span class="chip s4">DISP. ${m.tot}</span>` : "");
+}
+const esposta = m => Object.entries(m.giacenze).filter(([k]) => k !== "MAG").map(([k, n]) => `${k} (${n})`).join(", ");
+function vistaMagazzino(){
+  const d = dati;
+  if (artAperto) return schedaArticolo(artAperto === "nuovo" ? null : d.montature.find(m => m.Codice === artAperto));
+  const avvisi = d.montature.filter(m => m.sottoScorta || m.esaurita);
+  const q = magF.q.toUpperCase(), l = d.montature.filter(m => MAG_STATI[magF.stato][1](m) && (!magF.forn || m.Fornitore === magF.forn) && (!magF.dove || (m.giacenze[magF.dove] || 0) > 0)
+    && (!q || `${m.Codice} ${m.Modello} ${m.Colore} ${m.Calibro} ${m.CodiceFornitore}`.toUpperCase().includes(q)));
+  const sel = (k, vals) => `<select data-magf="${k}" aria-label="${k}">${vals.map(([v, t]) => `<option value="${esc(v)}" ${magF[k] === v ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+  return `${avvisi.length ? `<div class="esito err" style="display:block"><b>${avvisi.length} ${avvisi.length === 1 ? "articolo sotto scorta o esaurito" : "articoli sotto scorta o esauriti"}</b>: ${avvisi.slice(0, 8).map(m => `<button type="button" class="linkbtn" data-art="${esc(m.Codice)}">${esc(m.Codice)}</button>`).join(" ")}${avvisi.length > 8 ? " …" : ""}
+      <br><span style="font-size:13px">Il riordino si prepara nella pagina del fornitore (scheda <b>Fornitori</b>).</span></div>` : ""}
+    <div class="riga"><button type="button" class="verde" data-art-nuovo style="margin:0">+ Nuova montatura</button>
+      <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button></div>
+    <div class="filtri"><input id="magCerca" value="${esc(magF.q)}" placeholder="Codice, modello, colore, calibro" aria-label="Cerca montatura" autocomplete="off">
+      ${sel("forn", [["", "Tutti i fornitori"]].concat(d.fornitori.map(f => [f.ID, f.Nome])))}${sel("dove", [["", "Ogni sede"]].concat(sedi().map(([k, t]) => [k, k === "MAG" ? "In magazzino" : "Esposte da " + t])))}
+      ${sel("stato", Object.entries(MAG_STATI).map(([k, v]) => [k, v[0]]))}</div>
+    <p class="hint" style="margin:2px 0 4px">${l.length} articoli · ${l.reduce((s, m) => s + m.tot, 0)} pezzi disponibili · <button type="button" class="linkbtn" data-sel-tutti>${l.length && l.every(m => magSel.has(m.Codice)) ? "Deseleziona" : "Seleziona"} tutti</button></p>
+    <div class="lista">${l.slice(0, 400).map(m => `<div class="riga-cli" style="cursor:default"><input type="checkbox" data-selart="${esc(m.Codice)}" ${magSel.has(m.Codice) ? "checked" : ""} aria-label="Seleziona ${esc(m.Codice)}" style="width:auto;margin:0 4px 0 0;box-shadow:none">
+        <button type="button" data-art="${esc(m.Codice)}" style="flex:1;display:flex;justify-content:space-between;gap:8px;align-items:center;background:none;border:0;box-shadow:none;padding:0;margin:0;text-align:left;color:inherit">
+        <span><span class="nome">${esc(m.Codice)}</span> ${esc(m.Modello)} ${esc(m.Colore)}<span class="cod">${esc(m.Calibro)}${m.Asse ? "-" + esc(m.Asse) : ""} · ${esc(nomeForn(m.Fornitore))}${esposta(m) ? " · esposta: " + esc(esposta(m)) : ""}</span></span>
+        <span class="bad">${badgeMont(m)}</span></button></div>`).join("") || '<div class="vuoto">Nessuna montatura con questi filtri</div>'}</div>`;
+}
+function schedaArticolo(m){
+  const nuovo = !m; m = m || {Codice: "", giacenze: {}, riservate: [], Movimenti: [], tot: 0};
+  const pezzi = Object.entries(m.giacenze);
+  return `<button type="button" class="linkbtn" data-chiudi-art style="margin:0 0 6px">← Torna al magazzino</button>
+    ${nuovo ? "" : `<div class="scheda"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">${esc(m.Codice)} · ${esc(m.Modello)} ${esc(m.Colore)}</b><span class="bad" style="display:flex;gap:4px;flex-wrap:wrap">${badgeMont(m)}</span></div>
+      <dl class="dl">${riga("Fornitore", esc(nomeForn(m.Fornitore)) + (m.CodiceFornitore ? " · art. " + esc(m.CodiceFornitore) : ""))}${riga("Scorta minima", m.ScortaMinima ? esc(m.ScortaMinima) + (m.AvvisoScorta ? " · avviso attivo" : " · avviso spento") : "non impostata")}
+        ${riga("Sotto scorta dal", m.SottoScortaDal ? dt(m.SottoScortaDal) : "")}</dl>
+      <table class="rx" style="margin-top:6px"><tr><th style="text-align:left">Dove</th><th>Pezzi</th></tr>${pezzi.map(([k, n]) => `<tr><td style="text-align:left">${esc(k === "MAG" ? "Magazzino" : "Esposta da " + nomeSede(k))}</td><td>${n}</td></tr>`).join("") || '<tr><td colspan="2">Nessun pezzo disponibile</td></tr>'}</table>
+      ${m.riservate.length ? `<div style="margin-top:4px">Prenotate dai clienti: ${m.riservate.map(r => `<b>${esc(r.univoco === "?" ? "cliente (dato precedente)" : r.univoco)}</b> da ${esc(nomeSede(r.ottica))}`).join("; ")}</div>` : ""}
+      <div class="riga" style="margin-top:8px;align-items:flex-end"><div><label class="lbl" for="qrCopie">Copie del QR</label><input id="qrCopie" type="number" min="1" max="200" value="${Math.max(1, m.tot)}" style="width:90px;margin:0"></div>
+        <button type="button" data-qr="${esc(m.Codice)}" style="margin:0">Stampa QR</button></div></div>
+    ${m.archiviata ? "" : `<form data-f="magazzino" class="scheda"><b>Movimento di magazzino</b><input type="hidden" name="codice" value="${esc(m.Codice)}">
+      <div class="riga"><div style="flex:1"><label class="lbl" for="mvOp">Operazione</label><select id="mvOp" name="op"><option value="carico">Carico (merce arrivata)</option><option value="trasferisci">Trasferisci (es. esponi in un'ottica)</option><option value="scarico">Scarico (rotta, persa, resa)</option><option value="rettifica">Rettifica inventario</option></select></div>
+        <div style="width:100px"><label class="lbl" for="mvQ">Quantità</label><input id="mvQ" name="qta" type="number" min="0" value="1" required></div></div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="mvDa">Da (scarico e trasferimento)</label><select id="mvDa" name="da">${optSedi("MAG")}</select></div>
+        <div style="flex:1"><label class="lbl" for="mvA">A (carico, trasferimento, rettifica)</label><select id="mvA" name="a">${optSedi("MAG")}</select></div></div>
+      <label class="lbl" for="mvN">Nota (facoltativa)</label><input id="mvN" name="nota" maxlength="160">
+      <button type="submit" class="verde full">Registra movimento</button></form>`}`}
+    <form data-f="salvaMontatura" class="scheda"><b>${nuovo ? "Nuova montatura" : "Dati dell'articolo"}</b>${nuovo ? '<input type="hidden" name="nuova" value="1">' : ""}
+      <label class="lbl" for="aMCod">Codice (sul cartellino QR, es. SG-2001)</label><input id="aMCod" name="Codice" required style="text-transform:uppercase" value="${esc(m.Codice)}" ${nuovo ? "" : "readonly"}>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="aMMod">Modello</label><input id="aMMod" name="Modello" value="${esc(m.Modello)}"></div><div style="flex:1"><label class="lbl" for="aMCol">Colore</label><input id="aMCol" name="Colore" value="${esc(m.Colore)}"></div></div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="aMCal">Calibro (es. 52-18)</label><input id="aMCal" name="Calibro" value="${esc(m.Calibro)}"></div><div style="flex:1"><label class="lbl" for="aMAs">Asta</label><input id="aMAs" name="Asse" value="${esc(m.Asse)}"></div></div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="aMPr">Prezzo al cliente (vuoto = listino)</label><input id="aMPr" name="Prezzo" inputmode="decimal" value="${esc(m.Prezzo)}"></div><div style="flex:1"><label class="lbl" for="aMCo">Costo d'acquisto</label><input id="aMCo" name="Costo" inputmode="decimal" value="${esc(m.Costo)}"></div></div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="aMFo">Fornitore</label><select id="aMFo" name="Fornitore">${optForn(m.Fornitore)}</select></div><div style="flex:1"><label class="lbl" for="aMCF">Codice articolo del fornitore</label><input id="aMCF" name="CodiceFornitore" value="${esc(m.CodiceFornitore)}"></div></div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="aMSm">Scorta minima (pezzi)</label><input id="aMSm" name="ScortaMinima" type="number" min="0" value="${esc(m.ScortaMinima)}"></div><div style="flex:1"><label class="lbl" for="aMRq">Quantità da riordinare (vuoto = automatica)</label><input id="aMRq" name="RiordinoQta" type="number" min="0" value="${esc(m.RiordinoQta)}"></div></div>
+      <label class="gdpr"><input type="checkbox" name="AvvisoScorta" ${m.AvvisoScorta || nuovo ? "checked" : ""}> Avviso automatico quando scende alla scorta minima</label>
+      ${nuovo ? `<div class="riga"><div style="width:110px"><label class="lbl" for="aMQ">Pezzi iniziali</label><input id="aMQ" name="Quantita" type="number" min="0" value="1"></div><div style="flex:1"><label class="lbl" for="aMDv">Dove</label><select id="aMDv" name="Dove">${optSedi("MAG")}</select></div></div>` : ""}
+      <label class="lbl" for="aMNo">Note</label><input id="aMNo" name="Note" value="${esc(m.Note)}" maxlength="300">
+      <button type="submit" class="verde full">${nuovo ? "Crea montatura" : "Salva dati"}</button></form>
+    ${nuovo ? "" : `<div class="scheda"><b>Ultimi movimenti</b>${(m.Movimenti || []).length ? `<div class="lista" style="max-height:240px">${m.Movimenti.map(x => `<div style="font-size:13px;border-bottom:1px solid #eef1f5;padding:3px 0">${dt(x.il)} · <b>${esc(x.tipo)}</b>${x.qta ? ` ${x.qta > 0 ? "+" : ""}${x.qta}` : ""}${x.dove ? " · " + esc(x.dove) : ""}${x.cliente ? " · cliente " + esc(x.cliente) : ""}${x.nota ? " · " + esc(x.nota) : ""}</div>`).join("")}</div>` : '<p style="margin:4px 0">Nessun movimento registrato.</p>'}</div>
+      <div class="az">${m.archiviata ? `<button type="button" class="verde" data-ripristina="${esc(m.Codice)}">Ripristina dall'archivio</button>`
+        : `<button type="button" class="grigio" data-elimina="montatura" data-id="${esc(m.Codice)}">Elimina (archivia)</button>`}</div>
+      <p class="hint" style="font-size:12.5px">Eliminare archivia l'articolo: non compare più negli elenchi e il suo QR non è più valido. Le schede dei clienti che l'hanno scelto restano complete.</p>`}`;
+}
+const STATO_ORD = {BOZZA: "s1", INVIATO: "s2", RICEVUTO: "s4", ANNULLATO: "s6"};
+function testoOrdine(o, f){
+  const t = (dati.titolare || {});
+  return `Buongiorno${f.Referente ? " " + f.Referente : ""},\nvi inviamo l'ordine ${o.ID}:\n\n${o.Righe.map(r => `- ${r.qta} x ${r.codiceFornitore || r.codice} ${r.descrizione}`).join("\n")}\n\nGrazie,\n${t.ragione || "SocialGlass"}${t.telefono ? "\n" + t.telefono : ""}`;
+}
+function vistaFornitori(){
+  const d = dati;
+  if (fornAperto) return schedaFornitore(fornAperto === "nuovo" ? null : d.fornitori.find(f => f.ID === fornAperto));
+  return `<button type="button" class="verde" data-forn-nuovo style="margin:0 0 6px">+ Nuovo fornitore</button>
+    <div class="lista">${d.fornitori.map(f => { const art = d.montature.filter(m => m.Fornitore === f.ID && !m.archiviata), ap = d.ordiniFornitori.filter(o => o.Fornitore === f.ID && ["BOZZA", "INVIATO"].includes(o.Stato));
+      return `<button type="button" class="riga-cli" data-forn="${esc(f.ID)}"><span><span class="nome">${esc(f.Nome)}</span><span class="cod">${esc(f.ID)} · ${art.length} articoli · ${art.reduce((s, m) => s + m.tot, 0)} pezzi</span></span>
+        <span class="bad">${f.proposta.length ? `<span class="chip s3">DA RIORDINARE ${f.proposta.length}</span>` : ""}${ap.length ? `<span class="chip s2">ORDINI APERTI ${ap.length}</span>` : ""}${f.RiordinoAuto ? '<span class="chip s4">RIORDINO AUTO</span>' : ""}</span></button>`; }).join("") || '<div class="vuoto">Nessun fornitore. Aggiungi il primo per collegare le montature e preparare i riordini.</div>'}</div>`;
+}
+function schedaFornitore(f){
+  const nuovo = !f; f = f || {ID: "", proposta: []};
+  const art = nuovo ? [] : dati.montature.filter(m => m.Fornitore === f.ID && !m.archiviata), ord = nuovo ? [] : dati.ordiniFornitori.filter(o => o.Fornitore === f.ID);
+  return `<button type="button" class="linkbtn" data-chiudi-forn style="margin:0 0 6px">← Torna ai fornitori</button>
+    ${nuovo ? "" : `<div class="scheda"><b style="font-size:17px">${esc(f.Nome)}</b><div class="az" style="margin-top:6px">${f.Sito ? `<a class="btn-link" target="_blank" rel="noopener" href="${esc(f.Sito)}">Apri il sito per gli ordini</a>` : ""}${f.Email ? `<a class="btn-link" href="mailto:${esc(f.Email)}">${esc(f.Email)}</a>` : ""}${f.Telefono ? `<a class="btn-link" href="tel:${esc(f.Telefono)}">${esc(f.Telefono)}</a>` : ""}</div></div>
+    <div class="scheda"><b>Riordino</b> ${f.RiordinoAuto ? '<span class="chip s4">AUTOMATICO</span>' : ""}
+      <p class="hint" style="margin:4px 0">${f.RiordinoAuto ? "Quando un articolo scende alla scorta minima si crea da solo una bozza d'ordine qui sotto (controllo anche ogni mattina): tu la controlli e la invii." : "Attiva il riordino automatico nei dati del fornitore per avere la bozza pronta da sola."}</p>
+      ${f.proposta.length ? `<form data-f="creaOrdine" data-forn="${esc(f.ID)}"><table class="rx" style="width:100%"><tr><th style="text-align:left">Articolo</th><th>Disp.</th><th>Min.</th><th>In arrivo</th><th>Da ordinare</th></tr>
+        ${f.proposta.map(p => `<tr><td style="text-align:left">${esc(p.codice)}${p.codiceFornitore ? ` <small>(${esc(p.codiceFornitore)})</small>` : ""}<br><small>${esc(p.descrizione)}</small></td><td>${p.giacenza}</td><td>${p.minimo}</td><td>${p.inArrivo}</td><td><input type="number" min="0" name="q_${esc(p.codice)}" value="${p.qta}" style="width:70px;margin:0"></td></tr>`).join("")}</table>
+        <button type="submit" class="verde full">Crea bozza d'ordine</button></form>` : '<p style="margin:4px 0">Nessun articolo da riordinare in questo momento.</p>'}</div>
+    <div class="scheda"><b>Ordini</b>${ord.length ? ord.map(o => { const tot = o.Righe.reduce((s, r) => s + r.qta * (r.costo || 0), 0), pz = o.Righe.reduce((s, r) => s + r.qta, 0), testo = testoOrdine(o, f);
+        return `<div class="cli" style="margin-top:6px"><div class="top"><div><b>${esc(o.ID)}</b>${o.Auto ? ' <span class="chip">AUTOMATICO</span>' : ""}<div class="cod">creato ${dt(o.Creato)}${o.Inviato ? " · inviato " + dt(o.Inviato) : ""}${o.Ricevuto ? " · ricevuto " + dt(o.Ricevuto) : ""}</div></div><span class="chip ${STATO_ORD[o.Stato] || ""}">${esc(o.Stato)}</span></div>
+          <div style="font-size:13.5px">${o.Righe.map(r => `${r.qta} × ${esc(r.codice)}${r.codiceFornitore ? " (" + esc(r.codiceFornitore) + ")" : ""} ${esc(r.descrizione)}`).join("<br>")}</div>
+          <div style="font-size:13px;color:#555">${pz} pezzi${tot ? " · costo stimato " + euro(tot) : ""}</div>
+          ${o.Stato === "BOZZA" ? `<div class="az">${f.Email ? `<a class="btn-link" data-invia-ord="${esc(o.ID)}" href="mailto:${esc(f.Email)}?subject=${encodeURIComponent("Ordine " + o.ID)}&body=${encodeURIComponent(testo)}">Invia per email</a>` : ""}
+              ${f.Telefono ? `<a class="btn-link" data-invia-ord="${esc(o.ID)}" target="_blank" rel="noopener" href="https://wa.me/${esc(String(f.Telefono).replace(/\D/g, ""))}?text=${encodeURIComponent(testo)}">Invia su WhatsApp</a>` : ""}
+              <button type="button" data-ord-op="invia" data-id="${esc(o.ID)}">Segna come inviato</button><button type="button" class="grigio" data-ord-op="annulla" data-id="${esc(o.ID)}">Annulla</button></div>` : ""}
+          ${o.Stato === "INVIATO" || o.Stato === "BOZZA" ? `<form data-f="riceviOrdine" data-id="${esc(o.ID)}" class="riga" style="align-items:flex-end"><div style="flex:1"><label class="lbl" for="rc${esc(o.ID)}">Merce arrivata: carica in</label><select id="rc${esc(o.ID)}" name="dove">${optSedi("MAG")}</select></div><button type="submit" class="verde" style="margin:0">Merce arrivata</button></form>` : ""}
+          ${o.Stato === "INVIATO" ? `<div class="az"><button type="button" class="grigio" data-ord-op="annulla" data-id="${esc(o.ID)}">Annulla ordine</button></div>` : ""}</div>`; }).join("") : '<p style="margin:4px 0">Nessun ordine.</p>'}</div>
+    <div class="scheda"><b>Articoli di questo fornitore</b> (${art.length})<div class="lista" style="max-height:260px">${art.map(m => `<button type="button" class="riga-cli" data-art-da-forn="${esc(m.Codice)}"><span><span class="nome">${esc(m.Codice)}</span> ${esc(m.Modello)} ${esc(m.Colore)}<span class="cod">${esc(m.CodiceFornitore)}</span></span><span class="bad">${badgeMont(m)}</span></button>`).join("") || '<div class="vuoto">Nessun articolo collegato</div>'}</div></div>`}
+    <form data-f="salvaFornitore" class="scheda"><b>${nuovo ? "Nuovo fornitore" : "Dati del fornitore"}</b>
+      <label class="lbl" for="fId">Codice (es. SUNOPTIC)</label><input id="fId" name="ID" required style="text-transform:uppercase" value="${esc(f.ID)}" ${nuovo ? "" : "readonly"}>
+      <label class="lbl" for="fNo">Nome</label><input id="fNo" name="Nome" required value="${esc(f.Nome)}">
+      <div class="riga"><div style="flex:1"><label class="lbl" for="fRe">Referente</label><input id="fRe" name="Referente" value="${esc(f.Referente)}"></div><div style="flex:1"><label class="lbl" for="fTe">Telefono / WhatsApp</label><input id="fTe" name="Telefono" inputmode="tel" value="${esc(f.Telefono)}"></div></div>
+      <label class="lbl" for="fEm">Email per gli ordini</label><input id="fEm" name="Email" type="email" value="${esc(f.Email)}">
+      <label class="lbl" for="fSi">Sito o area riservata per gli ordini</label><input id="fSi" name="Sito" value="${esc(f.Sito)}">
+      <label class="lbl" for="fCo">Tempi di consegna</label><input id="fCo" name="Consegna" value="${esc(f.Consegna)}" placeholder="es. 5 giorni lavorativi">
+      <label class="lbl" for="fNt">Note (minimi d'ordine, sconti…)</label><input id="fNt" name="Note" value="${esc(f.Note)}">
+      <label class="gdpr"><input type="checkbox" name="RiordinoAuto" ${f.RiordinoAuto ? "checked" : ""}> Riordino automatico: prepara da solo la bozza d'ordine per gli articoli sotto scorta</label>
+      <button type="submit" class="verde full">${nuovo ? "Crea fornitore" : "Salva dati"}</button></form>
+    ${nuovo ? "" : `<div class="az"><button type="button" class="grigio" data-elimina="fornitore" data-id="${esc(f.ID)}">Elimina fornitore</button></div>`}`;
+}
+// cartellini QR: uno o più articoli, con il numero di copie scelto
+function stampa(elenco){
+  if (!elenco.length) return msg("Nessuna montatura selezionata.", "err");
   const w = open("", "_blank"); if (!w) return msg("Il browser ha bloccato la finestra di stampa: consenti i popup.", "err");
+  const et = []; elenco.forEach(x => { for (let i = 0; i < Math.min(200, x.copie || 1); i++) et.push(x); });
   w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Cartellini QR SocialGlass</title>
     <style>body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(4,1fr);gap:6mm}.c{border:1px dashed #999;padding:4mm;text-align:center;break-inside:avoid}
     .c b{display:block;font-size:13pt;margin-top:2mm}.c small{color:#444}.q{display:flex;justify-content:center}</style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script></head><body>
-    <div class="g">${m.map((x, i) => `<div class="c"><div class="q" id="q${i}"></div><b>${esc(x.Codice)}</b><small>${esc(x.Modello)} ${esc(x.Colore)} ${esc(x.Calibro)}</small></div>`).join("")}</div>
-    <script>window.onload=function(){${JSON.stringify(m.map(x => x.Codice))}.forEach(function(c,i){new QRCode(document.getElementById("q"+i),{text:c,width:110,height:110});});setTimeout(function(){print()},500)}<\/script></body></html>`);
+    <div class="g">${et.map((x, i) => `<div class="c"><div class="q" id="q${i}"></div><b>${esc(x.Codice)}</b><small>${esc(x.Modello)} ${esc(x.Colore)} ${esc(x.Calibro)}</small></div>`).join("")}</div>
+    <script>window.onload=function(){${JSON.stringify(et.map(x => x.Codice))}.forEach(function(c,i){new QRCode(document.getElementById("q"+i),{text:c,width:110,height:110});});setTimeout(function(){print()},500)}<\/script></body></html>`);
   w.document.close();
 }
 window.SG_ADMIN = {apri};

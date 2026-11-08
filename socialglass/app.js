@@ -793,7 +793,7 @@ async function loop(){
 function stopScan(){ scanning = false; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("video-container").hidden = true; }
 function codiceDa(txt){ try { const u = new URL(txt); return u.searchParams.get("id") || u.searchParams.get("codice") || u.pathname.split("/").pop(); } catch(e){ return String(txt).trim(); } }
 async function verificaQR(raw){
-  const codice = codiceDa(raw), r = await api(`api/montatura?codice=${encodeURIComponent(codice)}`);
+  const codice = codiceDa(raw), r = await api(`api/montatura?codice=${encodeURIComponent(codice)}${UNIVOCO ? "&univoco=" + encodeURIComponent(UNIVOCO) : ""}`);
   const t = $("qr-text"), b = $("qr-btn");
   if (r.ok && r.data.disponibile){
     const m = r.data;

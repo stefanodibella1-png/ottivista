@@ -32,7 +32,7 @@ const demo = global.__sgDemo || (global.__sgDemo = {
     {ID: "OTT07", Intestatario: "Ottica Demo Centro", Indirizzo: "Via Esempio 12, ", Citta: "Catania", Listino: "A", Telefono: "390950000000"},
     {ID: "OTT12", Intestatario: "Ottica Demo Mare", Indirizzo: "Corso Prova 3, ", Citta: "Acireale", Listino: "B"}
   ],
-  utenti: [],
+  utenti: [], fornitori: [], ordForn: [],
   montature: [
     {Codice: "SG-1042", Modello: "Aurora", Colore: "Nero", Calibro: "52-18", Asse: "145", Stato: "DISPONIBILE"},
     {Codice: "SG-1043", Modello: "Vela", Colore: "Tartaruga", Calibro: "50-20", Asse: "140", Stato: "DISPONIBILE"},
@@ -51,7 +51,7 @@ function fs(){
   fsDb = getFirestore(app);
   return fsDb;
 }
-const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta"};
+const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta", forn: "sg_fornitori", ordForn: "sg_ordini_fornitori"};
 // al primo avvio carica CAF, ottici e montature di prova (poi si gestiscono dalla console Firebase)
 function seed(db){
   if (seeded) return seeded;
@@ -103,7 +103,12 @@ const FS = {
   async tutti(){ return (await (await fdb()).collection(COL.utenti).get()).docs.map(d => ({id: d.id, f: d.data()})); },
   async aggiorna(u, fields){ await (await fdb()).collection(COL.utenti).doc(u.id).update(fields); Object.assign(u.f, fields); },
   async montatura(codice){ const d = await (await fdb()).collection(COL.mont).doc(String(codice)).get(); return d.exists ? {id: d.id, f: d.data()} : null; },
-  async aggiornaMontatura(m, fields){ await (await fdb()).collection(COL.mont).doc(m.id).update(fields); Object.assign(m.f, fields); }
+  async aggiornaMontatura(m, fields){ await (await fdb()).collection(COL.mont).doc(m.id).update(fields); Object.assign(m.f, fields); },
+  // lettura e scrittura atomica (due prenotazioni contemporanee non possono prendere lo stesso pezzo)
+  async tx(k, id, fn){
+    const db = await fdb(), ref = db.collection(COL[k]).doc(String(id));
+    return db.runTransaction(async t => { const d = await t.get(ref); if (!d.exists) return null; const out = fn(d.data()); if (out) t.update(ref, out); return out; });
+  }
 };
 
 /* ---------- Airtable ---------- */
@@ -132,13 +137,14 @@ async function find(base, table, formula, max = 1){
 /* ---------- archivio: stesse funzioni con Airtable o con i dati di prova ---------- */
 const parseOrdine = s => { try { return s ? JSON.parse(s) : {}; } catch(e){ return {}; } };
 // dati di prova in memoria (server senza database): stesse funzioni del pannello
-const DEMOCOL = {caf: () => demo.caf, ottLogin: () => demo.ottLogin, ottici: () => demo.ottici, mont: () => demo.montature, utenti: () => demo.utenti};
-const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco"};
+const DEMOCOL = {caf: () => demo.caf, ottLogin: () => demo.ottLogin, ottici: () => demo.ottici, mont: () => demo.montature, utenti: () => demo.utenti, forn: () => (demo.fornitori = demo.fornitori || []), ordForn: () => (demo.ordForn = demo.ordForn || [])};
+const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco", forn: "ID", ordForn: "ID"};
 const MEM = {
   async lista(k){ return DEMOCOL[k]().map(x => Object.assign({_id: x[DEMOKEY[k]]}, x)); },
   async salva(k, id, data){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i < 0) a.push(Object.assign({[DEMOKEY[k]]: id}, data)); else Object.assign(a[i], data); },
   async elimina(k, id){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i >= 0) a.splice(i, 1); },
-  async meta(id, data){ demo.meta = demo.meta || {}; if (data === undefined) return demo.meta[id] || null; demo.meta[id] = Object.assign(demo.meta[id] || {}, data); }
+  async meta(id, data){ demo.meta = demo.meta || {}; if (data === undefined) return demo.meta[id] || null; demo.meta[id] = Object.assign(demo.meta[id] || {}, data); },
+  async tx(k, id, fn){ const x = DEMOCOL[k]().find(r => r[DEMOKEY[k]] === id); if (!x) return null; const out = fn(JSON.parse(JSON.stringify(x))); if (out) Object.assign(x, out); return out; }
 };
 const AT = {
   async login(ruolo, id){
@@ -259,6 +265,7 @@ async function attiva(u, sessione){
   if (!ord.pagamento.ratePagate && sessione.payment_status === "paid") ord.pagamento.ratePagate = 1;
   ord.aggiornato = ord.pagamento.attivatoIl;
   await DB.aggiorna(u, {Stato: STATI.ATTIVO, Ordine: JSON.stringify(ord)});
+  if (ord.montatura) try { await liberaMontatura(ord.montatura.codice, u.f.Univoco, true); } catch(e){ console.error(e); }
   return true;
 }
 // se la conferma di Stripe non è ancora arrivata, la si chiede direttamente a Stripe
@@ -335,6 +342,91 @@ function wrap(fn){
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
+/* ---------- magazzino montature ----------
+   Giacenze: pezzi disponibili per sede ("MAG" = magazzino, oppure il codice dell'ottica dove sono esposte).
+   Riservate: pezzi prenotati dai clienti (tolti dalla sede finché l'ordine non è pagato o la prenotazione scade).
+   Le schede clienti conservano una copia dei dati della montatura: archiviare un articolo non le tocca. */
+const MAG = "MAG";
+function scorte(f){
+  let g = f.Giacenze, r = f.Riservate;
+  if (!g){ const st = String(f.Stato || "DISPONIBILE").toUpperCase(); g = st === "DISPONIBILE" ? {[MAG]: 1} : {}; if (!r) r = st === "RISERVATA" ? [{univoco: "?", ottica: MAG, il: ""}] : []; }
+  g = Object.fromEntries(Object.entries(g).map(([k, n]) => [k, Math.max(0, Math.floor(Number(n) || 0))]).filter(([, n]) => n > 0));
+  r = Array.isArray(r) ? r.slice() : [];
+  return {g, r, tot: Object.values(g).reduce((a, b) => a + b, 0)};
+}
+function statoMont(f, g, r){ const t = Object.values(g).reduce((a, b) => a + b, 0); return f.Eliminata ? "ARCHIVIATA" : t > 0 ? "DISPONIBILE" : r.length ? "RISERVATA" : "NON DISPONIBILE"; }
+function campiScorte(f, g, r, m){
+  const tot = Object.values(g).reduce((a, b) => a + b, 0), sotto = tot <= (Number(f.ScortaMinima) || 0);
+  return {Giacenze: g, Riservate: r, Stato: statoMont(f, g, r), Movimenti: [Object.assign({il: new Date().toISOString()}, m)].concat(f.Movimenti || []).slice(0, 80),
+    // l'avviso di scorta riparte quando la giacenza torna sopra il minimo
+    SottoScortaDal: sotto && Number(f.ScortaMinima) > 0 ? (f.SottoScortaDal || new Date().toISOString()) : null};
+}
+function infoMont(f){
+  const {g, r, tot} = scorte(f), min = Number(f.ScortaMinima) || 0;
+  return {tot, giacenze: g, riservate: r, esaurita: !f.Eliminata && tot === 0, sottoScorta: !f.Eliminata && min > 0 && tot <= min, avviso: !!f.AvvisoScorta, archiviata: !!f.Eliminata};
+}
+function disponibile(f, ottica){ if (!f || f.Eliminata) return false; const {g, tot} = scorte(f); return ottica ? (g[ottica] > 0 || g[MAG] > 0) : tot > 0; }
+async function riservaMontatura(codice, univoco, ottica){
+  let ok = false, sotto = null;
+  await DB.tx("mont", codice, f => {
+    ok = false; if (f.Eliminata) return null;
+    const {g, r} = scorte(f);
+    if (r.some(x => x.univoco === univoco)){ ok = true; return null; }
+    const da = g[ottica] > 0 ? ottica : g[MAG] > 0 ? MAG : null; if (!da) return null;
+    g[da]--; r.push({univoco, ottica: da, il: new Date().toISOString()}); ok = true;
+    const out = campiScorte(f, g, r, {tipo: "prenotata", qta: -1, dove: da, cliente: univoco});
+    sotto = !f.SottoScortaDal && out.SottoScortaDal ? Object.assign({}, f, out) : null;
+    return out;
+  });
+  if (ok && sotto) await sottoScorta(sotto).catch(e => console.error(e));
+  return ok;
+}
+// rilascia: il pezzo torna nella sede da cui era stato preso; scarica: esce dal magazzino (ordine pagato)
+async function liberaMontatura(codice, univoco, scarico){
+  if (!codice) return;
+  await DB.tx("mont", codice, f => {
+    const {g, r} = scorte(f);
+    let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?"); if (i < 0) return null;
+    const [x] = r.splice(i, 1);
+    if (!scarico) g[x.ottica] = (g[x.ottica] || 0) + 1;
+    return campiScorte(f, g, r, {tipo: scarico ? "uscita cliente" : "prenotazione annullata", qta: scarico ? 0 : 1, dove: x.ottica, cliente: univoco});
+  });
+}
+// avviso di esaurimento (SMS al titolare se l'invio SMS è collegato) e riordino automatico se attivo sul fornitore
+async function sottoScorta(f){
+  if (f.AvvisoScorta && CFG.smsWebhook){
+    const t = (await DB.meta("titolare")) || {};
+    if (t.telefono) try { await fetch(CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to: t.telefono, text: `SocialGlass magazzino: ${f.Codice} ${f.Modello || ""} ${f.Colore || ""} sotto la scorta minima (${scorte(f).tot} rimasti).`})}); } catch(e){}
+  }
+  if (f.Fornitore) await riordinoAuto(f.Fornitore);
+}
+// proposta di riordino per un fornitore: articoli sotto scorta, meno quanto è già in bozza o in arrivo
+function proposta(articoli, ordini, fornitore){
+  const aperti = ordini.filter(o => o.Fornitore === fornitore && ["BOZZA", "INVIATO"].includes(o.Stato));
+  const inArrivo = c => aperti.reduce((s, o) => s + (o.Righe || []).filter(x => x.codice === c).reduce((a, x) => a + (Number(x.qta) || 0), 0), 0);
+  const out = [];
+  for (const f of articoli){
+    if (f.Fornitore !== fornitore || f.Eliminata) continue;
+    const min = Number(f.ScortaMinima) || 0, {tot} = scorte(f); if (!min || tot > min) continue;
+    const serve = Number(f.RiordinoQta) > 0 ? Number(f.RiordinoQta) : Math.max(1, min * 2 - tot), gia = inArrivo(f.Codice);
+    if (gia >= serve) continue;
+    out.push({codice: f.Codice, codiceFornitore: f.CodiceFornitore || "", descrizione: `${f.Modello || ""} ${f.Colore || ""} ${f.Calibro || ""}`.trim(), qta: serve - gia, costo: Number(f.Costo) || 0, giacenza: tot, minimo: min, inArrivo: gia});
+  }
+  return out;
+}
+async function riordinoAuto(fornitore){
+  const fo = (await DB.lista("forn")).find(x => (x.ID || x._id) === fornitore); if (!fo || !fo.RiordinoAuto) return null;
+  const ordini = await DB.lista("ordForn"), righe = proposta(await DB.lista("mont"), ordini, fornitore); if (!righe.length) return null;
+  const bozza = ordini.find(o => o.Fornitore === fornitore && o.Stato === "BOZZA"), ora = new Date().toISOString();
+  if (bozza){
+    const r = (bozza.Righe || []).slice();
+    for (const x of righe){ const y = r.find(z => z.codice === x.codice); if (y) y.qta = (Number(y.qta) || 0) + x.qta; else r.push(x); }
+    await DB.salva("ordForn", bozza.ID || bozza._id, {Righe: r, Aggiornato: ora, Auto: true}); return bozza.ID || bozza._id;
+  }
+  const id = `RO-${ora.slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+  await DB.salva("ordForn", id, {ID: id, Fornitore: fornitore, Stato: "BOZZA", Righe: righe, Creato: ora, Aggiornato: ora, Auto: true});
+  return id;
+}
 // Situazione dell'anagrafica: morosità (canone non pagato o chiusura per mancato pagamento) e blocco.
 // Blocco.stato: "bloccato" (deciso dall'amministratore), "sbloccato" (sblocco forzato nonostante la morosità), assente = automatico.
 const dataIt = d => d ? new Date(d).toLocaleDateString("it-IT", {timeZone: "Europe/Rome"}) : "";
@@ -362,4 +454,4 @@ function conteggi(utenti, acc){
   return {clienti: utenti.length, attivati, attivi, consegnati, incassati: r2(incassati), accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(maturato), liquidato: r2(Number(c.liquidato) || 0), saldo: r2(maturato - (Number(c.liquidato) || 0))};
 }
-module.exports = {situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

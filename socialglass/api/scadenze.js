@@ -70,7 +70,7 @@ async function attesa(u, ora){
   const o = L.parseOrdine(u.f.Ordine), da = new Date(ora) - new Date(o.aggiornato || u.f.Creato || ora);
   if (o.pagamento && o.pagamento.stato === "IN CORSO" && da < 30*864e5) return null;
   if (da > 30*864e5 && o.montatura){
-    const m = await L.DB.montatura(o.montatura.codice); if (m) await L.DB.aggiornaMontatura(m, {Stato: "DISPONIBILE"});
+    await L.liberaMontatura(o.montatura.codice, u.f.Univoco);
     const prima = o.montatura; delete o.montatura; delete o.prezzi; delete o.lenti; delete o.pagamento;
     o.scaduta = {montatura: prima, il: ora};
     await annota(u, o, "prenotazioneScaduta", `SocialGlass: ${u.f.Nome}, la montatura ${prima.modello} ${prima.colore} era prenotata da oltre 30 giorni senza conferma ed è tornata disponibile. Quando vuoi, torna in ottica e scegline una dal tuo link.`);
@@ -114,6 +114,8 @@ const handler = L.wrap(async (req, res) => {
       if (r){ if (r !== "rinnovato"){ ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); } esiti.push({univoco: u.f.Univoco, esito: r}); }
     } catch(e){ console.error(u.f.Univoco, e); esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
   }
+  // riordino automatico per i fornitori che lo hanno attivo
+  try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
   L.send(res, 200, {ok: true, data: ora, esiti});
 });
 module.exports = handler;
