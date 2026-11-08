@@ -17,11 +17,17 @@ async function esegui(u, ord, p, ora){
     if (stripeOk) await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`);
     pg.chiuso = ora; pg.esito = u.f.Stato === L.STATI.CONSEGNATO ? "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE" : "CHIUSO PER MANCATO PAGAMENTO: ORDINE ANNULLATO";
     if (u.f.Stato === L.STATI.CONSEGNATO) ord.ritiro = {daRitirare: true, dal: ora};
-    await annota(u, ord, "chiusuraInsoluto", `SocialGlass: ${u.f.Nome}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo." : " L'ordine non verrà completato."}`);
+    // messaggio di chiusura al cliente con lo stesso canale dei solleciti (resta nell'elenco Solleciti dell'amministratore)
+    const testo = `SocialGlass: ${u.f.Nome}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo." : " L'ordine non verrà completato."}`;
+    const e = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ","), "0", u.f.Stato === L.STATI.CONSEGNATO ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", pg.insoluto.link || L.CFG.site]);
+    pg.insoluto.messaggi = (pg.insoluto.messaggi || []).concat([Object.assign({il: ora, passo: 0, giorni: 0, testo}, e)]).slice(-20);
     return "chiuso per insoluto";
   }
   // con un pagamento in sospeso la scelta di fine periodo aspetta
-  if (pg.insoluto) return null;
+  if (pg.insoluto){
+    const e = await L.sollecita(u, ord, ora); if (!e) return null;
+    return `sollecito ${e.canale}: ${e.inviato ? "inviato" : "da inviare a mano (" + e.motivo + ")"}`;
+  }
   // 30 giorni prima
   if (p.aperto && !p.scaduto && !(ord.avvisi && ord.avvisi.preavviso)){
     await annota(u, ord, "preavviso", `SocialGlass: ${u.f.Nome}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);

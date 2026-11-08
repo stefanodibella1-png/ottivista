@@ -30,7 +30,7 @@ module.exports = L.wrap(async (req, res) => {
       link: L.linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino),
       recedibile: !!(o.pagamento && o.pagamento.attivatoIl && !o.pagamento.chiuso && !o.pagamento.rinnovato && Date.now() - new Date(o.pagamento.attivatoIl) <= 14*864e5),
       ritiroInRitardo: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && Date.now() - new Date(o.ritiro.dal) > 15*864e5),
-      avviso: (() => { const a = Object.values(o.avvisi || {}).filter(x => !x.inviato).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()}, tecnico);
+      avviso: (() => { const a = Object.entries(o.avvisi || {}).filter(([k, x]) => !x.inviato && !/^insoluto/.test(k)).map(([, x]) => x).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()}, tecnico);
   }).sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)));
   // conteggi economici con SocialGlass secondo l'accordo impostato dall'amministratore
   let acc = null; try { acc = isOtt ? await L.DB.ottico(s.id) : await L.DB.login("caf", s.id); } catch(e){ console.error(e); }

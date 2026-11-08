@@ -38,7 +38,7 @@ async function carica(){
   const r = await call("dati"); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
-const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
+const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
 let clientiAdm = null, schedaCli = null, filtriAdm = {q: "", caf: "", ottica: "", stato: "", sit: ""};
 const SIT = {
   morosi: ["Morosi", c => c.moroso], bloccati: ["Anagrafica bloccata", c => c.bloccato], attivi: ["Abbonamento attivo", c => c.abbonamentoAttivo],
@@ -106,10 +106,15 @@ function disegna(){
   if (d.prova) h += `<div class="esito info">Sono ancora attivi gli accessi di prova (CAF001, OTT07, OTT12 con password «demo»). Prima di aprire il servizio al pubblico rimuovili da <b>Impostazioni</b>.</div>`;
   if (scheda === "numeri"){
     const n = d.numeri;
+    if (n.morosi) h += `<div class="esito err" style="display:block"><b>${n.morosi}</b> ${n.morosi === 1 ? "cliente con il canone non pagato" : "clienti con il canone non pagato"}. <button type="button" class="linkbtn" data-tab="solleciti">Apri i solleciti</button></div>`;
     if (n.sottoScorta) h += `<div class="esito err" style="display:block">Magazzino: <b>${n.sottoScorta}</b> ${n.sottoScorta === 1 ? "montatura sotto scorta o esaurita" : "montature sotto scorta o esaurite"}. <button type="button" class="linkbtn" data-tab="magazzino">Apri il magazzino</button></div>`;
     h += `<div class="scheda"><div class="date"><span>Clienti <b>${n.clienti}</b></span><span>Abbonamenti attivi <b>${n.abbonamentiAttivi}</b></span><span>Canoni al mese <b>${euro(n.canoniMensili)}</b></span></div></div>
       <div class="scheda"><b>Pronto per il pubblico?</b><ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></div>
       <div class="lista">${Object.entries(n.perStato).map(([s, c]) => `<div class="cli"><div class="top"><span>${esc(s)}</span><b>${c}</b></div></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div>`;
+  }
+  if (scheda === "solleciti"){
+    if (!sollecitiAdm){ h += '<div class="vuoto">Caricamento…</div>'; $("admCorpo").innerHTML = h; call("solleciti").then(r => { sollecitiAdm = r.ok ? r.data.solleciti : []; disegna(); }); return; }
+    h += vistaSolleciti();
   }
   if (scheda === "clienti"){
     if (!clientiAdm){ h += '<div class="vuoto">Caricamento…</div>'; $("admCorpo").innerHTML = h; call("clienti").then(r => { clientiAdm = r.ok ? r.data.clienti : []; disegna(); }); return; }
@@ -157,7 +162,15 @@ function disegna(){
   if (scheda === "magazzino") h += vistaMagazzino();
   if (scheda === "fornitori") h += vistaFornitori();
   if (scheda === "impostazioni"){
-    const t = d.titolare || {};
+    const t = d.titolare || {}, cn = d.canali || {}, cs = d.canaleSolleciti;
+    const stato = k => cn[k] ? '<span class="chip s4">COLLEGATO</span>' : '<span class="chip s3">NON COLLEGATO</span>';
+    h += `<div class="scheda"><b>Avvisi al cliente per i canoni non pagati</b>
+      <p style="margin:4px 0">Conto alla rovescia automatico: un messaggio a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura dell'abbonamento, più quello di chiusura.</p>
+      <div role="radiogroup" aria-label="Canale" style="display:grid;gap:6px;margin:6px 0">
+        <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="whatsapp" ${cs === "whatsapp" ? "checked" : ""}> WhatsApp ${stato("whatsapp")}</label>
+        <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="sms" ${cs === "sms" ? "checked" : ""}> SMS ${stato("sms")}</label>
+        <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="spento" ${cs === "spento" ? "checked" : ""}> Nessun invio automatico (li mandi tu dall'elenco Solleciti)</label></div>
+      ${cs !== "spento" && !cn[cs] ? `<p class="hint" style="margin:4px 0">Il canale scelto non è ancora collegato: finché non lo è, i messaggi restano pronti nell'elenco <b>Solleciti</b> e li invii tu con un tocco.</p>` : ""}</div>`;
     h += `<form data-f="salvaTitolare" class="scheda"><b>Titolare del servizio</b><p style="margin:4px 0">Compare nell'informativa privacy e nelle condizioni dell'abbonamento.</p>
       <label class="lbl" for="tRag">Ragione sociale o nome e cognome</label><input id="tRag" name="ragione" value="${esc(t.ragione)}">
       <label class="lbl" for="tPiva">Partita IVA</label><input id="tPiva" name="piva" inputmode="numeric" value="${esc(t.piva)}">
@@ -182,11 +195,13 @@ function inCima(){ const t = $("admTit"); if (t) t.scrollIntoView({block: "start
 function riempi(f, o){ for (const [k, v] of Object.entries(o)) if (f.elements[k]) f.elements[k].value = v ?? ""; f.scrollIntoView({behavior: "smooth", block: "start"}); }
 document.addEventListener("change", async e => { if (e.target.matches && e.target.matches("[data-legale]")){ await call("legale", {valore: e.target.checked}); await carica(); msg("Salvato."); } });
 async function clic(e){
+  const am = e.target.closest("[data-amano]");
+  if (am){ const x = (sollecitiAdm || []).find(y => y.univoco === am.dataset.amano); setTimeout(async () => { await call("sollecito", {op: "inviatoAMano", id: am.dataset.amano, canale: "whatsapp", testo: x ? x.testo : ""}); sollecitiAdm = null; disegna(); }, 600); return; }
   const inv = e.target.closest("[data-invia-ord]");
   // email o WhatsApp aperti: l'ordine si segna come inviato
   if (inv){ setTimeout(async () => { const r = await call("ordineFornitore", {op: "invia", id: inv.dataset.inviaOrd}); if (r.ok){ await carica(); msg("Ordine segnato come inviato. Se non l'hai spedito davvero, annullalo e ricrealo."); } }, 400); return; }
   const b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; disegna(); return; }
+  if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; if (scheda === "solleciti") sollecitiAdm = null; disegna(); return; }
   if (b.dataset.scheda){ const r = await call("scheda", {id: b.dataset.scheda}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); schedaCli = r.data.cliente; disegna(); $("admCorpo").scrollTop = 0; b.blur(); const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); return; }
   if (b.hasAttribute("data-chiudi-scheda")){ schedaCli = null; disegna(); return; }
   if (b.dataset.modCaf){ riempi(document.querySelector('[data-f="salvaCaf"]'), dati.caf.find(x => x.ID === b.dataset.modCaf)); return; }
@@ -195,6 +210,10 @@ async function clic(e){
   if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
+  if (b.hasAttribute("data-stampa-soll")) return stampaSolleciti();
+  if (b.dataset.sollInvia){ b.disabled = true; const r = await call("sollecito", {op: "invia", id: b.dataset.sollInvia}); sollecitiAdm = null; disegna();
+    return r.ok ? msg(r.data.esito && r.data.esito.inviato ? "Messaggio inviato al cliente." : "Messaggio NON inviato: " + ((r.data.esito || {}).motivo || ""), r.data.esito && r.data.esito.inviato ? "" : "err") : msg(r.data.errore, "err"); }
+  if (b.dataset.schedaDaSoll){ const r = await call("scheda", {id: b.dataset.schedaDaSoll}); if (!r.ok) return msg(r.data.errore, "err"); scheda = "clienti"; clientiAdm = null; schedaCli = r.data.cliente; disegna(); inCima(); return; }
   if (b.dataset.stampaOrd) return stampaOrdine(b.dataset.stampaOrd);
   if (b.dataset.stampaConti) return stampaConti(b.dataset.stampaConti);
   if (b.hasAttribute("data-stampa-cli-elenco")) return stampaElencoAdm();
@@ -250,6 +269,7 @@ async function clic(e){
 }
 document.addEventListener("change", e => {
   const t = e.target; if (!t.dataset || !$("adminPopup") || !$("adminPopup").contains(t)) return;
+  if (t.name === "canaleSoll"){ call("canaleSolleciti", {canale: t.value}).then(async r => { if (!r.ok) return msg(r.data.errore, "err"); await carica(); msg(t.value === "spento" ? "Invio automatico disattivato." : r.data.collegato ? "Canale salvato." : "Canale salvato. Non è ancora collegato: i messaggi restano da inviare a mano in Solleciti.", r.data.collegato ? "" : "err"); }); return; }
   if (t.dataset.magf){ magF[t.dataset.magf] = t.value; disegna(); }
   if (t.dataset.selart){ t.checked ? magSel.add(t.dataset.selart) : magSel.delete(t.dataset.selart); const q = document.querySelector("[data-qr-sel]"); if (q){ q.disabled = !magSel.size; q.textContent = `Stampa QR selezionati (${magSel.size})`; } }
 });
@@ -263,6 +283,10 @@ async function invio(e){
     if (k === "imposta" && pw !== $("admPw2").value) return msg("Le due password non coincidono.", "err");
     const r = await call(k, {password: pw}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     tok = r.data.token; sessionStorage.setItem("sg_admin", tok); await carica(); return;
+  }
+  if (k === "notaSoll"){
+    const r = await call("sollecito", {op: "nota", id: f.dataset.id, nota: v.nota}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    sollecitiAdm = null; disegna(); return msg("Nota salvata.");
   }
   if (k === "creaOrdine"){
     const fo = dati.fornitori.find(x => x.ID === f.dataset.forn), righe = fo.proposta.map(p => Object.assign({}, p, {qta: Number(v["q_" + p.codice]) || 0})).filter(p => p.qta > 0);
@@ -291,7 +315,36 @@ async function invio(e){
   await carica(); msg(k === "cambiaPassword" ? "Password cambiata." : k === "magazzino" ? "Movimento registrato." : "Salvato.");
 }
 /* ---------- magazzino montature e fornitori ---------- */
-let magVisti = [], clientiVisti = [];
+let magVisti = [], clientiVisti = [], sollecitiAdm = null;
+function vistaSolleciti(){
+  const l = sollecitiAdm, cn = dati.canali || {}, cs = dati.canaleSolleciti, auto = cs !== "spento" && cn[cs];
+  const att = l.filter(x => !x.chiuso), chi = l.filter(x => x.chiuso);
+  const card = x => { const wa = `https://wa.me/${String(x.cellulare).replace(/\D/g, "")}?text=${encodeURIComponent(x.testo)}`;
+    return `<div class="scheda"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b style="font-size:16px">${esc(x.nome)}</b><div class="cod">${esc(x.univoco)} · ${esc(x.cf)}</div></div>
+        <div>${x.chiuso ? `<span class="chip s3">CHIUSO ${dt(x.chiuso)}</span>` : `<span class="chip s3">${x.giorni ? `CHIUSURA TRA ${x.giorni} ${x.giorni === 1 ? "GIORNO" : "GIORNI"}` : "CHIUSURA OGGI"}</span>`}</div></div>
+      <dl class="dl">${riga("Cellulare", `<a href="tel:${esc(x.cellulare)}">${esc(x.cellulare)}</a>`)}${riga(x.tipo === "riscatto" ? "Riscatto non pagato" : "Canone non pagato", x.importo ? euro(x.importo) + (x.dal ? " dal " + dt(x.dal) : "") : "")}
+        ${riga("Tentativi di addebito", x.tentativi ? String(x.tentativi) + (x.prossimoTentativo ? " · prossimo " + dt(x.prossimoTentativo) : " · nessun altro tentativo previsto") : "")}
+        ${riga("Abbonamento", `${euro(x.canone)}/mese · ${x.ratePagate} canoni pagati`)}${riga("Occhiale", x.consegnato ? "consegnato" + (x.riscatto ? ` · riscatto ${euro(x.riscatto)}` : "") : "non ancora consegnato")}
+        ${riga("CAF", esc(`${x.caf} ${x.cafNome}`))}${riga("Ottica", esc(`${x.ottica} ${x.otticaNome}`) + (x.otticaTel ? ` · <a href="tel:${esc(x.otticaTel)}">${esc(x.otticaTel)}</a>` : ""))}
+        ${x.chiuso ? riga("Esito", esc(x.esito)) + riga("Da riportare dal", dt(x.ritiroDal)) : ""}</dl>
+      ${x.messaggi.length ? `<div style="font-size:13px"><b>Messaggi al cliente</b>${x.messaggi.slice().reverse().map(m => `<div>${dt(m.il)} · ${esc(m.canale || "")} ${m.passo === "a mano" ? "· inviato a mano" : m.inviato ? "· inviato" : "· <b>non inviato</b> (" + esc(m.motivo || "") + ")"}${m.giorni !== undefined && m.passo !== "a mano" ? ` · ${m.giorni} gg alla chiusura` : ""}</div>`).join("")}</div>` : ""}
+      ${x.note.length ? `<div style="font-size:13px;margin-top:4px"><b>Note di sollecito</b>${x.note.slice().reverse().map(n => `<div>${dt(n.il)} · ${esc(n.nota)}</div>`).join("")}</div>` : ""}
+      <div class="az" style="margin-top:6px"><a class="btn-link" target="_blank" rel="noopener" href="${esc(wa)}" data-amano="${esc(x.univoco)}">Invia su WhatsApp</a><a class="btn-link" href="tel:${esc(x.cellulare)}">Chiama</a>
+        ${x.link ? `<a class="btn-link" target="_blank" rel="noopener" href="${esc(x.link)}">Pagina di pagamento</a>` : ""}${auto && !x.chiuso ? `<button type="button" data-soll-invia="${esc(x.univoco)}">Invia ora via ${cs === "sms" ? "SMS" : "WhatsApp"}</button>` : ""}
+        <button type="button" class="grigio" data-scheda-da-soll="${esc(x.univoco)}">Scheda cliente</button></div>
+      ${x.chiuso ? "" : `<form data-f="notaSoll" data-id="${esc(x.univoco)}" class="riga" style="align-items:flex-end;margin-top:6px"><div style="flex:1"><label class="lbl" for="ns${esc(x.univoco)}">Annota il sollecito (telefonata, promessa di pagamento…)</label><input id="ns${esc(x.univoco)}" name="nota" maxlength="300"></div><button type="submit" style="margin:0">Salva nota</button></form>`}</div>`; };
+  return `<div class="esito ${auto ? "ok" : "err"}" style="display:block">${cs === "spento" ? "Invio automatico al cliente disattivato" : auto ? `Il conto alla rovescia parte da solo via ${cs === "sms" ? "SMS" : "WhatsApp"} (30, 20, 10, 5, 3, 1 giorni).` : `${cs === "sms" ? "SMS" : "WhatsApp"} non ancora collegato`}: ${auto ? "qui sotto vedi l'esito di ogni messaggio." : "invia i messaggi da qui con «Invia su WhatsApp» (testo già pronto)."} <button type="button" class="linkbtn" data-tab="impostazioni">Impostazioni</button></div>
+    <div class="riga"><button type="button" data-stampa-soll style="margin:0" ${l.length ? "" : "disabled"}>Stampa elenco solleciti</button></div>
+    <h3 style="margin:10px 0 4px">Canoni non pagati (${att.length})</h3>${att.map(card).join("") || '<div class="vuoto">Nessun cliente moroso.</div>'}
+    ${chi.length ? `<h3 style="margin:10px 0 4px">Chiusi per mancato pagamento, occhiale da riportare (${chi.length})</h3>${chi.map(card).join("")}` : ""}`;
+}
+function stampaSolleciti(){
+  ST().stampaDoc("Elenco solleciti di pagamento", `<table><tr><th>Cliente</th><th>Cellulare</th><th>Importo</th><th>Dal</th><th class="n">Giorni alla chiusura</th><th>CAF</th><th>Ottica</th><th>Occhiale</th><th>Ultimo messaggio</th><th>Note</th></tr>
+    ${sollecitiAdm.map(x => { const m = x.messaggi[x.messaggi.length - 1], n = x.note[x.note.length - 1];
+      return `<tr><td>${esc(x.nome)}<br><small>${esc(x.univoco)} · ${esc(x.cf)}</small></td><td>${esc(x.cellulare)}</td><td>${x.importo ? euro(x.importo) : ""}</td><td>${x.dal ? dt(x.dal) : ""}</td><td class="n">${x.chiuso ? "chiuso" : x.giorni}</td>
+        <td>${esc(x.caf)}</td><td>${esc(x.ottica)}${x.otticaTel ? "<br><small>" + esc(x.otticaTel) + "</small>" : ""}</td><td>${x.consegnato ? "consegnato" : "non consegnato"}${x.chiuso ? "<br>da riportare" : ""}</td>
+        <td>${m ? dt(m.il) + " " + esc(m.canale || "") + (m.inviato ? "" : " (non inviato)") : ""}</td><td>${n ? dt(n.il) + " " + esc(n.nota) : ""}</td></tr>`; }).join("")}</table>`);
+}
 const ST = () => window.SG_STAMPA;
 const n2 = v => Number(v || 0).toLocaleString("it-IT", {maximumFractionDigits: 2});
 function stampaMagazzino(){

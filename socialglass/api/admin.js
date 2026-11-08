@@ -51,7 +51,7 @@ module.exports = L.wrap(async (req, res) => {
       ["Pagamenti Stripe reali (non di prova)", /^sk_live_|^rk_live_/.test(L.CFG.stripeKey)],
       ["Dominio socialglass.it collegato", /socialglass\.it/.test(L.CFG.site) && !/vercel\.app/.test(L.CFG.site)],
       ["Condizioni e informativa privacy verificate da un consulente", !!((await L.DB.meta("config")) || {}).legale],
-      ["Invio SMS automatico collegato (facoltativo)", !!L.CFG.smsWebhook]
+      ["Avvisi automatici ai clienti collegati (WhatsApp Business o SMS)", L.canaliCollegati().whatsapp || L.canaliCollegati().sms]
     ];
     const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || "", CompensoLiquidato: c.liquidato || ""}; };
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
@@ -66,10 +66,49 @@ module.exports = L.wrap(async (req, res) => {
       ordiniFornitori: ordForn.map(x => ({ID: x.ID || x._id, Fornitore: x.Fornitore || "", Stato: x.Stato || "BOZZA", Righe: x.Righe || [], Creato: x.Creato || "", Inviato: x.Inviato || "", Ricevuto: x.Ricevuto || "", Auto: !!x.Auto, Note: x.Note || ""}))
         .sort((a, b) => String(b.Creato).localeCompare(String(a.Creato))),
       numeri: {clienti: utenti.length, perStato, abbonamentiAttivi: attivi, canoniMensili: Math.round(canoni * 100) / 100,
-        sottoScorta: mont.filter(x => { const i = L.infoMont(x); return i.sottoScorta || i.esaurita; }).filter(x => !x.Eliminata).length},
-      prova, titolare: tit, pronto: lista,
+        sottoScorta: mont.filter(x => { const i = L.infoMont(x); return i.sottoScorta || i.esaurita; }).filter(x => !x.Eliminata).length,
+        morosi: utenti.filter(u => { const pg = L.parseOrdine(u.f.Ordine).pagamento || {}; return pg.insoluto && !pg.chiuso; }).length},
+      prova, titolare: tit, pronto: lista, canali: L.canaliCollegati(), canaleSolleciti: (((await L.DB.meta("config")) || {}).canaleSolleciti) || "whatsapp",
       listini: Object.keys(L.PREZZI.LISTINI.convenzioni || {A: 1})
     });
+  }
+  if (az === "canaleSolleciti"){
+    const c = ["whatsapp", "sms", "spento"].includes(b.canale) ? b.canale : null; if (!c) return L.send(res, 400, {errore: "Canale non valido."});
+    await L.DB.meta("config", {canaleSolleciti: c}); return L.send(res, 200, {ok: true, collegato: c === "spento" || L.canaliCollegati()[c]});
+  }
+  // elenco solleciti: clienti con un canone non pagato (e chiusi per morosità con l'occhiale ancora da riportare)
+  if (az === "solleciti"){
+    const tutti = await L.DB.tutti(), ottici = await L.DB.lista("ottici"), cafs = await L.DB.lista("caf"), ora = new Date().toISOString(), out = [];
+    for (const {f} of tutti){
+      const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, ins = pg.insoluto;
+      const daRiportare = /MANCATO PAGAMENTO/.test(pg.esito || "") && o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato;
+      if (!(ins && !pg.chiuso) && !daRiportare) continue;
+      const ottId = String(f.Ottica1 || "").split(" - ")[0], ott = ottici.find(x => (x.ID || x._id) === ottId) || {}, caf = cafs.find(x => (x.ID || x._id) === f.CAF) || {};
+      const consegnato = !!o.consegnatoIl || f.Stato === L.STATI.CONSEGNATO, giorni = ins && !pg.chiuso ? L.giorniAllaChiusura(ins, ora) : 0;
+      out.push({univoco: f.Univoco, nome: `${f.Nome || ""} ${f.Cognome || ""}`.trim(), cf: f["Codice Fiscale"] || "", cellulare: L.numeroCliente(f), stato: f.Stato || "",
+        caf: f.CAF || "", cafNome: caf.Nome || "", ottica: ottId, otticaNome: ott.Intestatario || "", otticaTel: ott.Telefono || "",
+        tipo: ins ? ins.tipo : "", importo: ins ? ins.importo : 0, dal: ins ? ins.dal : "", tentativi: ins ? ins.tentativi : 0, prossimoTentativo: ins ? ins.prossimoTentativo : "", link: ins ? ins.link : "",
+        giorni, chiuso: pg.chiuso || "", esito: pg.esito || "", consegnato, canone: (o.prezzi || {}).rata || 0, ratePagate: pg.ratePagate || 0, riscatto: (o.prezzi || {}).riscatto || 0,
+        messaggi: ins ? (ins.messaggi || []) : [], note: ins ? (ins.note || []) : [], ritiroDal: daRiportare ? o.ritiro.dal : "",
+        testo: ins && !pg.chiuso ? L.testoSollecito(f, ins, giorni, consegnato) : `SocialGlass: ${f.Nome || ""}, l'abbonamento è stato chiuso per mancato pagamento: riporta l'occhiale in ottica o contattaci per riscattarlo.`});
+    }
+    out.sort((a, b) => (a.chiuso ? 1 : 0) - (b.chiuso ? 1 : 0) || a.giorni - b.giorni);
+    return L.send(res, 200, {solleciti: out, canali: L.canaliCollegati()});
+  }
+  if (az === "sollecito"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {}, ins = pg.insoluto; if (!ins) return L.send(res, 409, {errore: "Il cliente non ha pagamenti in sospeso."});
+    const ora = new Date().toISOString(); let esito = null;
+    if (b.op === "nota"){ const n = pulito(b.nota, 300); if (!n) return L.send(res, 400, {errore: "Scrivi cosa hai fatto (es. telefonato, promesso pagamento)."}); ins.note = (ins.note || []).concat([{il: ora, nota: n}]).slice(-30); }
+    else if (b.op === "invia"){
+      const giorni = L.giorniAllaChiusura(ins, ora), consegnato = !!o.consegnatoIl || u.f.Stato === L.STATI.CONSEGNATO, testo = L.testoSollecito(u.f, ins, giorni, consegnato);
+      esito = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(ins.importo || 0).toFixed(2).replace(".", ","), String(giorni), consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", ins.link || L.CFG.site]);
+      ins.messaggi = (ins.messaggi || []).concat([Object.assign({il: ora, passo: "manuale", giorni, testo}, esito)]).slice(-20);
+    }
+    else if (b.op === "inviatoAMano"){ ins.messaggi = (ins.messaggi || []).concat([{il: ora, passo: "a mano", canale: pulito(b.canale, 20) || "whatsapp", inviato: true, testo: pulito(b.testo, 600)}]).slice(-20); }
+    else return L.send(res, 400, {errore: "Operazione non valida."});
+    o.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+    return L.send(res, 200, {ok: true, esito});
   }
   if (az === "legale"){ await L.DB.meta("config", {legale: b.valore ? new Date().toISOString() : ""}); return L.send(res, 200, {ok: true}); }
   if (az === "salvaTitolare"){

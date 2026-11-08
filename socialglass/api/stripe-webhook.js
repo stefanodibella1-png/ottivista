@@ -31,12 +31,11 @@ module.exports = L.wrap(async (req, res) => {
         pg.ultimaRata = ora; delete pg.insoluto;
       }
       if (ev.type === "invoice.payment_failed"){
-        if (!pg.insoluto){
-          const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, il pagamento del canone (${((o.amount_due || 0)/100).toFixed(2).replace(".", ",")} €) non è riuscito. Riproveremo in automatico; puoi pagare subito o cambiare carta qui: ${o.hosted_invoice_url || L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0])}`);
-          ord.avvisi = ord.avvisi || {}; ord.avvisi["insoluto" + ora.slice(0, 10)] = {il: ora, sms: av.sms, testo: "Pagamento del canone non riuscito: avvisa il cliente.", whatsapp: av.whatsapp, inviato: av.sms};
-        }
-        pg.insoluto = {tipo: meta.tipo || "canone", dal: (pg.insoluto && pg.insoluto.dal) || ora, importo: (o.amount_due || 0)/100, tentativi: o.attempt_count || 1,
-          prossimoTentativo: o.next_payment_attempt ? new Date(o.next_payment_attempt*1000).toISOString() : null, link: o.hosted_invoice_url || ""};
+        // morosità: compare nell'elenco Solleciti dell'amministratore; al cliente parte il primo messaggio del conto alla rovescia
+        const prima = pg.insoluto || {};
+        pg.insoluto = Object.assign({}, prima, {tipo: meta.tipo || "canone", dal: prima.dal || ora, importo: (o.amount_due || 0)/100, tentativi: o.attempt_count || 1,
+          prossimoTentativo: o.next_payment_attempt ? new Date(o.next_payment_attempt*1000).toISOString() : null, link: o.hosted_invoice_url || prima.link || ""});
+        try { await L.sollecita(u, ord, ora); } catch(e){ console.error(e); }
       }
       if (ev.type === "customer.subscription.deleted"){
         const mesi = (ord.prezzi && ord.prezzi.mesi) || 12;

@@ -17,6 +17,14 @@ jobs:
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      # avvisi automatici ai clienti (facoltativi): WhatsApp Business Cloud API oppure SMS (Twilio o webhook)
+      WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+      WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+      WHATSAPP_TEMPLATE: ${{ secrets.WHATSAPP_TEMPLATE }}
+      TWILIO_SID: ${{ secrets.TWILIO_SID }}
+      TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
+      TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
+      SMS_WEBHOOK_URL: ${{ secrets.SMS_WEBHOOK_URL }}
       PROJECT: socialglass
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +99,9 @@ jobs:
           setenv SITE_URL "$URL"
           [ -z "$AIRTABLE_TOKEN" ] || setenv AIRTABLE_TOKEN "$AIRTABLE_TOKEN"
           [ -z "$FIREBASE_SERVICE_ACCOUNT" ] || setenv FIREBASE_SERVICE_ACCOUNT "$FIREBASE_SERVICE_ACCOUNT"
+          for k in WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_TEMPLATE TWILIO_SID TWILIO_TOKEN TWILIO_FROM SMS_WEBHOOK_URL; do
+            v=$(printf '%s' "${!k}" | tr -d '[:space:]'); [ -z "$v" ] || { echo "::add-mask::$v"; setenv "$k" "$v"; }
+          done
           if [ -n "$STRIPE_SECRET_KEY" ]; then
             setenv STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
             HOOK="$URL/api/stripe-webhook"

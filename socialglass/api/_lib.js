@@ -16,6 +16,9 @@ const CFG = {
   secret: E.SESSION_SECRET || "solo-per-prova-cambiami",
   site: (E.SITE_URL || "https://www.socialglass.it").replace(/\/$/, ""),
   smsWebhook: E.SMS_WEBHOOK_URL || "",
+  // messaggi automatici ai clienti: WhatsApp Business (Cloud API di Meta) oppure SMS (Twilio o un servizio SMS via webhook)
+  waToken: E.WHATSAPP_TOKEN || "", waPhone: E.WHATSAPP_PHONE_ID || "", waTemplate: E.WHATSAPP_TEMPLATE || "sollecito_canone", waLingua: E.WHATSAPP_LANG || "it",
+  twSid: E.TWILIO_SID || "", twToken: E.TWILIO_TOKEN || "", twFrom: E.TWILIO_FROM || "",
   stripeKey: E.STRIPE_SECRET_KEY || "",
   stripeWebhook: E.STRIPE_WEBHOOK_SECRET || "",
   firebase: E.FIREBASE_SERVICE_ACCOUNT || ""
@@ -217,6 +220,55 @@ async function avvisa(u, testo){
     try { const r = await fetch(CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to: numero, text: testo})}); sms = r.ok; } catch(e){}
   }
   return {sms, whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
+}
+/* ---------- solleciti di pagamento al cliente ---------- */
+const GIORNI_CHIUSURA = 30, PASSI_SOLLECITO = [30, 20, 10, 5, 3, 1];
+const canaliCollegati = () => ({whatsapp: !!(CFG.waToken && CFG.waPhone), sms: !!(CFG.smsWebhook || (CFG.twSid && CFG.twToken && CFG.twFrom))});
+const numeroCliente = f => { const n = String(f.Cellulare || "").replace(/[^\d+]/g, ""); return n.startsWith("+") ? n : (String(f.Prefisso || "+39") + n.replace(/^0039/, "")); };
+function giorniAllaChiusura(ins, ora){ return Math.max(0, Math.ceil(GIORNI_CHIUSURA - (new Date(ora || Date.now()) - new Date(ins.dal)) / 864e5)); }
+function testoSollecito(f, ins, giorni, consegnato){
+  const imp = Number(ins.importo || 0).toFixed(2).replace(".", ",");
+  return `SocialGlass: ${f.Nome || ""}, il canone di ${imp} € non risulta pagato. ` + (giorni > 0
+    ? `Mancano ${giorni} ${giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento: dopo, ${consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato"}. `
+    : `Oggi l'abbonamento verrà chiuso. `) + `Paga o cambia carta qui: ${ins.link || linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino)}`;
+}
+// invia al cliente con il canale scelto nelle impostazioni; se il canale non è collegato il messaggio resta da inviare a mano
+async function inviaCliente(f, testo, param){
+  const cfg = (await DB.meta("config")) || {}, canale = cfg.canaleSolleciti || "whatsapp", to = numeroCliente(f), c = canaliCollegati();
+  if (canale === "spento") return {canale, inviato: false, motivo: "invio automatico disattivato"};
+  if (!f.Cellulare) return {canale, inviato: false, motivo: "cellulare mancante"};
+  try {
+    if (canale === "whatsapp"){
+      if (!c.whatsapp) return {canale, inviato: false, motivo: "WhatsApp Business non collegato"};
+      const r = await fetch(`https://graph.facebook.com/v21.0/${CFG.waPhone}/messages`, {method: "POST", headers: {Authorization: `Bearer ${CFG.waToken}`, "Content-Type": "application/json"},
+        body: JSON.stringify({messaging_product: "whatsapp", to: to.replace(/\D/g, ""), type: "template", template: {name: CFG.waTemplate, language: {code: CFG.waLingua},
+          components: [{type: "body", parameters: param.map(t => ({type: "text", text: String(t)}))}]}})});
+      const j = await r.json().catch(() => ({}));
+      return {canale, inviato: r.ok, motivo: r.ok ? "" : String((j.error && j.error.message) || r.status).slice(0, 200)};
+    }
+    if (!c.sms) return {canale, inviato: false, motivo: "SMS non collegato"};
+    if (CFG.twSid && CFG.twToken && CFG.twFrom){
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${CFG.twSid}/Messages.json`, {method: "POST",
+        headers: {Authorization: "Basic " + Buffer.from(`${CFG.twSid}:${CFG.twToken}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded"},
+        body: new URLSearchParams({To: to, From: CFG.twFrom, Body: testo})});
+      const j = await r.json().catch(() => ({}));
+      return {canale, inviato: r.ok, motivo: r.ok ? "" : String(j.message || r.status).slice(0, 200)};
+    }
+    const r = await fetch(CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to, text: testo})});
+    return {canale, inviato: r.ok, motivo: r.ok ? "" : "servizio SMS: " + r.status};
+  } catch(e){ return {canale, inviato: false, motivo: String(e.message).slice(0, 200)}; }
+}
+// conto alla rovescia: un messaggio a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura (mai due nello stesso giorno, mai lo stesso passo due volte)
+async function sollecita(u, ord, ora){
+  const pg = ord.pagamento || {}, ins = pg.insoluto; if (!ins || ins.tipo === "riscatto" || pg.chiuso) return null;
+  const giorni = giorniAllaChiusura(ins, ora), inviati = ins.messaggi || [];
+  const passo = PASSI_SOLLECITO.filter(p => giorni <= p && !inviati.some(m => m.passo === p)).pop(); if (passo === undefined) return null;
+  if (inviati.some(m => String(m.il).slice(0, 10) === String(ora).slice(0, 10))) return null;
+  const consegnato = !!ord.consegnatoIl || u.f.Stato === STATI.CONSEGNATO, testo = testoSollecito(u.f, ins, giorni, consegnato);
+  const imp = Number(ins.importo || 0).toFixed(2).replace(".", ",");
+  const esito = await inviaCliente(u.f, testo, [u.f.Nome || "", imp, String(giorni), consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", ins.link || CFG.site]);
+  ins.messaggi = inviati.concat([Object.assign({il: ora, passo, giorni, testo}, esito)]).slice(-20);
+  return esito;
 }
 /* ---------- Stripe (API con parametri form) ---------- */
 async function stripeApi(method, path, params, chiave){
@@ -454,4 +506,4 @@ function conteggi(utenti, acc){
   return {clienti: utenti.length, attivati, attivi, consegnati, incassati: r2(incassati), accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(maturato), liquidato: r2(Number(c.liquidato) || 0), saldo: r2(maturato - (Number(c.liquidato) || 0))};
 }
-module.exports = {MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
