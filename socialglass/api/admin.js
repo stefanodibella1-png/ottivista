@@ -5,6 +5,15 @@ const S = L.STATI;
 const pulito = (v, n = 120) => String(v == null ? "" : v).trim().slice(0, n);
 const gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
 const numero = v => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) && x >= 0 ? Math.round(x * 100) / 100 : 0; };
+// nuovo accordo: vale da oggi; se cambia di nuovo nello stesso giorno si sostituisce quello di oggi
+function nuoviAccordi(prima, cp){
+  const l = L.accordiDi(prima || {}), oggi = new Date().toISOString().slice(0, 10), ult = l[l.length - 1];
+  if (ult && ult.tipo === cp.tipo && Number(ult.valore) === Number(cp.valore)) return l;
+  if (!ult && !cp.tipo) return l;
+  if (ult && ult.dal === oggi) l.pop();
+  l.push({dal: oggi, tipo: cp.tipo, valore: cp.valore});
+  return l;
+}
 function compenso(b){
   const tipo = ["fisso", "percentuale"].includes(b.CompensoTipo) ? b.CompensoTipo : "";
   const valore = numero(b.CompensoValore);
@@ -135,7 +144,7 @@ module.exports = L.wrap(async (req, res) => {
     const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(id)) return L.send(res, 400, {errore: "Codice CAF: 3-20 lettere o cifre."});
     const cp = compenso(b); if (cp.errore) return L.send(res, 400, cp);
     const d = {ID: id, Nome: pulito(b.Nome), Compenso: cp};
-    { const prima = (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id); if (prima && !prima.Liquidazioni && L.liquidazioniDi(prima).length) d.Liquidazioni = L.liquidazioniDi(prima); } if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.Password = L.hashPw(b.Password); }
+    { const prima = (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id); if (prima && !prima.Liquidazioni && L.liquidazioniDi(prima).length) d.Liquidazioni = L.liquidazioniDi(prima); d.Accordi = nuoviAccordi(prima, cp); } if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.Password = L.hashPw(b.Password); }
     const esiste = (await L.DB.lista("caf")).some(x => (x.ID || x._id) === id);
     if (!esiste && !d.Password) return L.send(res, 400, {errore: "Per un nuovo CAF serve la password."});
     await L.DB.salva("caf", id, d); return L.send(res, 200, {ok: true});
@@ -144,7 +153,7 @@ module.exports = L.wrap(async (req, res) => {
     const id = pulito(b.ID, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(id)) return L.send(res, 400, {errore: "Codice ottica: 3-20 lettere o cifre."});
     if (!pulito(b.Intestatario)) return L.send(res, 400, {errore: "Serve il nome dell'ottica."});
     const ind = pulito(b.Indirizzo), cp = compenso(b); if (cp.errore) return L.send(res, 400, cp);
-    { const prima = await L.DB.ottico(id); if (prima && !prima.Liquidazioni && L.liquidazioniDi(prima).length) await L.DB.salva("ottici", id, {Liquidazioni: L.liquidazioniDi(prima)}); }
+    { const prima = await L.DB.ottico(id); if (prima && !prima.Liquidazioni && L.liquidazioniDi(prima).length) await L.DB.salva("ottici", id, {Liquidazioni: L.liquidazioniDi(prima)}); await L.DB.salva("ottici", id, {Accordi: nuoviAccordi(prima, cp)}); }
     await L.DB.salva("ottici", id, {Compenso: cp, ID: id, Intestatario: pulito(b.Intestatario), Indirizzo: ind && !/,\s*$/.test(ind) ? ind + ", " : ind, Citta: pulito(b.Citta, 60), Telefono: pulito(b.Telefono, 20).replace(/[^\d+]/g, ""), Listino: pulito(b.Listino, 4) || "A"});
     if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); await L.DB.salva("ottLogin", id, {ID: id, Password: L.hashPw(b.Password)}); }
     return L.send(res, 200, {ok: true});

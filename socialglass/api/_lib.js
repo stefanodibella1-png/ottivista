@@ -518,14 +518,22 @@ function liquidazioniDi(acc){
   if (!l.length && vecchio > 0) l.push({id: "precedenti", il: "2000-01-01", importo: vecchio, causale: "pagamenti precedenti", metodo: "", nota: ""});
   return l;
 }
+// storico degli accordi: ogni accordo vale dal giorno in cui è stato impostato, quelli vecchi restano per i movimenti precedenti
+function accordiDi(acc){
+  let l = Array.isArray(acc && acc.Accordi) ? acc.Accordi.slice() : [];
+  const c = (acc && acc.Compenso) || {};
+  if (!l.length && c.tipo) l = [{dal: "2000-01-01", tipo: c.tipo, valore: Number(c.valore) || 0}];
+  return l.sort((x, y) => String(x.dal).localeCompare(String(y.dal)));
+}
+function accordoAl(l, d){ const g = String(d || "").slice(0, 10); let r = null; for (const x of l) if (String(x.dal) <= g) r = x; return r && r.tipo && Number(r.valore) ? r : null; }
 function righeCompenso(utenti, acc){
-  const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, out = []; if (!c.tipo || !v) return out;
+  const l = accordiDi(acc), out = []; if (!l.length) return out;
+  const pc = v => String(v).replace(".", ",");
   for (const f of utenti){
-    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, cli = `${f.Nome || ""} ${f.Cognome || ""}`.trim(), base = {univoco: f.Univoco, cliente: cli};
-    if (c.tipo === "fisso"){
-      for (const st of o.storico || []) if (st.inizio) out.push(Object.assign({il: st.inizio, descrizione: "Abbonamento attivato (periodo precedente)", importo: v}, base));
-      if (pg.attivatoIl && pg.stato !== "SIMULATO") out.push(Object.assign({il: pg.attivatoIl, descrizione: "Abbonamento attivato", importo: v}, base));
-    } else for (const x of incassi(o)) if (x.canone > 0) out.push(Object.assign({il: x.il, descrizione: `Canone pagato ${e2(x.canone)} × ${String(v).replace(".", ",")}%`, importo: Math.round(x.canone * v) / 100, stima: !!x.stima}, base));
+    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, base = {univoco: f.Univoco, cliente: `${f.Nome || ""} ${f.Cognome || ""}`.trim()};
+    const attivazioni = (o.storico || []).filter(st => st.inizio).map(st => ({il: st.inizio, prec: true})).concat(pg.attivatoIl && pg.stato !== "SIMULATO" ? [{il: pg.attivatoIl}] : []);
+    for (const x of attivazioni){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${x.prec ? " (periodo precedente)" : ""} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base)); }
+    for (const x of incassi(o)) if (x.canone > 0){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "percentuale") out.push(Object.assign({il: x.il, descrizione: `Canone pagato ${e2(x.canone)} × ${pc(ac.valore)}%`, importo: Math.round(x.canone * ac.valore) / 100, stima: !!x.stima}, base)); }
   }
   return out;
 }
@@ -545,7 +553,8 @@ function estratto(utenti, acc, da, a){
     righe.push(Object.assign({}, x, {importo: r2(x.importo)}));
   }
   let prog = saldoIniziale; righe.forEach(x => { prog += (x.tipo === "compenso" ? 1 : -1) * x.importo; x.saldo = r2(prog); });
-  return {accordo: c.tipo ? {tipo: c.tipo, valore: Number(c.valore) || 0} : null, periodo: {da: da || "", a: a || ""}, righe, stima,
+  const storia = accordiDi(acc), att = storia[storia.length - 1];
+  return {accordo: att && att.tipo ? {tipo: att.tipo, valore: Number(att.valore) || 0, dal: att.dal} : null, accordi: storia, periodo: {da: da || "", a: a || ""}, righe, stima,
     saldoIniziale: r2(saldoIniziale), maturato: r2(maturato), pagato: r2(pagato), saldoFinale: r2(saldoIniziale + maturato - pagato),
     maturatoTot: r2(maturatoTot), pagatoTot: r2(pagatoTot), saldoAttuale: r2(maturatoTot - pagatoTot)};
 }
@@ -569,4 +578,4 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
