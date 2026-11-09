@@ -6,9 +6,17 @@ module.exports = L.wrap(async (req, res) => {
   if (s.ruolo === "lab"){
     if (req.method !== "GET") return L.send(res, 405, {errore: "Metodo non consentito"});
     const [tutti, ottici] = await Promise.all([L.DB.tutti(), L.DB.lista("ottici")]);
+    // ordini già pagati prima che il laboratorio fosse attivo: diventano buste (la montatura è quella esposta in ottica)
+    for (const u of tutti){
+      const o = L.parseOrdine(u.f.Ordine);
+      if (u.f.Stato === L.STATI.ATTIVO && !o.lab && o.pagamento && !o.pagamento.chiuso){
+        o.lab = {stato: "DA FARE", fonte: "OTTICA", sede: String(u.f.Ottica1 || "").split(" - ")[0], creato: o.pagamento.attivatoIl || new Date().toISOString(), precedente: true};
+        try { await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); } catch(e){ console.error(e); }
+      }
+    }
     const buste = tutti.map(({f}) => ({f, o: L.parseOrdine(f.Ordine)})).filter(x => x.o.lab).map(({f, o}) => {
       const oid = String(f.Ottica1 || "").split(" - ")[0], ot = ottici.find(x => (x.ID || x._id) === oid) || {};
-      return {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", stato: f.Stato || "", lab: o.lab, montatura: o.montatura || null, lenti: o.lenti || null,
+      return {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", stato: f.Stato || "", inLavorazione: f.Stato === L.STATI.ATTIVO, lab: o.lab, montatura: o.montatura || null, lenti: o.lenti || null,
         trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, consegnatoIl: o.consegnatoIl || "", chiuso: !!(o.pagamento && o.pagamento.chiuso),
         ottica: {id: oid, nome: ot.Intestatario || "", indirizzo: `${ot.Indirizzo || ""}${ot.Citta || ""}`, telefono: ot.Telefono || ""}};
     }).sort((a, b) => String(a.lab.creato).localeCompare(String(b.lab.creato)));

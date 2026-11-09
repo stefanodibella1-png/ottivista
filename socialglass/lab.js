@@ -91,9 +91,10 @@
             <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
           <div>${statoChip(b)}</div></summary>
         <div class="corpo">${corpoBusta(b)}
+          ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Occhiale pronto» il cliente riceve in automatico il messaggio (WhatsApp o SMS, come impostato da SocialGlass) e l'ottica viene avvisata.</p>` : ""}
           <div class="az">${!b.chiuso && daRitirare(b) ? `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>` : ""}
             ${!b.chiuso && b.lab.stato === "DA FARE" ? `<button type="button" data-az="inizia" data-u="${esc(b.univoco)}">Inizia lavorazione</button>` : ""}
-            ${!b.chiuso && b.lab.stato !== "PRONTO" && b.stato === "ATTIVO" ? `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}" ${daRitirare(b) ? "disabled title=\"Prima ritira la montatura\"" : ""}>Occhiale pronto</button>` : ""}
+            ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione ? `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}" ${daRitirare(b) ? "disabled" : ""}>Occhiale pronto · avvisa il cliente</button>` : ""}
             <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button></div></div></details>`).join("")
         || `<div class="vuoto">Nessuna busta in «${FILTRI[filtro][0]}».</div>`}`;
     const c = $("cerca"); c.oninput = () => { cerca = c.value; const p = c.selectionStart; disegna(); const n = $("cerca"); n.focus(); try { n.setSelectionRange(p, p); } catch(_){} };
