@@ -3,7 +3,7 @@ name: socialglass-dati-prova
 on:
   workflow_dispatch:
     inputs:
-      azione: { description: "crea oppure elimina", required: true, default: "crea" }
+      azione: { description: "crea, elimina oppure diagnosi-lab (sola lettura)", required: true, default: "crea" }
 permissions: { contents: read }
 jobs:
   moroso:
@@ -16,4 +16,4 @@ jobs:
         with: { node-version: 20 }
       - run: cd socialglass && npm i --no-audit --no-fund >/dev/null
       - env: { AZIONE: "${{ github.event.inputs.azione }}" }
-        run: case "$AZIONE" in crea|elimina) node scripts/sg-moroso-prova.cjs "$AZIONE";; *) echo "azione non valida"; exit 1;; esac
+        run: case "$AZIONE" in crea|elimina) node scripts/sg-moroso-prova.cjs "$AZIONE";; diagnosi-lab) node scripts/sg-lab-diagnosi.cjs;; *) echo "azione non valida"; exit 1;; esac
