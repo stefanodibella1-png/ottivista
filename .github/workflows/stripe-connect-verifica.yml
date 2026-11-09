@@ -1,0 +1,13 @@
+name: stripe-connect-verifica
+# Sola lettura: controlla se Stripe Connect è attivo sull'account (serve per pagare CAF e ottiche)
+on: workflow_dispatch
+permissions: { contents: read }
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+    steps:
+      - env: { K: "${{ secrets.STRIPE_SECRET_KEY }}" }
+        run: |
+          KEY=$(printf '%s' "$K" | grep -o 'sk_\(test\|live\)_[A-Za-z0-9]*' | head -1)
+          echo "modalità: $(printf '%s' "$KEY" | cut -c1-7)"
+          curl -s -u "$KEY:" "https://api.stripe.com/v1/accounts?limit=1" | python3 -c "import sys,json;d=json.load(sys.stdin);e=d.get('error');print('CONNECT ATTIVO' if not e else 'ERRORE: '+e.get('message',''))"
