@@ -19,8 +19,15 @@ module.exports = L.wrap(async (req, res) => {
       if (lab.fonte !== "LAB" && !lab.ritirata) return L.send(res, 409, {errore: "Prima segna la montatura come ritirata."});
       lab.stato = "PRONTO"; lab.pronto = ora; ord.prontoIl = ora;
       // il cliente viene avvisato in automatico; se il canale non è collegato, il messaggio lo manda l'ottica
-      const av = await L.avvisaPronto(u); lab.avvisoCliente = {il: ora, canale: av.canale, inviato: av.inviato, motivo: av.motivo};
       ord.avvisi = ord.avvisi || {};
+      // cliente moroso: l'occhiale resta in ottica e non lo invitiamo a ritirarlo finché non paga
+      if (L.situazione(u.f).bloccato){
+        lab.avvisoCliente = {il: ora, inviato: false, motivo: "cliente moroso: consegna bloccata"};
+        ord.avvisi["labpronto" + ora.slice(0, 10)] = {il: ora, testo: "Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente ha un canone non pagato: non può ritirarlo finché non paga (l'amministratore lo sta sollecitando)."};
+        ord.aggiornato = ora; await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
+        return L.send(res, 200, {ok: true, avviso: {inviato: false, motivo: "cliente moroso: non avvisato"}});
+      }
+      const av = await L.avvisaPronto(u); lab.avvisoCliente = {il: ora, canale: av.canale, inviato: av.inviato, motivo: av.motivo};
       ord.avvisi["labpronto" + ora.slice(0, 10)] = av.inviato
         ? {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente è già stato avvisato (${av.canale === "sms" ? "SMS" : "WhatsApp"}). Quando lo ritira, segna «consegnato».`}
         : {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente NON è stato avvisato in automatico: mandagli tu il messaggio. ${av.testo}`, whatsapp: av.whatsapp};

@@ -128,7 +128,7 @@
       if (r.status === 401) return esci();
       const av = r.ok && r.data.avviso;
       messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata.",
-        pronto: av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${av.canale === "sms" ? "SMS" : "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
+        pronto: av && /moroso/.test(av.motivo || "") ? "Occhiale pronto: l'ottica è avvisata. Il cliente ha un pagamento in sospeso, quindi non viene invitato al ritiro finché non paga." : av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${av.canale === "sms" ? "SMS" : "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
       return carica();
     }
   });

@@ -741,7 +741,10 @@ function disegnaMio(){
   }
   if (u.stato === STATI.PAGAMENTO && par("pagamento") === "annullato") a = `<div class="esito info">Pagamento annullato: non ti è stato addebitato nulla. Quando vuoi, riprova da qui.</div>` + a;
   const ins = od.pagamento && od.pagamento.insoluto;
-  if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}). Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità. Se resta non pagato per oltre 30 giorni l'abbonamento si chiude e l'occhiale va restituito.${ins.link ? `<br><a href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia metodo di pagamento</a>` : ""}</div>` + a;
+  if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}).
+    ${ins.tipo !== "riscatto" && ins.giorni != null ? `<div style="font-size:18px;font-weight:700;margin:6px 0">${ins.giorni > 0 ? `Mancano ${ins.giorni} ${ins.giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento` : "L'abbonamento si chiude oggi"}</div>` : ""}
+    Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.tipo !== "riscatto" ? " Se non paghi, alla chiusura l'occhiale va restituito." : ""}
+    ${ins.link ? `<a class="btn-link" style="display:block;margin-top:8px;text-align:center" href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia carta</a>` : ""}</div>` + a;
   if (od.pagamento && od.pagamento.ratePagate && od.prezzi && !od.pagamento.chiuso) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Mesi pagati in questo periodo: ${od.pagamento.ratePagate} su ${od.prezzi.mesi} minimi</p>`;
   if (od.prezzi && !a.includes(`id="mpCond"`)) a += `<p class="piede-cli"><button type="button" class="linkbtn" id="mpCond">Condizioni dell'abbonamento</button></p>`;
   a += `<p class="piede-cli"><a href="privacy.html" target="_blank" rel="noopener">Informativa privacy</a></p>`;

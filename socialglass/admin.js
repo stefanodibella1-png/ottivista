@@ -179,7 +179,7 @@ function disegnaScheda(c){
 }
 function disegna(){
   const d = dati, opt = l => d.listini.map(x => `<option ${x === l ? "selected" : ""}>${esc(x)}</option>`).join("");
-  let h = `<div class="riga" role="tablist">${TAB.map(([k, t]) => `<button type="button" role="tab" aria-selected="${k === scheda}" class="${k === scheda ? "" : "grigio"}" data-tab="${k}" style="margin:0 0 6px">${t}</button>`).join("")}</div><div class="esito" id="admMsg" hidden></div>`;
+  let h = `<div class="riga schede-adm" role="tablist">${TAB.map(([k, t]) => `<button type="button" role="tab" aria-selected="${k === scheda}" class="${k === scheda ? "" : "grigio"}" data-tab="${k}" style="margin:0 0 6px">${t}</button>`).join("")}</div><div class="esito" id="admMsg" hidden></div>`;
   if (d.prova) h += `<div class="esito info">Sono ancora attivi gli accessi di prova (CAF001, OTT07, OTT12 con password «demo»). Prima di aprire il servizio al pubblico rimuovili da <b>Impostazioni</b>.</div>`;
   if (scheda === "numeri"){
     const n = d.numeri;
@@ -375,6 +375,7 @@ document.addEventListener("change", e => {
     if (perAdm.p === "libero" && !(perAdm.da || perAdm.a)) return; carica(); return;
   }
   if (t.name === "canaleSoll"){ call("canaleSolleciti", {canale: t.value}).then(async r => { if (!r.ok) return msg(r.data.errore, "err"); await carica(); msg(t.value === "spento" ? "Invio automatico disattivato." : r.data.collegato ? "Canale salvato." : "Canale salvato. Non è ancora collegato: i messaggi restano da inviare a mano in Solleciti.", r.data.collegato ? "" : "err"); }); return; }
+  if (t.hasAttribute("data-formato-qr")){ formatoQr = t.value; try { localStorage.setItem("sg_qr", formatoQr); } catch(_){} document.querySelectorAll("[data-formato-qr]").forEach(x => x.value = formatoQr); return; }
   if (t.dataset.magf){ magF[t.dataset.magf] = t.value; disegna(); }
   if (t.dataset.selart){ t.checked ? magSel.add(t.dataset.selart) : magSel.delete(t.dataset.selart); const q = document.querySelector("[data-qr-sel]"); if (q){ q.disabled = !magSel.size; q.textContent = `Stampa QR selezionati (${magSel.size})`; } }
 });
@@ -518,7 +519,7 @@ function vistaMagazzino(){
   return `${avvisi.length ? `<div class="esito err" style="display:block"><b>${avvisi.length} ${avvisi.length === 1 ? "articolo sotto scorta o esaurito" : "articoli sotto scorta o esauriti"}</b>: ${avvisi.slice(0, 8).map(m => `<button type="button" class="linkbtn" data-art="${esc(m.Codice)}">${esc(m.Codice)}</button>`).join(" ")}${avvisi.length > 8 ? " …" : ""}
       <br><span style="font-size:13px">Il riordino si prepara nella pagina del fornitore (scheda <b>Fornitori</b>).</span></div>` : ""}
     <div class="riga"><button type="button" class="verde" data-art-nuovo style="margin:0">+ Nuova montatura</button>
-      <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button>
+      <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button>${selFormatoQr()}
       <button type="button" data-stampa-mag style="margin:0">Stampa report</button></div>
     <div class="filtri"><input id="magCerca" value="${esc(magF.q)}" placeholder="Codice, modello, colore, calibro" aria-label="Cerca montatura" autocomplete="off">
       ${sel("forn", [["", "Tutti i fornitori"]].concat(d.fornitori.map(f => [f.ID, f.Nome])))}${sel("dove", [["", "Ogni sede"]].concat(sedi().map(([k, t]) => [k, k === "MAG" ? "In magazzino" : "Esposte da " + t])))}
@@ -539,7 +540,7 @@ function schedaArticolo(m){
       <table class="rx" style="margin-top:6px"><tr><th style="text-align:left">Dove</th><th>Pezzi</th></tr>${pezzi.map(([k, n]) => `<tr><td style="text-align:left">${esc(k === "MAG" ? "Magazzino" : "Esposta da " + nomeSede(k))}</td><td>${n}</td></tr>`).join("") || '<tr><td colspan="2">Nessun pezzo disponibile</td></tr>'}</table>
       ${m.riservate.length ? `<div style="margin-top:4px">Prenotate dai clienti: ${m.riservate.map(r => `<b>${esc(r.univoco === "?" ? "cliente (dato precedente)" : r.univoco)}</b> da ${esc(nomeSede(r.ottica))}`).join("; ")}</div>` : ""}
       <div class="riga" style="margin-top:8px;align-items:flex-end"><div><label class="lbl" for="qrCopie">Copie del QR</label><input id="qrCopie" type="number" min="1" max="200" value="${Math.max(1, m.tot)}" style="width:90px;margin:0"></div>
-        <button type="button" data-qr="${esc(m.Codice)}" style="margin:0">Stampa QR</button></div></div>
+        ${selFormatoQr()}<button type="button" data-qr="${esc(m.Codice)}" style="margin:0">Stampa QR</button></div></div>
     ${m.archiviata ? "" : `<form data-f="magazzino" class="scheda"><b>Movimento di magazzino</b><input type="hidden" name="codice" value="${esc(m.Codice)}">
       <div class="riga"><div style="flex:1"><label class="lbl" for="mvOp">Operazione</label><select id="mvOp" name="op"><option value="carico">Carico (merce arrivata)</option><option value="trasferisci">Trasferisci (es. esponi in un'ottica)</option><option value="scarico">Scarico (rotta, persa, resa)</option><option value="rettifica">Rettifica inventario</option></select></div>
         <div style="width:100px"><label class="lbl" for="mvQ">Quantità</label><input id="mvQ" name="qta" type="number" min="0" value="1" required></div></div>
@@ -609,16 +610,35 @@ function schedaFornitore(f){
     ${nuovo ? "" : `<div class="az"><button type="button" class="grigio" data-elimina="fornitore" data-id="${esc(f.ID)}">Elimina fornitore</button></div>`}`;
 }
 // cartellini QR: uno o più articoli, con il numero di copie scelto
-function stampa(elenco){
+// cartellini QR piccoli da appendere all'asta: misure in millimetri, tanti per foglio A4
+const FORMATI_QR = {mini: ["Mini 18×24 mm", 18, 13, 6], piccola: ["Piccola 22×30 mm", 22, 16, 7], media: ["Media 30×40 mm", 30, 22, 8.5]};
+let formatoQr = "piccola"; try { formatoQr = localStorage.getItem("sg_qr") || "piccola"; } catch(_){}
+const selFormatoQr = () => `<select data-formato-qr aria-label="Formato etichette" style="width:auto;margin:0">${Object.entries(FORMATI_QR).map(([k, v]) => `<option value="${k}" ${formatoQr === k ? "selected" : ""}>${v[0]}</option>`).join("")}</select>`;
+// i QR si disegnano qui (libreria caricata una volta) e vanno nel foglio come immagini: la stampa non dipende da script esterni
+function caricaQrLib(){
+  if (window.QRCode) return Promise.resolve();
+  return new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
+}
+async function stampa(elenco){
   if (!elenco.length) return msg("Nessuna montatura selezionata.", "err");
   const w = open("", "_blank"); if (!w) return msg("Il browser ha bloccato la finestra di stampa: consenti i popup.", "err");
+  w.document.write("<p style='font-family:Arial'>Preparo le etichette…</p>");
+  try { await caricaQrLib(); } catch(_){ w.close(); return msg("Non riesco a caricare il generatore di QR: controlla la connessione e riprova.", "err"); }
+  const [, larg, qr, pt] = FORMATI_QR[formatoQr] || FORMATI_QR.piccola, img = {};
+  for (const x of elenco){
+    if (img[x.Codice]) continue;
+    const d = document.createElement("div"); new QRCode(d, {text: x.Codice, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M});
+    const c = d.querySelector("canvas"); img[x.Codice] = c ? c.toDataURL("image/png") : (d.querySelector("img") || {}).src;
+  }
   const et = []; elenco.forEach(x => { for (let i = 0; i < Math.min(200, x.copie || 1); i++) et.push(x); });
-  w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Cartellini QR SocialGlass</title>
-    <style>body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(4,1fr);gap:6mm}.c{border:1px dashed #999;padding:4mm;text-align:center;break-inside:avoid}
-    .c b{display:block;font-size:13pt;margin-top:2mm}.c small{color:#444}.q{display:flex;justify-content:center}</style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script></head><body>
-    <div class="g">${et.map((x, i) => `<div class="c"><div class="q" id="q${i}"></div><b>${esc(x.Codice)}</b><small>${esc(x.Modello)} ${esc(x.Colore)} ${esc(x.Calibro)}</small></div>`).join("")}</div>
-    <script>window.onload=function(){${JSON.stringify(et.map(x => x.Codice))}.forEach(function(c,i){new QRCode(document.getElementById("q"+i),{text:c,width:110,height:110});});setTimeout(function(){print()},500)}<\/script></body></html>`);
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Etichette QR SocialGlass</title>
+    <style>@page{size:A4;margin:8mm}body{font-family:Arial,sans-serif;margin:0}.g{display:grid;grid-template-columns:repeat(auto-fill,${larg}mm);gap:2mm}
+    .c{width:${larg}mm;border:0.2mm dashed #aaa;padding:1.2mm 1.5mm;text-align:center;break-inside:avoid;box-sizing:border-box;overflow:hidden}
+    .c img{width:${qr}mm;height:${qr}mm;display:block;margin:0 auto;image-rendering:pixelated}
+    .c b{display:block;font-size:${pt}pt;line-height:1.1;margin-top:0.6mm;white-space:nowrap}.c small{display:block;font-size:${pt - 2}pt;line-height:1.1;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}</style></head><body>
+    <div class="g">${et.map(x => `<div class="c"><img src="${img[x.Codice]}" alt=""><b>${esc(x.Codice)}</b><small>${esc(x.Calibro)}${x.Colore ? " " + esc(x.Colore) : ""}</small></div>`).join("")}</div>
+    <script>window.onload=function(){setTimeout(function(){print()},300)}<\/script></body></html>`);
   w.document.close();
 }
 window.SG_ADMIN = {apri};

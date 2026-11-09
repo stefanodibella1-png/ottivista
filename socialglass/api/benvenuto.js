@@ -16,5 +16,5 @@ module.exports = L.wrap(async (req, res) => {
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,
       finePeriodo: ord.finePeriodo || null, periodo: L.PREZZI.periodo(ord), rinnovo: ord.rinnovo ? {prosegue: !!(ord.rinnovo.prosegue)} : null,
       ritiro: ord.ritiro || null, storico: (ord.storico || []).length,
-      pagamento: ord.pagamento ? {stato: ord.pagamento.stato, attivatoIl: ord.pagamento.attivatoIl, ratePagate: ord.pagamento.ratePagate || 0, insoluto: ord.pagamento.insoluto || null, esito: ord.pagamento.esito || null, chiuso: ord.pagamento.chiuso || null} : null}});
+      pagamento: ord.pagamento ? {stato: ord.pagamento.stato, attivatoIl: ord.pagamento.attivatoIl, ratePagate: ord.pagamento.ratePagate || 0, insoluto: ord.pagamento.insoluto ? (({tipo, importo, dal, prossimoTentativo, link}) => ({tipo, importo, dal, prossimoTentativo, link, giorni: ord.pagamento.chiuso ? 0 : L.giorniAllaChiusura(ord.pagamento.insoluto)}))(ord.pagamento.insoluto) : null, esito: ord.pagamento.esito || null, chiuso: ord.pagamento.chiuso || null} : null}});
 });
