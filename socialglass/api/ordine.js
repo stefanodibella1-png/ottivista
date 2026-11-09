@@ -2,8 +2,32 @@
 const L = require("./_lib");
 const num = v => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) ? x : null; };
 module.exports = L.wrap(async (req, res) => {
-  const s = L.verify(req, "ottico"); if (!s) return L.send(res, 401, L.NOAUTH);
+  const s = L.verify(req); if (!s || !["ottico", "lab"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
   const url = new URL(req.url, "http://x");
+  // laboratorio: avanzamento della lavorazione (ritiro montatura, inizio, pronto)
+  if (s.ruolo === "lab"){
+    if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
+    const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
+    const ord = u ? L.parseOrdine(u.f.Ordine) : null;
+    if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
+    const ora = new Date().toISOString(), lab = ord.lab;
+    if (b.azione === "ritirata"){ if (lab.fonte === "LAB") return L.send(res, 409, {errore: "La montatura è già in laboratorio."}); lab.ritirata = ora; }
+    else if (b.azione === "inizia"){ if (lab.stato === "PRONTO") return L.send(res, 409, {errore: "Già pronto."}); lab.stato = "IN LAVORAZIONE"; lab.iniziato = lab.iniziato || ora; }
+    else if (b.azione === "nota"){ lab.note = String(b.nota || "").slice(0, 300); }
+    else if (b.azione === "pronto"){
+      if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
+      if (lab.fonte !== "LAB" && !lab.ritirata) return L.send(res, 409, {errore: "Prima segna la montatura come ritirata."});
+      lab.stato = "PRONTO"; lab.pronto = ora; ord.prontoIl = ora;
+      ord.avvisi = ord.avvisi || {}; ord.avvisi["labpronto" + ora.slice(0, 10)] = {il: ora, testo: "Il laboratorio ha finito l'occhiale: arriva in ottica. Quando il cliente lo ritira, segna «consegnato»."};
+      ord.aggiornato = ora;
+      await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
+      const ott = String(u.f.Ottica1 || "").split(" - ")[0];
+      const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${L.linkCliente(u.f.Univoco, ott)}`);
+      return L.send(res, 200, {ok: true, avviso: av});
+    } else return L.send(res, 400, {errore: "Operazione non valida."});
+    ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    return L.send(res, 200, {ok: true});
+  }
   if (req.method === "GET"){
     const u = await L.DB.utente("Univoco", (url.searchParams.get("univoco") || "").toUpperCase().trim());
     if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
@@ -37,6 +61,7 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {ok: true});
   }
+  if ((b.azione === "pronto" || b.azione === "consegnato") && ord.lab && ord.lab.stato !== "PRONTO") return L.send(res, 409, {errore: "L'occhiale è ancora in laboratorio: lo segna pronto il laboratorio quando ha finito."});
   if (b.azione === "pronto" || b.azione === "consegnato"){
     if (b.azione === "consegnato" && L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});

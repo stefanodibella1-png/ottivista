@@ -5,6 +5,12 @@ module.exports = L.wrap(async (req, res) => {
   const {ruolo, codice, password} = await L.readBody(req);
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0] || "ip";
   if (L.tooMany(`login:${ip}`)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
+  // laboratorio: un solo accesso, password impostata dall'amministratore
+  if (ruolo === "lab"){
+    const l = (await L.DB.meta("laboratorio")) || {};
+    if (!password || !l.attivo || !l.password || !L.checkPw(l.password, password)) return L.send(res, 401, {errore: "Password non valida."});
+    return L.send(res, 200, {token: L.sign({ruolo: "lab", id: L.LAB}), nome: l.nome || "Laboratorio", id: L.LAB});
+  }
   if (!["caf", "ottico"].includes(ruolo) || !codice || !password) return L.send(res, 400, {errore: "Inserisci codice e password."});
   const id = String(codice).trim().toUpperCase();
   const rec = await L.DB.login(ruolo, id);

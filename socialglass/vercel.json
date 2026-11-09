@@ -23,5 +23,11 @@
       "path": "/api/scadenze",
       "schedule": "0 7 * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/laboratorio",
+      "destination": "/laboratorio.html"
+    }
   ]
 }

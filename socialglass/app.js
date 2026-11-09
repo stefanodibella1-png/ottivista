@@ -480,7 +480,7 @@ function disegnaClienti(){
     const ultimato = p ? (p.scaduto ? `sì, il ${dIt(p.scadenza)}` : `no, scade il ${dIt(p.scadenza)}`) : "";
     const az = c.bloccato ? linkBtn(c) : isOtt
       ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
-        + (c.stato === STATI.ATTIVO ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
+        + (c.stato === STATI.ATTIVO && !c.lab ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
         + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
         + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
         + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
@@ -497,6 +497,7 @@ function disegnaClienti(){
         ${voce("Montatura", esc(c.montatura))}${isOtt ? voce("Codice e calibro", esc([c.montaturaCodice, c.calibro].filter(Boolean).join(" · "))) + voce("Lenti", esc(c.lenti)) + voce("Trattamenti", esc((c.trattamenti || []).join(", "))) : ""}
         ${voce("Valore occhiale", c.totale ? euro(c.totale) : "")}${voce("Canone", c.rata ? euro(c.rata) + "/mese" : "")}${isOtt ? voce("Riscatto", c.riscatto ? euro(c.riscatto) : "") : ""}
         ${voce("Abbonamento dal", dIt(c.attivatoIl))}${voce("Canoni pagati", c.attivatoIl ? String(c.ratePagate) : "")}${voce("Durata minima completata", c.esito ? "" : ultimato)}
+        ${c.lab && c.lab.stato !== "PRONTO" ? voce("Laboratorio", c.lab.stato === "DA FARE" ? "in attesa di lavorazione" : "in lavorazione") + (isOtt && c.lab.fonte === "OTTICA" ? voce("Montatura esposta", c.lab.ritirata ? "ritirata dal laboratorio il " + dIt(c.lab.ritirata) : "da consegnare al laboratorio") : "") : ""}
         ${isOtt ? voce("Pronto il", dIt(c.prontoIl)) : ""}${voce("Occhiale ricevuto", c.consegnatoIl ? "sì, il " + dIt(c.consegnatoIl) : c.attivatoIl ? "non ancora" : "")}
         ${voce("Chiuso il", dIt(c.chiuso))}</dl>
       ${isOtt && c.ricetta ? "<b>Ricetta</b>" + ricettaCli(c.ricetta) : ""}

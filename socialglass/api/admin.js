@@ -79,6 +79,9 @@ module.exports = L.wrap(async (req, res) => {
         sottoScorta: mont.filter(x => { const i = L.infoMont(x); return i.sottoScorta || i.esaurita; }).filter(x => !x.Eliminata).length,
         morosi: utenti.filter(u => { const pg = L.parseOrdine(u.f.Ordine).pagamento || {}; return pg.insoluto && !pg.chiuso; }).length},
       previsione: L.previsione(utenti.map(u => u.f), caf, ottici),
+      laboratorio: await (async () => { const l = (await L.DB.meta("laboratorio")) || {}; const lav = utenti.map(u => L.parseOrdine(u.f.Ordine).lab).filter(Boolean);
+        return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
+          daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
       prova, titolare: tit, pronto: lista, canali: L.canaliCollegati(), canaleSolleciti: (((await L.DB.meta("config")) || {}).canaleSolleciti) || "whatsapp",
       listini: Object.keys(L.PREZZI.LISTINI.convenzioni || {A: 1})
     });
@@ -133,6 +136,13 @@ module.exports = L.wrap(async (req, res) => {
       const m = String(e.message || e);
       return L.send(res, 502, {errore: /signed up for Connect|connect/i.test(m) ? "Stripe Connect non è attivo sul tuo account Stripe: attivalo nella dashboard Stripe (sezione Connect), poi riprova. " + m : m});
     }
+  }
+  // laboratorio (uno solo): dati, password di accesso, attivazione
+  if (az === "salvaLab"){
+    const prima = (await L.DB.meta("laboratorio")) || {}, d = {nome: pulito(b.nome, 80) || "Laboratorio", indirizzo: pulito(b.indirizzo, 160), telefono: pulito(b.telefono, 20).replace(/[^\d+]/g, ""), email: pulito(b.email, 120), attivo: !!b.attivo};
+    if (b.password){ if (String(b.password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.password = L.hashPw(String(b.password)); }
+    if (d.attivo && !d.password && !prima.password) return L.send(res, 400, {errore: "Per attivare il laboratorio imposta una password di accesso."});
+    await L.DB.meta("laboratorio", d); return L.send(res, 200, {ok: true});
   }
   if (az === "canaleSolleciti"){
     const c = ["whatsapp", "sms", "spento"].includes(b.canale) ? b.canale : null; if (!c) return L.send(res, 400, {errore: "Canale non valido."});

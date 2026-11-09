@@ -317,7 +317,7 @@ async function attiva(u, sessione){
   if (!ord.pagamento.ratePagate && sessione.payment_status === "paid") ord.pagamento.ratePagate = 1;
   ord.aggiornato = ord.pagamento.attivatoIl;
   await DB.aggiorna(u, {Stato: STATI.ATTIVO, Ordine: JSON.stringify(ord)});
-  if (ord.montatura) try { await liberaMontatura(ord.montatura.codice, u.f.Univoco, true); } catch(e){ console.error(e); }
+  try { await avviaLavorazione(u, ord); } catch(e){ console.error(e); }
   return true;
 }
 // se la conferma di Stripe non è ancora arrivata, la si chiede direttamente a Stripe
@@ -432,6 +432,33 @@ async function riservaMontatura(codice, univoco, ottica){
   });
   if (ok && sotto) await sottoScorta(sotto).catch(e => console.error(e));
   return ok;
+}
+/* ---------- laboratorio (uno solo, sede "LAB" nel magazzino) ----------
+   Quando l'ordine è pagato nasce la lavorazione. Montatura: se il laboratorio ne ha una copia usa quella (e il pezzo
+   esposto torna disponibile in ottica); altrimenti il pezzo prenotato dal cliente va ritirato in ottica (o in magazzino). */
+const LAB = "LAB";
+async function labAttivo(){ const l = (await DB.meta("laboratorio")) || {}; return !!(l.attivo && l.password); }
+async function avviaLavorazione(u, ord){
+  const codice = ord.montatura && ord.montatura.codice, univoco = u.f.Univoco, ora = new Date().toISOString();
+  if (!(await labAttivo())){ if (codice) await liberaMontatura(codice, univoco, true); return; }
+  if (ord.lab) return;
+  let fonte = "OTTICA", sede = String(u.f.Ottica1 || "").split(" - ")[0];
+  if (codice) await DB.tx("mont", codice, f => {
+    const {g, r} = scorte(f);
+    let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?");
+    const x = i >= 0 ? r.splice(i, 1)[0] : null;
+    if ((g[LAB] || 0) > 0){
+      g[LAB]--; if (x) g[x.ottica] = (g[x.ottica] || 0) + 1; fonte = "LAB"; sede = LAB;
+      return campiScorte(f, g, r, {tipo: "uscita cliente (copia del laboratorio)", qta: -1, dove: LAB, cliente: univoco});
+    }
+    if (!x) return null;
+    fonte = x.ottica === MAG ? "MAG" : "OTTICA"; sede = x.ottica;
+    return campiScorte(f, g, r, {tipo: "uscita cliente (da ritirare per il laboratorio)", qta: 0, dove: x.ottica, cliente: univoco});
+  });
+  ord.lab = {stato: "DA FARE", fonte, sede, creato: ora};
+  if (fonte === "OTTICA"){ ord.avvisi = ord.avvisi || {}; ord.avvisi["lab" + ora.slice(0, 10)] = {il: ora, testo: `Il laboratorio ritirerà la montatura ${codice} esposta in ottica: mettila da parte con il codice cliente ${univoco}.`}; }
+  ord.aggiornato = ora;
+  await DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
 }
 // rilascia: il pezzo torna nella sede da cui era stato preso; scarica: esce dal magazzino (ordine pagato)
 async function liberaMontatura(codice, univoco, scarico){
@@ -599,4 +626,4 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

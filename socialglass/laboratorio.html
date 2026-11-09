@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Laboratorio · SocialGlass</title>
+<style>
+:root{--blu:#0069D9;--verde:#2E7D32;--testo:#1f2933;--grigio:#666;--bordo:#e3e6ea;--fondo:#f4f6f9}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--fondo);color:var(--testo);font-size:15px}
+header{background:#fff;border-bottom:3px solid var(--blu);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;top:0;z-index:2}
+header b{color:var(--blu);font-size:19px}header span{color:var(--grigio);font-size:13px}
+main{max-width:980px;margin:0 auto;padding:12px 16px 40px}
+button,.btn{font:inherit;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;background:var(--blu);color:#fff;font-weight:600}
+button.verde{background:var(--verde)}button.grigio{background:#e9edf2;color:#333}button:disabled{opacity:.5;cursor:default}
+button.link{background:none;color:var(--blu);padding:0;text-decoration:underline;font-weight:400}
+input,select,textarea{font:inherit;padding:9px 10px;border:1px solid #c9d1da;border-radius:8px;width:100%;background:#fff}
+label{display:block;font-size:13px;color:var(--grigio);margin:8px 0 3px}
+.card{background:#fff;border:1px solid var(--bordo);border-radius:12px;padding:12px 14px;margin:10px 0}
+.login{max-width:380px;margin:40px auto}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.tabs button{background:#e9edf2;color:#333;font-weight:600}.tabs button.on{background:var(--blu);color:#fff}
+.barra{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin:8px 0}
+.chip{display:inline-block;border-radius:12px;padding:2px 9px;font-size:12px;font-weight:700;background:#e9edf2;color:#333;margin:2px 4px 2px 0;white-space:nowrap}
+.c-dafare{background:#fff3cd;color:#7a5b00}.c-lav{background:#dbe9ff;color:#0a3d8f}.c-pronto{background:#dff3e2;color:#1e5e24}.c-rit{background:#fdecea;color:#7a1c16}
+details.busta{background:#fff;border:1px solid var(--bordo);border-radius:12px;margin:8px 0}details.busta>summary{list-style:none;cursor:pointer;padding:10px 14px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+details.busta>summary::-webkit-details-marker{display:none}details.busta[open]>summary{border-bottom:1px solid var(--bordo)}
+.cod{font-family:"Courier New",monospace;color:#555;font-size:13px}
+.corpo{padding:10px 14px 14px;display:grid;gap:10px}
+.griglia{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:10px}.corpo>*,.griglia>*{min-width:0}.box{overflow-x:auto}
+.box{border:1px solid var(--bordo);border-radius:10px;padding:8px 12px}.box h4{margin:0 0 6px;font-size:14px}
+.dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:0}.dl dt{color:var(--grigio)}.dl dd{margin:0;font-weight:600}
+table.rx{border-collapse:collapse;font-size:15px}table.rx th,table.rx td{border:1px solid var(--bordo);padding:5px 10px;text-align:center}table.rx th{background:#f6f8fb}
+.dove{border-radius:10px;padding:8px 12px;font-weight:600}.dove.lab{background:#dff3e2;color:#1e5e24}.dove.ott{background:#fdecea;color:#7a1c16}
+.az{display:flex;gap:6px;flex-wrap:wrap}
+.msg{border-radius:8px;padding:8px 12px;margin:8px 0}.msg.ok{background:#e6f4ea;color:#1e5e24}.msg.err{background:#fdecea;color:#7a1c16}
+.vuoto{color:var(--grigio);text-align:center;padding:24px}
+.sel{width:auto;margin:0}
+@media (max-width:600px){.barra{grid-template-columns:1fr}table.rx th,table.rx td{padding:4px 6px;font-size:14px}main{padding:10px 10px 30px}}
+</style>
+</head>
+<body>
+<header><div><b>SocialGlass</b> <span>Laboratorio</span></div><div id="chi"></div></header>
+<main id="app"></main>
+<script src="lab.js?v=1794400000"></script>
+</body>
+</html>

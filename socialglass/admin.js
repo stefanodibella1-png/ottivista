@@ -161,6 +161,7 @@ function disegnaScheda(c){
     <div class="scheda"><b>Occhiale</b><dl class="dl">
       ${riga("Montatura", m ? esc(`${m.modello} ${m.colore}`) : "non ancora scelta")}${m ? riga("Codice e calibro", esc(`${m.codice} · ${m.calibro || ""}${m.asse ? "-" + m.asse : ""}`)) : ""}
       ${riga("Lenti", o.lenti ? esc(o.lenti.nome) : "")}${riga("Trattamenti", (o.trattamenti || []).map(t => esc(t.nome)).join(", "))}
+      ${o.lab ? riga("Laboratorio", `${esc(o.lab.stato)} · montatura ${o.lab.fonte === "LAB" ? "copia del laboratorio" : o.lab.fonte === "MAG" ? "dal magazzino" : "da ritirare in ottica"}${o.lab.fonte !== "LAB" ? (o.lab.ritirata ? " (ritirata il " + dt(o.lab.ritirata) + ")" : " (non ancora ritirata)") : ""}`) : ""}
       ${riga("Pronto il", o.prontoIl ? dt(o.prontoIl) : "")}${riga("Consegnato il", o.consegnatoIl ? dt(o.consegnatoIl) : "")}
       ${o.ritiro && o.ritiro.daRitirare ? riga("Da restituire", o.ritiro.ritirato ? "restituito il " + dt(o.ritiro.ritirato) : "sì, dal " + dt(o.ritiro.dal)) : ""}</dl>
       ${o.ricetta ? "<b>Ricetta</b>" + ricettaHtml(o.ricetta) : ""}</div>
@@ -239,6 +240,15 @@ function disegna(){
   if (scheda === "impostazioni"){
     const t = d.titolare || {}, cn = d.canali || {}, cs = d.canaleSolleciti;
     const stato = k => cn[k] ? '<span class="chip s4">COLLEGATO</span>' : '<span class="chip s3">NON COLLEGATO</span>';
+    const lb = d.laboratorio || {};
+    h += `<form data-f="salvaLab" class="scheda"><b>Laboratorio</b> ${lb.attivo ? '<span class="chip s4">ATTIVO</span>' : '<span class="chip">NON ATTIVO</span>'}
+      <p class="hint" style="margin:4px 0">Quando è attivo, ogni ordine pagato diventa una busta di lavoro per il laboratorio, che la vede su <b>${esc(location.origin)}/laboratorio</b> e segna l'occhiale pronto (il cliente viene avvisato). ${lb.attivo ? `Ora: ${lb.daFare} da fare, ${lb.inLavorazione} in lavorazione, ${lb.daRitirare} montature da ritirare in ottica.` : ""}</p>
+      <label class="lbl" for="lbN">Nome</label><input id="lbN" name="nome" value="${esc(lb.nome)}">
+      <label class="lbl" for="lbI">Indirizzo</label><input id="lbI" name="indirizzo" value="${esc(lb.indirizzo)}">
+      <div class="riga"><div style="flex:1"><label class="lbl" for="lbT">Telefono</label><input id="lbT" name="telefono" value="${esc(lb.telefono)}"></div><div style="flex:1"><label class="lbl" for="lbE">Email</label><input id="lbE" name="email" type="email" value="${esc(lb.email)}"></div></div>
+      <label class="lbl" for="lbP">Password di accesso del laboratorio (almeno 8; vuota = non cambiare)</label><input id="lbP" name="password" type="text" autocomplete="off" placeholder="${lb.password ? "già impostata" : ""}">
+      <label class="gdpr"><input type="checkbox" name="attivo" ${lb.attivo ? "checked" : ""}> Laboratorio attivo</label>
+      <button type="submit" class="verde full">Salva laboratorio</button></form>`;
     h += `<div class="scheda"><b>Avvisi al cliente per i canoni non pagati</b>
       <p style="margin:4px 0">Conto alla rovescia automatico: un messaggio a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura dell'abbonamento, più quello di chiusura.</p>
       <div role="radiogroup" aria-label="Canale" style="display:grid;gap:6px;margin:6px 0">
@@ -486,8 +496,8 @@ function stampaElencoAdm(){
       <td>${[c.bloccato ? "bloccato" : "", c.moroso ? "moroso" : "", c.chiuso ? "chiuso" : c.abbonamentoAttivo ? "attivo" : ""].filter(Boolean).join(", ")}</td></tr>`).join("")}</table><p class="hint">${clientiVisti.length} clienti.</p>`);
 }
 let artAperto = null, fornAperto = null, magSel = new Set(), magF = {q: "", forn: "", dove: "", stato: "attive"};
-const sedi = () => [["MAG", "Magazzino"]].concat(dati.ottici.map(o => [o.ID, `${o.ID} · ${o.Intestatario}`]));
-const nomeSede = id => id === "MAG" ? "Magazzino" : ((dati.ottici.find(o => o.ID === id) || {}).Intestatario ? `${id} · ${dati.ottici.find(o => o.ID === id).Intestatario}` : id);
+const sedi = () => [["MAG", "Magazzino"], ["LAB", "Laboratorio"]].concat(dati.ottici.map(o => [o.ID, `${o.ID} · ${o.Intestatario}`]));
+const nomeSede = id => id === "MAG" ? "Magazzino" : id === "LAB" ? "Laboratorio" : ((dati.ottici.find(o => o.ID === id) || {}).Intestatario ? `${id} · ${dati.ottici.find(o => o.ID === id).Intestatario}` : id);
 const nomeForn = id => id ? ((dati.fornitori.find(f => f.ID === id) || {}).Nome || id + " (eliminato)") : "—";
 const optSedi = (v, vuota) => (vuota ? `<option value="">${vuota}</option>` : "") + sedi().map(([k, t]) => `<option value="${esc(k)}" ${k === v ? "selected" : ""}>${esc(t)}</option>`).join("");
 const optForn = v => `<option value="">Nessun fornitore</option>` + dati.fornitori.map(f => `<option value="${esc(f.ID)}" ${f.ID === v ? "selected" : ""}>${esc(f.Nome)}</option>`).join("");

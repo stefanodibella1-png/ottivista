@@ -2,6 +2,19 @@
 const L = require("./_lib");
 module.exports = L.wrap(async (req, res) => {
   const s = L.verify(req); if (!s) return L.send(res, 401, L.NOAUTH);
+  // laboratorio: buste di lavoro (solo i dati che servono per montare: niente codice fiscale né telefono del cliente)
+  if (s.ruolo === "lab"){
+    if (req.method !== "GET") return L.send(res, 405, {errore: "Metodo non consentito"});
+    const [tutti, ottici] = await Promise.all([L.DB.tutti(), L.DB.lista("ottici")]);
+    const buste = tutti.map(({f}) => ({f, o: L.parseOrdine(f.Ordine)})).filter(x => x.o.lab).map(({f, o}) => {
+      const oid = String(f.Ottica1 || "").split(" - ")[0], ot = ottici.find(x => (x.ID || x._id) === oid) || {};
+      return {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", stato: f.Stato || "", lab: o.lab, montatura: o.montatura || null, lenti: o.lenti || null,
+        trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, consegnatoIl: o.consegnatoIl || "", chiuso: !!(o.pagamento && o.pagamento.chiuso),
+        ottica: {id: oid, nome: ot.Intestatario || "", indirizzo: `${ot.Indirizzo || ""}${ot.Citta || ""}`, telefono: ot.Telefono || ""}};
+    }).sort((a, b) => String(a.lab.creato).localeCompare(String(b.lab.creato)));
+    return L.send(res, 200, {buste});
+  }
+  if (!["caf", "ottico"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
   // segna come inviato su WhatsApp l'ultimo avviso automatico
   if (req.method === "POST"){
     const b = await L.readBody(req);
@@ -21,7 +34,7 @@ module.exports = L.wrap(async (req, res) => {
     const tecnico = isOtt ? {montaturaCodice: m ? m.codice : "", calibro: m ? `${m.calibro || ""}${m.asse ? "-" + m.asse : ""}` : "",
       lenti: o.lenti ? o.lenti.nome : "", trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, riscatto: o.prezzi ? o.prezzi.riscatto : null, prontoIl: o.prontoIl || ""} : {};
     return Object.assign({univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,
-      bloccato: L.situazione(f).bloccato, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
+      bloccato: L.situazione(f).bloccato, lab: o.lab ? {stato: o.lab.stato, fonte: o.lab.fonte, ritirata: o.lab.ritirata || "", pronto: o.lab.pronto || ""} : null, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
       ottica: String(f.Ottica1 || "").split(" - ").slice(0, 2).join(" - "), caf: f.CAF || "",
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
       rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || f.Creato || "",
