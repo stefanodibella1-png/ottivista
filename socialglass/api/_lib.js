@@ -558,6 +558,27 @@ function estratto(utenti, acc, da, a){
     saldoIniziale: r2(saldoIniziale), maturato: r2(maturato), pagato: r2(pagato), saldoFinale: r2(saldoIniziale + maturato - pagato),
     maturatoTot: r2(maturatoTot), pagatoTot: r2(pagatoTot), saldoAttuale: r2(maturatoTot - pagatoTot)};
 }
+/* ---------- previsione incassi: canoni ancora da ricevere fino alla fine della durata minima di ogni abbonamento ----------
+   Per mese: numero di canoni, importo, quota di clienti morosi (a rischio), compensi % previsti con gli accordi in vigore oggi. */
+function previsione(utenti, cafs, ottici, ora){
+  const now = ora ? new Date(ora) : new Date(), mesi = [], r2 = x => Math.round(x * 100) / 100;
+  for (let i = 0; i < 12; i++){ const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + i, 1)); mesi.push({mese: d.toISOString().slice(0, 7), canoni: 0, importo: 0, rischio: 0, compensi: 0, clienti: new Set()}); }
+  const acc = (l, id) => { const x = l.find(y => (y.ID || y._id) === id), a = x ? accordiDi(x) : []; const u = a[a.length - 1]; return u && u.tipo === "percentuale" ? Number(u.valore) || 0 : 0; };
+  let oltre = 0, ultimo = "";
+  for (const f of utenti){
+    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, pr = o.prezzi || {};
+    if (!pg.attivatoIl || pg.chiuso || pg.stato === "SIMULATO" || !pr.rata) continue;
+    const n = Number(pr.mesi) || 12, rata = Number(pr.rata), moroso = !!pg.insoluto, perc = acc(cafs, f.CAF) + acc(ottici, String(f.Ottica1 || "").split(" - ")[0]);
+    for (let k = pg.ratePagate || 0; k < n; k++){
+      let d = PREZZI.addMesi(pg.attivatoIl, k); if (d < now) d = now;   // canone già scaduto e non pagato: va nel mese corrente
+      const m = mesi.find(x => x.mese === d.toISOString().slice(0, 7));
+      if (!m){ oltre += rata; continue; }
+      m.canoni++; m.importo += rata; if (moroso) m.rischio += rata; m.compensi += rata * perc / 100; m.clienti.add(f.Univoco);
+      if (d.toISOString() > ultimo) ultimo = d.toISOString();
+    }
+  }
+  return {mesi: mesi.map(m => ({mese: m.mese, canoni: m.canoni, clienti: m.clienti.size, importo: r2(m.importo), rischio: r2(m.rischio), compensi: r2(m.compensi), netto: r2(m.importo - m.compensi)})), oltre: r2(oltre), ultimo};
+}
 // Conteggi con CAF e ottiche, filtrabili per periodo (da/a = AAAA-MM-GG, inclusi).
 // Compenso secondo l'accordo: fisso per abbonamento attivato nel periodo, oppure percentuale sui canoni incassati nel periodo.
 function conteggi(utenti, acc, da, a){
@@ -578,4 +599,4 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

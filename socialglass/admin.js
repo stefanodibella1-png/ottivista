@@ -90,6 +90,18 @@ function linkStripe(st, x){
   return `<div class="avviso-cli" style="margin-top:6px">Link per il partner (scade dopo pochi minuti): <a href="${esc(st.link)}" target="_blank" rel="noopener">apri</a>
     <div class="az" style="margin-top:4px"><button type="button" data-copia="${esc(st.link)}">Copia link</button>${tel ? `<a class="btn-link" target="_blank" rel="noopener" href="https://wa.me/39${esc(tel)}?text=${encodeURIComponent(testo)}">Invia su WhatsApp</a>` : ""}</div></div>`;
 }
+// previsione: canoni ancora da incassare mese per mese, fino all'ultimo previsto (massimo 12 mesi)
+function tabPrevisione(pv){
+  if (!pv) return "";
+  let l = pv.mesi.slice(); while (l.length > 1 && !l[l.length - 1].canoni) l.pop();
+  const nomeMese = m => new Date(m + "-15").toLocaleDateString("it-IT", {month: "long", year: "numeric"}), som = k => l.reduce((t, x) => t + x[k], 0);
+  return `<div class="scheda" id="previsioneAdm"><b>Previsione incassi</b>
+    ${som("canoni") ? `<div style="overflow-x:auto"><table class="rx" style="width:100%;margin-top:6px"><tr><th style="text-align:left">Mese</th><th>Canoni</th><th>Incasso previsto</th><th>di cui da clienti morosi</th><th>Compensi previsti</th><th>Netto previsto</th></tr>
+      ${l.map(x => `<tr><td style="text-align:left">${nomeMese(x.mese)}</td><td>${x.canoni}</td><td>${euro(x.importo)}</td><td>${x.rischio ? euro(x.rischio) : "—"}</td><td>${euro(x.compensi)}</td><td><b>${euro(x.netto)}</b></td></tr>`).join("")}
+      <tr><th style="text-align:left">Totale</th><th>${som("canoni")}</th><th>${euro(som("importo"))}</th><th>${som("rischio") ? euro(som("rischio")) : "—"}</th><th>${euro(som("compensi"))}</th><th>${euro(som("netto"))}</th></tr></table></div>
+      <p class="hint" style="font-size:12.5px;margin:6px 0 0">Canoni ancora da ricevere fino alla fine della durata minima di ogni abbonamento attivo${pv.ultimo ? ` (ultimo previsto: ${dt(pv.ultimo)})` : ""}. Non include nuovi clienti, spedizioni, riscatti né i mesi «mese per mese» dopo la scadenza. Un canone scaduto e non pagato è nel mese corrente. Compensi: solo quelli a percentuale, con gli accordi in vigore oggi (quelli fissi dipendono dalle nuove attivazioni).</p>`
+    : '<p style="margin:4px 0">Nessun canone da incassare: non ci sono abbonamenti attivi.</p>'}</div>`;
+}
 function vistaConteggi(){
   const d = dati, S = window.SG_STAMPA;
   if (contoAperto){
@@ -125,6 +137,7 @@ function vistaConteggi(){
         <div><h4>Ottiche</h4>${p("Compensi maturati", matOtt)}${p("Pagati", e(d.ottici, "pagato"))}${p("Da liquidare", liqOtt, "tot")}</div></div>
       <p class="hint" style="font-size:12.5px;margin:8px 0 4px">Incassi e compensi del periodo scelto; «Da liquidare» è sempre il dovuto ad oggi. Il margine non tiene conto dei costi (montature, lenti, commissioni Stripe). CAF e ottici vedono solo il proprio estratto conto.</p>
       <button type="button" data-stampa-conti style="margin:0">Stampa report conteggi</button></div>
+    ${tabPrevisione(d.previsione)}
     <div class="seg" role="tablist"><button type="button" role="tab" data-seg="caf" class="${segConti === "caf" ? "attivo" : ""}" aria-selected="${segConti === "caf"}">CAF (${d.caf.length})</button><button type="button" role="tab" data-seg="ottici" class="${segConti === "ottici" ? "attivo" : ""}" aria-selected="${segConti === "ottici"}">Ottiche (${d.ottici.length})</button></div>
     <div class="scheda">${segConti === "caf" ? tab("caf", d.caf) : tab("ottico", d.ottici)}</div>`;
 }
