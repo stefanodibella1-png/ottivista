@@ -76,6 +76,13 @@
       ${b.lab.avvisoCliente ? `<div class="box">Avviso «occhiali pronti» al cliente: ${b.lab.avvisoCliente.inviato ? `inviato in automatico (${b.lab.avvisoCliente.canale === "sms" ? "SMS" : "WhatsApp"}) il ${dt(b.lab.avvisoCliente.il)}` : "non partito in automatico: lo manda l'ottica"}.</div>` : ""}`;
   }
 
+  // il passo successivo, sempre visibile sulla riga della busta
+  function prossimo(b){
+    if (b.chiuso || b.lab.stato === "PRONTO" || !b.inLavorazione) return "";
+    if (daRitirare(b)) return `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>`;
+    if (b.lab.stato === "DA FARE") return `<button type="button" data-az="inizia" data-u="${esc(b.univoco)}">Inizia lavorazione</button>`;
+    return `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}">Occhiale pronto · avvisa il cliente</button>`;
+  }
   function disegna(){
     const q = cerca.trim().toUpperCase();
     const conta = k => buste.filter(FILTRI[k][1]).length;
@@ -89,7 +96,7 @@
       ${l.map(b => `<details class="busta" data-u="${esc(b.univoco)}" ${aperti.has(b.univoco) ? "open" : ""}><summary>
           <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}" onclick="event.stopPropagation()">
             <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
-          <div>${statoChip(b)}</div></summary>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${statoChip(b)}${prossimo(b)}</div></summary>
         <div class="corpo">${corpoBusta(b)}
           ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Occhiale pronto» il cliente riceve in automatico il messaggio (WhatsApp o SMS, come impostato da SocialGlass) e l'ottica viene avvisata.</p>` : ""}
           <div class="az">${!b.chiuso && daRitirare(b) ? `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>` : ""}
@@ -98,7 +105,7 @@
             <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button></div></div></details>`).join("")
         || `<div class="vuoto">Nessuna busta in «${FILTRI[filtro][0]}».</div>`}`;
     const c = $("cerca"); c.oninput = () => { cerca = c.value; const p = c.selectionStart; disegna(); const n = $("cerca"); n.focus(); try { n.setSelectionRange(p, p); } catch(_){} };
-    $("aggiorna").onclick = () => { messaggio = null; carica(); };
+    $("aggiorna").onclick = () => location.reload();
     $("stampaSel").onclick = () => stampa(buste.filter(b => sel.has(b.univoco)));
     const st = $("selTutte"); if (st) st.onclick = () => { const tutte = l.every(b => sel.has(b.univoco)); l.forEach(b => tutte ? sel.delete(b.univoco) : sel.add(b.univoco)); disegna(); };
   }
@@ -106,6 +113,7 @@
   app.addEventListener("change", e => { const u = e.target.dataset && e.target.dataset.sel; if (u){ e.target.checked ? sel.add(u) : sel.delete(u); const b = $("stampaSel"); b.disabled = !sel.size; b.textContent = `Stampa buste selezionate (${sel.size})`; } });
   app.addEventListener("click", async e => {
     const b = e.target.closest("button"); if (!b) return;
+    if (b.closest("summary")) e.preventDefault();   // il pulsante sulla riga non apre/chiude la busta
     if (b.dataset.f){ filtro = b.dataset.f; messaggio = null; disegna(); return; }
     if (b.dataset.stampa){ stampa(buste.filter(x => x.univoco === b.dataset.stampa)); return; }
     if (b.dataset.nota){
