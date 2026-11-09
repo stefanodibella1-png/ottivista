@@ -21,6 +21,7 @@ jobs:
       WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
       WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
       WHATSAPP_TEMPLATE: ${{ secrets.WHATSAPP_TEMPLATE }}
+      WHATSAPP_TEMPLATE_PRONTO: ${{ secrets.WHATSAPP_TEMPLATE_PRONTO }}
       TWILIO_SID: ${{ secrets.TWILIO_SID }}
       TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
       TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
@@ -99,7 +100,7 @@ jobs:
           setenv SITE_URL "$URL"
           [ -z "$AIRTABLE_TOKEN" ] || setenv AIRTABLE_TOKEN "$AIRTABLE_TOKEN"
           [ -z "$FIREBASE_SERVICE_ACCOUNT" ] || setenv FIREBASE_SERVICE_ACCOUNT "$FIREBASE_SERVICE_ACCOUNT"
-          for k in WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_TEMPLATE TWILIO_SID TWILIO_TOKEN TWILIO_FROM SMS_WEBHOOK_URL; do
+          for k in WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_TEMPLATE WHATSAPP_TEMPLATE_PRONTO TWILIO_SID TWILIO_TOKEN TWILIO_FROM SMS_WEBHOOK_URL; do
             v=$(printf '%s' "${!k}" | tr -d '[:space:]'); [ -z "$v" ] || { echo "::add-mask::$v"; setenv "$k" "$v"; }
           done
           if [ -n "$STRIPE_SECRET_KEY" ]; then

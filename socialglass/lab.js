@@ -72,7 +72,8 @@
       </div>
       ${dove(b)}
       <div class="box"><h4>Ricetta</h4>${ricetta(b.ricetta)}</div>
-      ${b.lab.note ? `<div class="box"><h4>Note del laboratorio</h4>${esc(b.lab.note)}</div>` : ""}`;
+      ${b.lab.note ? `<div class="box"><h4>Note del laboratorio</h4>${esc(b.lab.note)}</div>` : ""}
+      ${b.lab.avvisoCliente ? `<div class="box">Avviso «occhiali pronti» al cliente: ${b.lab.avvisoCliente.inviato ? `inviato in automatico (${b.lab.avvisoCliente.canale === "sms" ? "SMS" : "WhatsApp"}) il ${dt(b.lab.avvisoCliente.il)}` : "non partito in automatico: lo manda l'ottica"}.</div>` : ""}`;
   }
 
   function disegna(){
@@ -116,7 +117,9 @@
       b.disabled = true;
       const r = await api("api/ordine", {method: "POST", body: JSON.stringify({univoco: b.dataset.u, azione: b.dataset.az})});
       if (r.status === 401) return esci();
-      messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata.", pronto: "Occhiale pronto: cliente e ottica sono stati avvisati."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
+      const av = r.ok && r.data.avviso;
+      messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata.",
+        pronto: av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${av.canale === "sms" ? "SMS" : "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
       return carica();
     }
   });

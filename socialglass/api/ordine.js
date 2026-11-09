@@ -18,12 +18,15 @@ module.exports = L.wrap(async (req, res) => {
       if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
       if (lab.fonte !== "LAB" && !lab.ritirata) return L.send(res, 409, {errore: "Prima segna la montatura come ritirata."});
       lab.stato = "PRONTO"; lab.pronto = ora; ord.prontoIl = ora;
-      ord.avvisi = ord.avvisi || {}; ord.avvisi["labpronto" + ora.slice(0, 10)] = {il: ora, testo: "Il laboratorio ha finito l'occhiale: arriva in ottica. Quando il cliente lo ritira, segna «consegnato»."};
+      // il cliente viene avvisato in automatico; se il canale non è collegato, il messaggio lo manda l'ottica
+      const av = await L.avvisaPronto(u); lab.avvisoCliente = {il: ora, canale: av.canale, inviato: av.inviato, motivo: av.motivo};
+      ord.avvisi = ord.avvisi || {};
+      ord.avvisi["labpronto" + ora.slice(0, 10)] = av.inviato
+        ? {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente è già stato avvisato (${av.canale === "sms" ? "SMS" : "WhatsApp"}). Quando lo ritira, segna «consegnato».`}
+        : {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente NON è stato avvisato in automatico: mandagli tu il messaggio. ${av.testo}`, whatsapp: av.whatsapp};
       ord.aggiornato = ora;
       await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
-      const ott = String(u.f.Ottica1 || "").split(" - ")[0];
-      const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${L.linkCliente(u.f.Univoco, ott)}`);
-      return L.send(res, 200, {ok: true, avviso: av});
+      return L.send(res, 200, {ok: true, avviso: {inviato: av.inviato, canale: av.canale, motivo: av.motivo}});
     } else return L.send(res, 400, {errore: "Operazione non valida."});
     ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {ok: true});
@@ -68,7 +71,7 @@ module.exports = L.wrap(async (req, res) => {
     ord.aggiornato = new Date().toISOString(); ord[b.azione === "pronto" ? "prontoIl" : "consegnatoIl"] = ord.aggiornato;
     await L.DB.aggiorna(u, {Stato: b.azione === "pronto" ? L.STATI.PRONTO : L.STATI.CONSEGNATO, Ordine: JSON.stringify(ord)});
     const link = L.linkCliente(u.f.Univoco, s.id);
-    const av = b.azione === "pronto" ? await L.avvisa(u, `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`) : null;
+    const av = b.azione === "pronto" ? await L.avvisaPronto(u) : null;
     return L.send(res, 200, {ok: true, stato: u.f.Stato, avviso: av});
   }
   if (L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);

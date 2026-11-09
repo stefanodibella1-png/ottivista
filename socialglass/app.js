@@ -549,7 +549,7 @@ function alertBox(t){ notaDemo(t); }
 // avviso al cliente dopo un'azione dell'ottico: SMS automatico oppure WhatsApp con un tocco
 function avvisoCliente(av, titolo){
   const box = document.createElement("div"); box.className = "esito ok";
-  box.innerHTML = `${esc(titolo)} ${av.sms ? "Il cliente ha ricevuto un SMS." : `Avvisa il cliente: <a class="btn-link" style="display:inline-block;margin:6px 0 0" target="_blank" rel="noopener" href="${esc(av.whatsapp)}">Invia su WhatsApp</a>`}`;
+  box.innerHTML = `${esc(titolo)} ${av.sms ? (av.canale === "whatsapp" ? "Il cliente è stato avvisato su WhatsApp." : "Il cliente ha ricevuto un SMS.") : `Avvisa il cliente: <a class="btn-link" style="display:inline-block;margin:6px 0 0" target="_blank" rel="noopener" href="${esc(av.whatsapp)}">Invia su WhatsApp</a>`}`;
   const host = $("clientiPopup").hidden ? $("ordineEsito") : $("clientiLista");
   if (host === $("ordineEsito")){ host.hidden = false; host.className = "esito ok"; host.innerHTML = box.innerHTML; } else host.prepend(box);
 }

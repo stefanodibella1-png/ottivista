@@ -17,7 +17,7 @@ const CFG = {
   site: (E.SITE_URL || "https://www.socialglass.it").replace(/\/$/, ""),
   smsWebhook: E.SMS_WEBHOOK_URL || "",
   // messaggi automatici ai clienti: WhatsApp Business (Cloud API di Meta) oppure SMS (Twilio o un servizio SMS via webhook)
-  waToken: E.WHATSAPP_TOKEN || "", waPhone: E.WHATSAPP_PHONE_ID || "", waTemplate: E.WHATSAPP_TEMPLATE || "sollecito_canone", waLingua: E.WHATSAPP_LANG || "it",
+  waToken: E.WHATSAPP_TOKEN || "", waPhone: E.WHATSAPP_PHONE_ID || "", waTemplate: E.WHATSAPP_TEMPLATE || "sollecito_canone", waTemplatePronto: E.WHATSAPP_TEMPLATE_PRONTO || "occhiale_pronto", waLingua: E.WHATSAPP_LANG || "it",
   twSid: E.TWILIO_SID || "", twToken: E.TWILIO_TOKEN || "", twFrom: E.TWILIO_FROM || "",
   stripeKey: E.STRIPE_SECRET_KEY || "",
   stripeWebhook: E.STRIPE_WEBHOOK_SECRET || "",
@@ -221,6 +221,14 @@ async function avvisa(u, testo){
   }
   return {sms, whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
 }
+// «occhiali pronti»: parte da solo con il canale scelto nelle impostazioni (WhatsApp o SMS);
+// se il canale non è collegato resta il link WhatsApp da inviare a mano
+async function avvisaPronto(u){
+  const ott = String(u.f.Ottica1 || "").split(" - ")[0], link = linkCliente(u.f.Univoco, ott, u.f.CAF, u.f.Listino);
+  const testo = `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`;
+  const e = await inviaCliente(u.f, testo, [u.f.Nome || "", u.f.Univoco, link], CFG.waTemplatePronto);
+  return {sms: e.inviato, inviato: e.inviato, canale: e.canale, motivo: e.motivo || "", testo, whatsapp: `https://wa.me/${numeroCliente(u.f).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
+}
 /* ---------- solleciti di pagamento al cliente ---------- */
 const GIORNI_CHIUSURA = 30, PASSI_SOLLECITO = [30, 20, 10, 5, 3, 1];
 const canaliCollegati = () => ({whatsapp: !!(CFG.waToken && CFG.waPhone), sms: !!(CFG.smsWebhook || (CFG.twSid && CFG.twToken && CFG.twFrom))});
@@ -233,7 +241,7 @@ function testoSollecito(f, ins, giorni, consegnato){
     : `Oggi l'abbonamento verrà chiuso. `) + `Paga o cambia carta qui: ${ins.link || linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino)}`;
 }
 // invia al cliente con il canale scelto nelle impostazioni; se il canale non è collegato il messaggio resta da inviare a mano
-async function inviaCliente(f, testo, param){
+async function inviaCliente(f, testo, param, modello){
   const cfg = (await DB.meta("config")) || {}, canale = cfg.canaleSolleciti || "whatsapp", to = numeroCliente(f), c = canaliCollegati();
   if (canale === "spento") return {canale, inviato: false, motivo: "invio automatico disattivato"};
   if (!f.Cellulare) return {canale, inviato: false, motivo: "cellulare mancante"};
@@ -241,7 +249,7 @@ async function inviaCliente(f, testo, param){
     if (canale === "whatsapp"){
       if (!c.whatsapp) return {canale, inviato: false, motivo: "WhatsApp Business non collegato"};
       const r = await fetch(`https://graph.facebook.com/v21.0/${CFG.waPhone}/messages`, {method: "POST", headers: {Authorization: `Bearer ${CFG.waToken}`, "Content-Type": "application/json"},
-        body: JSON.stringify({messaging_product: "whatsapp", to: to.replace(/\D/g, ""), type: "template", template: {name: CFG.waTemplate, language: {code: CFG.waLingua},
+        body: JSON.stringify({messaging_product: "whatsapp", to: to.replace(/\D/g, ""), type: "template", template: {name: modello || CFG.waTemplate, language: {code: CFG.waLingua},
           components: [{type: "body", parameters: param.map(t => ({type: "text", text: String(t)}))}]}})});
       const j = await r.json().catch(() => ({}));
       return {canale, inviato: r.ok, motivo: r.ok ? "" : String((j.error && j.error.message) || r.status).slice(0, 200)};
@@ -626,4 +634,4 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

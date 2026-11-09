@@ -249,13 +249,13 @@ function disegna(){
       <label class="lbl" for="lbP">Password di accesso del laboratorio (almeno 8; vuota = non cambiare)</label><input id="lbP" name="password" type="text" autocomplete="off" placeholder="${lb.password ? "già impostata" : ""}">
       <label class="gdpr"><input type="checkbox" name="attivo" ${lb.attivo ? "checked" : ""}> Laboratorio attivo</label>
       <button type="submit" class="verde full">Salva laboratorio</button></form>`;
-    h += `<div class="scheda"><b>Avvisi al cliente per i canoni non pagati</b>
-      <p style="margin:4px 0">Conto alla rovescia automatico: un messaggio a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura dell'abbonamento, più quello di chiusura.</p>
+    h += `<div class="scheda"><b>Messaggi automatici ai clienti</b>
+      <p style="margin:4px 0">Partono da soli con il canale scelto: <b>occhiali pronti</b> (quando il laboratorio o l'ottica segna pronto) e <b>canoni non pagati</b> (conto alla rovescia a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura, più quello di chiusura).</p>
       <div role="radiogroup" aria-label="Canale" style="display:grid;gap:6px;margin:6px 0">
         <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="whatsapp" ${cs === "whatsapp" ? "checked" : ""}> WhatsApp ${stato("whatsapp")}</label>
         <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="sms" ${cs === "sms" ? "checked" : ""}> SMS ${stato("sms")}</label>
         <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="spento" ${cs === "spento" ? "checked" : ""}> Nessun invio automatico (li mandi tu dall'elenco Solleciti)</label></div>
-      ${cs !== "spento" && !cn[cs] ? `<p class="hint" style="margin:4px 0">Il canale scelto non è ancora collegato: finché non lo è, i messaggi restano pronti nell'elenco <b>Solleciti</b> e li invii tu con un tocco.</p>` : ""}</div>`;
+      ${cs !== "spento" && !cn[cs] ? `<p class="hint" style="margin:4px 0">Il canale scelto non è ancora collegato: finché non lo è, i solleciti restano pronti nell'elenco <b>Solleciti</b> e l'avviso «occhiali pronti» lo manda l'ottica con un tocco su WhatsApp.</p>` : ""}</div>`;
     h += `<form data-f="salvaTitolare" class="scheda"><b>Titolare del servizio</b><p style="margin:4px 0">Compare nell'informativa privacy e nelle condizioni dell'abbonamento.</p>
       <label class="lbl" for="tRag">Ragione sociale o nome e cognome</label><input id="tRag" name="ragione" value="${esc(t.ragione)}">
       <label class="lbl" for="tPiva">Partita IVA</label><input id="tPiva" name="piva" inputmode="numeric" value="${esc(t.piva)}">
