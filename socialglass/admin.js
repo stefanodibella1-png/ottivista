@@ -66,7 +66,30 @@ function contiHtml(x, tipo){
   const e = x.estratto || {}, acc = e.accordo ? window.SG_STAMPA.testoAccordo(e.accordo) : "accordo non definito";
   return `<div style="font-size:13.5px">Accordo: ${esc(acc)} · da liquidare <b>${euro(e.saldoAttuale)}</b> · <button type="button" class="linkbtn" data-conto="${tipo}:${esc(x.ID)}">estratto conto</button></div>`;
 }
-let contoAperto = null;
+let contoAperto = null, segConti = "caf", stripeStato = {}, tokenPaga = Math.random().toString(36).slice(2);
+// pagamento al partner con Stripe Connect
+function bloccoStripe(tipo, x, e){
+  const k = `${tipo}:${x.ID}`, st = stripeStato[k];
+  if (x.stripe && !st){ call("stripePartner", {tipo, id: x.ID, op: "stato"}).then(r => { stripeStato[k] = r.ok ? r.data : {errore: r.data.errore}; if (contoAperto === k) disegna(); }); }
+  const intro = `<b>Paga con Stripe</b><p class="hint" style="margin:4px 0">Il ${tipo === "caf" ? "CAF" : "partner"} riceve il compenso sul proprio conto bancario tramite Stripe; il pagamento si registra da solo nell'estratto conto.</p>`;
+  if (!x.stripe || (st && st.collegato === false)) return `<div class="scheda">${intro}<p style="margin:4px 0">Prima volta: il partner deve aprire il suo conto Stripe collegato (pochi minuti, con documento e IBAN).</p>
+    <button type="button" data-stripe-collega="${esc(k)}" style="margin:0">Crea il link di registrazione</button>${st && st.link ? linkStripe(st, x) : ""}${st && st.errore ? `<p class="esito err" style="display:block">${esc(st.errore)}</p>` : ""}</div>`;
+  if (!st) return `<div class="scheda">${intro}<p>Verifico il conto Stripe…</p></div>`;
+  if (st.errore) return `<div class="scheda">${intro}<p class="esito err" style="display:block">${esc(st.errore)}</p><button type="button" data-stripe-aggiorna="${esc(k)}" style="margin:0">Riprova</button></div>`;
+  if (!st.pronto) return `<div class="scheda">${intro}<p style="margin:4px 0"><span class="chip s2">REGISTRAZIONE DA COMPLETARE</span> ${st.mancano ? `mancano ${st.mancano} dati` : ""}</p>
+    <div class="az"><button type="button" data-stripe-collega="${esc(k)}">Nuovo link di registrazione</button><button type="button" class="grigio" data-stripe-aggiorna="${esc(k)}">Aggiorna stato</button></div>${st.link ? linkStripe(st, x) : ""}</div>`;
+  const dov = Math.max(0, e.saldoAttuale);
+  return `<div class="scheda">${intro}<p style="margin:4px 0"><span class="chip s4">CONTO STRIPE ATTIVO</span></p>
+    <form data-f="pagaStripe" data-tipo="${tipo}" data-id="${esc(x.ID)}"><div class="riga"><div style="flex:1"><label class="lbl" for="psI">Importo (€)</label><input id="psI" name="importo" inputmode="decimal" value="${dov ? String(dov).replace(".", ",") : ""}" required></div>
+      <div style="flex:1"><label class="lbl" for="psC">Causale</label><select id="psC" name="causale"><option value="saldo">Saldo</option><option value="acconto">Acconto</option></select></div></div>
+      <label class="lbl" for="psN">Nota</label><input id="psN" name="nota" maxlength="200" placeholder="es. compensi ottobre 2026">
+      <button type="submit" class="verde full">Paga con Stripe</button></form></div>`;
+}
+function linkStripe(st, x){
+  const tel = String(x.Telefono || "").replace(/\D/g, ""), testo = `SocialGlass: per ricevere i tuoi compensi completa la registrazione su Stripe da questo link (vale pochi minuti, se scade te ne mando un altro): ${st.link}`;
+  return `<div class="avviso-cli" style="margin-top:6px">Link per il partner (scade dopo pochi minuti): <a href="${esc(st.link)}" target="_blank" rel="noopener">apri</a>
+    <div class="az" style="margin-top:4px"><button type="button" data-copia="${esc(st.link)}">Copia link</button>${tel ? `<a class="btn-link" target="_blank" rel="noopener" href="https://wa.me/39${esc(tel)}?text=${encodeURIComponent(testo)}">Invia su WhatsApp</a>` : ""}</div></div>`;
+}
 function vistaConteggi(){
   const d = dati, S = window.SG_STAMPA;
   if (contoAperto){
@@ -75,25 +98,35 @@ function vistaConteggi(){
     const e = x.estratto, oggi = new Date().toISOString().slice(0, 10), pag = (e.righe || []).filter(r => r.tipo === "pagamento");
     return `<div class="riga" style="justify-content:space-between;align-items:center"><button type="button" class="linkbtn" data-chiudi-conto style="margin:0">← Torna ai conteggi</button><button type="button" data-stampa-estratto-adm style="margin:0">Stampa estratto conto</button></div>
       <div class="scheda" id="estrattoAdm"><b style="font-size:17px">${tipo === "caf" ? "CAF" : "Ottica"} ${esc(x.ID)} · ${esc(tipo === "caf" ? x.Nome : x.Intestatario)}</b>${S.campiPeriodo("pa", perAdm)}${S.estrattoCorpo(e, true)}</div>
-      <form data-f="liquidazione" data-tipo="${tipo}" data-id="${esc(x.ID)}" class="scheda"><b>Registra un pagamento al ${tipo === "caf" ? "CAF" : "l'ottica"}</b>
+      ${bloccoStripe(tipo, x, e)}
+      <form data-f="liquidazione" data-tipo="${tipo}" data-id="${esc(x.ID)}" class="scheda"><b>Pagamento fatto in altro modo (bonifico, contanti…)</b>
         <div class="riga"><div style="flex:1"><label class="lbl" for="lqD">Data</label><input id="lqD" name="data" type="date" value="${oggi}" required></div><div style="flex:1"><label class="lbl" for="lqI">Importo (€)</label><input id="lqI" name="importo" inputmode="decimal" required></div></div>
         <div class="riga"><div style="flex:1"><label class="lbl" for="lqC">Causale</label><select id="lqC" name="causale"><option value="acconto">Acconto</option><option value="saldo">Saldo</option><option value="rettifica">Rettifica</option></select></div><div style="flex:1"><label class="lbl" for="lqM">Metodo</label><input id="lqM" name="metodo" placeholder="es. bonifico" maxlength="40"></div></div>
         <label class="lbl" for="lqN">Nota (es. riferimento fattura, periodo)</label><input id="lqN" name="nota" maxlength="200">
         <button type="submit" class="verde full">Registra pagamento</button></form>
       ${pag.length ? `<div class="scheda"><b>Pagamenti nel periodo</b>${pag.map(p => `<div class="riga" style="justify-content:space-between;align-items:center;border-bottom:1px solid #eef1f5;padding:3px 0"><span>${dt(p.il)} · ${euro(p.importo)} · ${esc(p.descrizione)}</span>${p.id !== "precedenti" ? `<button type="button" class="grigio" data-elimina-liq="${esc(p.id)}" style="margin:0">Elimina</button>` : ""}</div>`).join("")}</div>` : ""}`;
   }
-  const somma = (l, f) => l.reduce((t, x) => t + (f(x) || 0), 0), tutti = d.caf.map(x => ["caf", x]).concat(d.ottici.map(x => ["ottico", x]));
-  // gli incassi si contano una volta sola (sui CAF: ogni cliente ha un CAF)
-  const inc = k => somma(d.caf, x => x.conti[k]), mat = somma(tutti, ([, x]) => x.estratto.maturato), pagato = somma(tutti, ([, x]) => x.estratto.pagato), daLiq = somma(tutti, ([, x]) => x.estratto.saldoAttuale);
-  const tab = (tipo, l) => `<div style="overflow-x:auto"><table class="rx" style="width:100%"><tr><th style="text-align:left">${tipo === "caf" ? "CAF" : "Ottica"}</th><th style="text-align:left">Accordo</th><th>Attivati</th><th>Canoni dei suoi clienti</th><th>Compensi maturati</th><th>Pagati</th><th>Da liquidare oggi</th></tr>
-    ${l.map(x => { const e = x.estratto, k = x.conti; return `<tr><td style="text-align:left"><b>${esc(x.ID)}</b> <button type="button" class="linkbtn" data-conto="${tipo}:${esc(x.ID)}">estratto</button><br><small>${esc(tipo === "caf" ? x.Nome : x.Intestatario)}</small></td>
-      <td style="text-align:left">${e.accordo ? esc(window.SG_STAMPA.testoAccordo(e.accordo)) : "<i>non definito</i>"}</td><td>${k.attivati}</td><td>${euro(k.canoni)}</td><td>${euro(e.maturato)}</td><td>${euro(e.pagato)}</td><td><b>${euro(e.saldoAttuale)}</b></td></tr>`; }).join("") || '<tr><td colspan="7">Nessuno</td></tr>'}</table></div>`;
-  return `<div class="scheda"><b>Periodo</b>${window.SG_STAMPA.campiPeriodo("pa", perAdm)}<span class="hint">${window.SG_STAMPA.testoPeriodo((d.caf[0] || d.ottici[0] || {}).conti || {})}</span></div>
-    <div class="scheda"><b>Riepilogo SocialGlass</b><div class="conti"><div>Canoni incassati<b>${euro(inc("canoni"))}</b></div><div>Spedizioni incassate<b>${euro(inc("spedizioni"))}</b></div><div>Riscatti incassati<b>${euro(inc("riscatti"))}</b></div><div>Totale incassato<b>${euro(inc("incassati"))}</b></div>
-      <div>Compensi maturati da CAF e ottiche<b>${euro(mat)}</b></div><div>Margine (incassato − compensi)<b>${euro(inc("incassati") - mat)}</b></div><div>Pagati a CAF e ottiche<b>${euro(pagato)}</b></div><div>Da liquidare oggi (totale)<b>${euro(daLiq)}</b></div></div>
-      <p class="hint" style="font-size:12.5px">Incassi pagati dai clienti con la carta (Stripe) nel periodo. Il margine non tiene conto dei costi (montature, lenti, commissioni Stripe). CAF e ottici vedono solo il proprio estratto conto, non questi totali.</p>
+  const somma = (l, f) => l.reduce((t, x) => t + (f(x) || 0), 0);
+  // incassi contati una volta sola (sui CAF: ogni cliente ha un CAF)
+  const inc = k => somma(d.caf, x => x.conti[k]), e = (l, k) => somma(l, x => x.estratto[k]);
+  const matCaf = e(d.caf, "maturato"), matOtt = e(d.ottici, "maturato"), tot = inc("incassati");
+  const liqCaf = e(d.caf, "saldoAttuale"), liqOtt = e(d.ottici, "saldoAttuale");
+  const p = (t, v, cl) => `<p${cl ? ` class="${cl}"` : ""}><span>${t}</span><b>${euro(v)}</b></p>`;
+  const tab = (tipo, l) => `<div style="overflow-x:auto"><table class="rx" style="width:100%"><tr><th style="text-align:left">${tipo === "caf" ? "CAF" : "Ottica"}</th><th style="text-align:left">Accordo</th><th>Attivati</th><th>Canoni dei suoi clienti</th><th>Compensi maturati</th><th>Pagati</th><th>Da liquidare</th><th></th></tr>
+    ${l.map(x => { const es = x.estratto, k = x.conti; return `<tr><td style="text-align:left"><b>${esc(x.ID)}</b><br><small>${esc(tipo === "caf" ? x.Nome : x.Intestatario)}</small></td>
+      <td style="text-align:left">${es.accordo ? esc(S.testoAccordo(es.accordo)) : "<i>non definito</i>"}</td><td>${k.attivati}</td><td>${euro(k.canoni)}</td><td>${euro(es.maturato)}</td><td>${euro(es.pagato)}</td><td><b>${euro(es.saldoAttuale)}</b></td>
+      <td><button type="button" class="${es.saldoAttuale > 0 ? "verde" : "grigio"}" data-conto="${tipo}:${esc(x.ID)}" style="margin:0;padding:6px 10px">${es.saldoAttuale > 0 ? "Paga" : "Estratto"}</button></td></tr>`; }).join("") || '<tr><td colspan="8">Nessuno</td></tr>'}
+    ${l.length ? `<tr><th style="text-align:left" colspan="2">Totale</th><th>${somma(l, x => x.conti.attivati)}</th><th>${euro(somma(l, x => x.conti.canoni))}</th><th>${euro(e(l, "maturato"))}</th><th>${euro(e(l, "pagato"))}</th><th>${euro(e(l, "saldoAttuale"))}</th><th></th></tr>` : ""}</table></div>`;
+  return `<div class="scheda"><b>Periodo</b>${S.campiPeriodo("pa", perAdm)}<span class="hint">${S.testoPeriodo((d.caf[0] || d.ottici[0] || {}).conti || {})}</span></div>
+    <div class="scheda"><b>Riepilogo SocialGlass</b>
+      <div class="kpi"><div>Totale incassato<b>${euro(tot)}</b></div><div>Compensi maturati<b>${euro(matCaf + matOtt)}</b></div><div>Margine<b>${euro(tot - matCaf - matOtt)}</b></div><div class="evid">Da liquidare<b>${euro(liqCaf + liqOtt)}</b></div></div>
+      <div class="voci"><div><h4>Incassi dai clienti</h4>${p("Canoni", inc("canoni"))}${p("Spedizioni", inc("spedizioni"))}${p("Riscatti", inc("riscatti"))}${p("Totale", tot, "tot")}</div>
+        <div><h4>CAF</h4>${p("Compensi maturati", matCaf)}${p("Pagati", e(d.caf, "pagato"))}${p("Da liquidare", liqCaf, "tot")}</div>
+        <div><h4>Ottiche</h4>${p("Compensi maturati", matOtt)}${p("Pagati", e(d.ottici, "pagato"))}${p("Da liquidare", liqOtt, "tot")}</div></div>
+      <p class="hint" style="font-size:12.5px;margin:8px 0 4px">Incassi e compensi del periodo scelto; «Da liquidare» è sempre il dovuto ad oggi. Il margine non tiene conto dei costi (montature, lenti, commissioni Stripe). CAF e ottici vedono solo il proprio estratto conto.</p>
       <button type="button" data-stampa-conti style="margin:0">Stampa report conteggi</button></div>
-    <div class="scheda"><b>CAF</b>${tab("caf", d.caf)}</div><div class="scheda"><b>Ottiche</b>${tab("ottico", d.ottici)}</div>`;
+    <div class="seg" role="tablist"><button type="button" role="tab" data-seg="caf" class="${segConti === "caf" ? "attivo" : ""}" aria-selected="${segConti === "caf"}">CAF (${d.caf.length})</button><button type="button" role="tab" data-seg="ottici" class="${segConti === "ottici" ? "attivo" : ""}" aria-selected="${segConti === "ottici"}">Ottiche (${d.ottici.length})</button></div>
+    <div class="scheda">${segConti === "caf" ? tab("caf", d.caf) : tab("ottico", d.ottici)}</div>`;
 }
 function disegnaScheda(c){
   const o = c.ordine || {}, pg = o.pagamento || {}, pr = o.prezzi || {}, m = o.montatura, p = c.periodo, si = c.situazione, b = si.blocco;
@@ -241,6 +274,15 @@ async function clic(e){
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
   if (b.dataset.conto){ contoAperto = b.dataset.conto; scheda = "conteggi"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-conto")){ contoAperto = null; disegna(); return; }
+  if (b.dataset.seg){ segConti = b.dataset.seg; disegna(); return; }
+  if (b.dataset.copia){ try { await navigator.clipboard.writeText(b.dataset.copia); msg("Link copiato."); } catch(_){ msg("Copia non riuscita: tieni premuto sul link «apri».", "err"); } return; }
+  if (b.dataset.stripeAggiorna){ delete stripeStato[b.dataset.stripeAggiorna]; disegna(); return; }
+  if (b.dataset.stripeCollega){
+    const [tipo, id] = b.dataset.stripeCollega.split(":"); b.disabled = true; b.textContent = "Attendi…";
+    const r = await call("stripePartner", {tipo, id, op: "collega"});
+    stripeStato[b.dataset.stripeCollega] = r.ok ? {collegato: true, pronto: false, link: r.data.link} : {collegato: false, errore: r.data.errore};
+    if (r.ok) await carica(); else disegna(); return;
+  }
   if (b.hasAttribute("data-stampa-estratto-adm")) return ST().stampaDoc("Estratto conto con SocialGlass · " + contoAperto.replace(":", " "), ST().pulisciStampa($("estrattoAdm")));
   if (b.dataset.eliminaLiq){
     if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Tocca di nuovo"; return; }
@@ -323,6 +365,15 @@ async function invio(e){
     if (k === "imposta" && pw !== $("admPw2").value) return msg("Le due password non coincidono.", "err");
     const r = await call(k, {password: pw}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     tok = r.data.token; sessionStorage.setItem("sg_admin", tok); await carica(); return;
+  }
+  if (k === "pagaStripe"){
+    const btn = f.querySelector("button[type=submit]");
+    if (!btn.dataset.ok){ btn.dataset.ok = "1"; btn.textContent = `Confermi il pagamento di ${String(v.importo).replace(".", ",")} € con Stripe? Tocca di nuovo`; return; }
+    btn.disabled = true; btn.textContent = "Pagamento in corso…";
+    const r = await call("stripePartner", Object.assign({tipo: f.dataset.tipo, id: f.dataset.id, op: "paga", token: tokenPaga}, v));
+    tokenPaga = Math.random().toString(36).slice(2);
+    if (!r.ok){ btn.disabled = false; btn.dataset.ok = ""; btn.textContent = "Paga con Stripe"; return msg(r.data.errore || "Errore", "err"); }
+    await carica(); return msg(`Pagamento inviato con Stripe (${r.data.trasferimento}) e registrato nell'estratto conto.`);
   }
   if (k === "liquidazione"){
     const r = await call("liquidazione", Object.assign({tipo: f.dataset.tipo, id: f.dataset.id}, v)); if (!r.ok) return msg(r.data.errore || "Errore", "err");

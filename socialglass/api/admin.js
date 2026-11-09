@@ -66,8 +66,8 @@ module.exports = L.wrap(async (req, res) => {
     const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || ""}; };
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
@@ -94,6 +94,44 @@ module.exports = L.wrap(async (req, res) => {
         metodo: pulito(b.metodo, 40), nota: pulito(b.nota, 200), registrato: new Date().toISOString()});
     }
     await L.DB.salva(k, id, {Liquidazioni: l}); return L.send(res, 200, {ok: true});
+  }
+  // pagamento a CAF e ottiche con Stripe Connect: il partner apre un conto collegato (una volta), poi SocialGlass gli trasferisce il dovuto
+  if (az === "stripePartner"){
+    const k = b.tipo === "caf" ? "caf" : b.tipo === "ottico" ? "ottici" : null, id = pulito(b.id, 20).toUpperCase(); if (!k) return L.send(res, 400, {errore: "Tipo non valido."});
+    if (!L.CFG.stripeKey) return L.send(res, 409, {errore: "Stripe non è configurato."});
+    const acc = k === "caf" ? (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id) : await L.DB.ottico(id); if (!acc) return L.send(res, 404, {errore: "Non trovato."});
+    const nome = k === "caf" ? (acc.Nome || id) : (acc.Intestatario || id);
+    try {
+      let conto = acc.StripeAccount || "";
+      if (b.op === "collega"){
+        if (!conto){
+          const a = await L.stripeApi("POST", "accounts", {type: "express", country: "IT", default_currency: "eur", capabilities: {transfers: {requested: true}},
+            business_profile: {name: nome}, metadata: {socialglass: k, id}}, `acct-${k}-${id}`);
+          conto = a.id; await L.DB.salva(k, id, {StripeAccount: conto});
+        }
+        const link = await L.stripeApi("POST", "account_links", {account: conto, type: "account_onboarding", refresh_url: L.CFG.site + "/?stripe=riprova", return_url: L.CFG.site + "/?stripe=fatto"});
+        return L.send(res, 200, {ok: true, conto, link: link.url, scade: link.expires_at});
+      }
+      if (!conto) return L.send(res, 200, {collegato: false});
+      const a = await L.stripeApi("GET", `accounts/${conto}`);
+      const pronto = !!(a.capabilities && a.capabilities.transfers === "active");
+      if (b.op === "paga"){
+        const imp = numero(b.importo); if (!(imp > 0)) return L.send(res, 400, {errore: "Importo non valido."});
+        if (!pronto) return L.send(res, 409, {errore: "Il conto Stripe del partner non è ancora abilitato a ricevere pagamenti: deve completare la registrazione."});
+        const ora = new Date().toISOString(), nota = pulito(b.nota, 200);
+        const t = await L.stripeApi("POST", "transfers", {amount: Math.round(imp * 100), currency: "eur", destination: conto, description: `SocialGlass compensi ${k} ${id}${nota ? " · " + nota : ""}`,
+          metadata: {socialglass: k, id}}, `tr-${k}-${id}-${Math.round(imp * 100)}-${pulito(b.token, 40)}`);
+        const l = L.liquidazioniDi(acc).filter(x => x.stripe !== t.id);
+        l.push({id: require("crypto").randomBytes(4).toString("hex"), il: ora.slice(0, 10), importo: imp, causale: ["acconto", "saldo"].includes(b.causale) ? b.causale : "saldo",
+          metodo: "Stripe", nota: [nota, t.id].filter(Boolean).join(" · "), stripe: t.id, registrato: ora});
+        await L.DB.salva(k, id, {Liquidazioni: l});
+        return L.send(res, 200, {ok: true, trasferimento: t.id});
+      }
+      return L.send(res, 200, {collegato: true, conto, pronto, datiInviati: !!a.details_submitted, mancano: ((a.requirements || {}).currently_due || []).length, email: a.email || ""});
+    } catch(e){
+      const m = String(e.message || e);
+      return L.send(res, 502, {errore: /signed up for Connect|connect/i.test(m) ? "Stripe Connect non è attivo sul tuo account Stripe: attivalo nella dashboard Stripe (sezione Connect), poi riprova. " + m : m});
+    }
   }
   if (az === "canaleSolleciti"){
     const c = ["whatsapp", "sms", "spento"].includes(b.canale) ? b.canale : null; if (!c) return L.send(res, 400, {errore: "Canale non valido."});
