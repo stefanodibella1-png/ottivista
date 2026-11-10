@@ -24,7 +24,7 @@ function mostra(){ document.querySelectorAll(".popup").forEach(p => p.hidden = p
 let ultimo = null;
 function msg(t, k){ ultimo = t ? {t, k, il: Date.now()} : null; const e = $("admMsg"); if (e){ e.textContent = t; e.className = "esito " + (k || "ok"); e.hidden = !t; e.setAttribute("role", k === "err" ? "alert" : "status"); } }
 async function apri(){
-  crea(); mostra();
+  crea(); mostra(); $("adminPopup").classList.remove("pagina");
   if (tok){ await carica(); return; }
   const s = await call("stato");
   if (!s.ok){ $("admCorpo").innerHTML = `<div class="esito err">${esc(s.data.errore || "Pannello non disponibile in questa anteprima: si usa sul sito pubblicato.")}</div>`; return; }
@@ -39,7 +39,7 @@ async function carica(){
   const r = await call("dati", {da, a}); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
-const TAB = [["numeri", "Numeri"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["conteggi", "Conteggi"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
+const TAB = [["numeri", "Oggi"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["conteggi", "Conteggi"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
 let clientiAdm = null, schedaCli = null, filtriAdm = {q: "", caf: "", ottica: "", stato: "", sit: ""};
 const SIT = {
   morosi: ["Morosi", c => c.moroso], bloccati: ["Anagrafica bloccata", c => c.bloccato], attivi: ["Abbonamento attivo", c => c.abbonamentoAttivo],
@@ -181,13 +181,30 @@ function disegna(){
   const d = dati, opt = l => d.listini.map(x => `<option ${x === l ? "selected" : ""}>${esc(x)}</option>`).join("");
   let h = `<div class="riga schede-adm" role="tablist">${TAB.map(([k, t]) => `<button type="button" role="tab" aria-selected="${k === scheda}" class="${k === scheda ? "" : "grigio"}" data-tab="${k}" style="margin:0 0 6px">${t}</button>`).join("")}</div><div class="esito" id="admMsg" hidden></div>`;
   if (d.prova) h += `<div class="esito info">Sono ancora attivi gli accessi di prova (CAF001, OTT07, OTT12 con password «demo»). Prima di aprire il servizio al pubblico rimuovili da <b>Impostazioni</b>.</div>`;
+  $("adminPopup").classList.add("pagina");
   if (scheda === "numeri"){
-    const n = d.numeri;
-    if (n.morosi) h += `<div class="esito err" style="display:block"><b>${n.morosi}</b> ${n.morosi === 1 ? "cliente con il canone non pagato" : "clienti con il canone non pagato"}. <button type="button" class="linkbtn" data-tab="solleciti">Apri i solleciti</button></div>`;
-    if (n.sottoScorta) h += `<div class="esito err" style="display:block">Magazzino: <b>${n.sottoScorta}</b> ${n.sottoScorta === 1 ? "montatura sotto scorta o esaurita" : "montature sotto scorta o esaurite"}. <button type="button" class="linkbtn" data-tab="magazzino">Apri il magazzino</button></div>`;
-    h += `<div class="scheda"><div class="date"><span>Clienti <b>${n.clienti}</b></span><span>Abbonamenti attivi <b>${n.abbonamentiAttivi}</b></span><span>Canoni al mese <b>${euro(n.canoniMensili)}</b></span></div></div>
-      <div class="scheda"><b>Pronto per il pubblico?</b><ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></div>
-      <div class="lista">${Object.entries(n.perStato).map(([s, c]) => `<div class="cli"><div class="top"><span>${esc(s)}</span><b>${c}</b></div></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div>`;
+    const n = d.numeri, lb = d.laboratorio || {}, ord = d.ordiniFornitori || [], partner = d.caf.concat(d.ottici);
+    const daLiq = partner.filter(x => x.estratto && x.estratto.saldoAttuale > 0), totLiq = daLiq.reduce((t, x) => t + x.estratto.saldoAttuale, 0);
+    const bozze = ord.filter(o => o.Stato === "BOZZA").length, inviati = ord.filter(o => o.Stato === "INVIATO").length;
+    const daRiord = (d.fornitori || []).filter(f => f.proposta.length && !ord.some(o => o.Fornitore === f.ID && o.Stato === "BOZZA")).length;
+    const senza = partner.filter(x => !x.CompensoTipo).length, mancano = d.pronto.filter(([, ok]) => !ok).length;
+    const fare = [], f = (num, t, sotto, tab, urg) => { if (num) fare.push(`<button type="button" data-tab="${tab}"${urg ? ' class="urg"' : ""}><span class="n">${num}</span><span>${t}<small>${sotto}</small></span><span class="va">Apri ›</span></button>`); };
+    f(n.morosi, "Clienti con il canone non pagato", "Sollecita: testo e contatti già pronti", "solleciti", true);
+    f(n.sottoScorta, "Montature sotto scorta o esaurite", "Controlla il magazzino e riordina", "magazzino", true);
+    f(bozze, "Ordini ai fornitori da inviare", "Bozze pronte: controlla e invia", "fornitori");
+    f(daRiord, "Fornitori con articoli da riordinare", "Crea la bozza d'ordine", "fornitori");
+    f(inviati, "Ordini inviati in attesa della merce", "Quando arriva, segna «merce arrivata»", "fornitori");
+    f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
+    f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
+    f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
+    const max = Math.max(1, ...Object.values(n.perStato));
+    h += `<div class="cru-kpi"><button type="button" data-tab="clienti"><b>${n.clienti}</b>Clienti</button><button type="button" data-tab="clienti" class="ok"><b>${n.abbonamentiAttivi}</b>Abbonamenti attivi</button>
+        <button type="button" data-tab="conteggi"><b>${euro(n.canoniMensili)}</b>Canoni al mese</button><button type="button" data-tab="solleciti" class="${n.morosi ? "att" : ""}"><b>${n.morosi || 0}</b>Morosi</button>
+        <button type="button" data-tab="conteggi"><b>${euro(totLiq)}</b>Da liquidare</button>${lb.attivo ? `<button type="button" data-tab="clienti"><b>${lb.daFare + lb.inLavorazione}</b>In laboratorio</button>` : ""}</div>
+      <div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: niente in sospeso.</div>'}</div>
+        <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
+      <details class="cru-box" style="margin-top:14px" ${mancano && mancano < d.pronto.length ? "" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--notte)">Pronto per il pubblico? ${mancano ? `Mancano ${mancano} passi su ${d.pronto.length}` : "Sì, tutto fatto"}</summary>
+        <ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></details>`;
   }
   if (scheda === "conteggi") h += vistaConteggi();
   if (scheda === "solleciti"){
@@ -205,7 +222,7 @@ function disegna(){
     h += `<div class="filtri"><input id="admCerca" value="${esc(F.q)}" autocomplete="off" placeholder="Nome, codice fiscale o codice" aria-label="Cerca cliente">
       ${sel("caf", "Tutti i CAF", uniq("caf").map(v => [v, v]))}${sel("ottica", "Tutte le ottiche", uniq("ottica").map(v => [v, v]))}
       ${sel("stato", "Tutti gli stati", uniq("stato").map(v => [v, v]))}${sel("sit", "Ogni situazione", Object.entries(SIT).map(([k, v]) => [k, v[0]]))}</div>
-      <p class="hint" style="margin:2px 0 4px">${l.length} di ${clientiAdm.length} clienti · tocca un cliente per aprire la scheda · <button type="button" class="linkbtn" data-stampa-cli-elenco>Stampa elenco</button></p>
+      <p class="hint" style="margin:2px 0 4px">${l.length} di ${clientiAdm.length} clienti · tocca un cliente per aprire la scheda · <button type="button" class="linkbtn" data-stampa-cli-elenco>Stampa elenco</button> · <button type="button" class="linkbtn" data-csv="clienti">Esporta per Excel</button></p>
       <div class="lista">${l.slice(0, 300).map(c => `<button type="button" class="riga-cli" data-scheda="${esc(c.univoco)}"><span><span class="nome">${esc(c.nome)}</span><span class="cod">${esc(c.univoco)} · ${esc(c.caf)} · ${esc(c.ottica)}</span></span>
         <span class="bad">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.moroso ? '<span class="chip s3">MOROSO</span>' : ""}${c.inScadenza ? '<span class="chip s2">IN SCADENZA</span>' : ""}<span class="chip">${esc(c.stato)}</span></span></button>`).join("") || '<div class="vuoto">Nessun cliente con questi filtri</div>'}</div>`;
   }
@@ -295,6 +312,10 @@ async function clic(e){
   if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
+  if (b.dataset.csv === "clienti") return csv("clienti-socialglass", ["Codice", "Cliente", "Codice fiscale", "CAF", "Ottica", "Stato", "Registrato il", "Scadenza", "Abbonamento attivo", "Moroso", "Bloccato", "Esito"],
+    clientiVisti.map(c => [c.univoco, c.nome, c.cf, c.caf, c.ottica, c.stato, c.creato ? dt(c.creato) : "", c.scadenza ? dt(c.scadenza) : "", c.abbonamentoAttivo ? "sì" : "no", c.moroso ? "sì" : "no", c.bloccato ? "sì" : "no", c.esito]));
+  if (b.dataset.csv === "magazzino") return csv("magazzino-socialglass", ["Codice", "Modello", "Colore", "Calibro", "Asta", "Fornitore", "Codice fornitore", "Disponibili", "Prenotate", "Dove", "Scorta minima", "Costo", "Prezzo", "Stato"],
+    magVisti.map(m => [m.Codice, m.Modello, m.Colore, m.Calibro, m.Asse, nomeForn(m.Fornitore), m.CodiceFornitore, m.tot, m.riservate.length, Object.entries(m.giacenze).map(([k, n]) => `${k}:${n}`).join(" "), Number(m.ScortaMinima) || 0, Number(m.Costo) || "", Number(m.Prezzo) || "", m.archiviata ? "archiviata" : m.esaurita ? "esaurita" : m.sottoScorta ? "sotto scorta" : ""]));
   if (b.dataset.conto){ contoAperto = b.dataset.conto; scheda = "conteggi"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-conto")){ contoAperto = null; disegna(); return; }
   if (b.dataset.seg){ segConti = b.dataset.seg; disegna(); return; }
@@ -435,6 +456,13 @@ async function invio(e){
 }
 /* ---------- magazzino montature e fornitori ---------- */
 let magVisti = [], clientiVisti = [], sollecitiAdm = null;
+// esporta in CSV (si apre con Excel: separatore punto e virgola, numeri con la virgola)
+function csv(nome, intest, righe){
+  const cella = v => { let x = v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : String(v); if (/^[=+\-@]/.test(x)) x = "'" + x; return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+  const testo = "\ufeff" + [intest].concat(righe).map(r => r.map(cella).join(";")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([testo], {type: "text/csv;charset=utf-8"})); a.download = `${nome}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
 function vistaSolleciti(){
   const l = sollecitiAdm, cn = dati.canali || {}, cs = dati.canaleSolleciti, auto = cs !== "spento" && cn[cs];
   const att = l.filter(x => !x.chiuso), chi = l.filter(x => x.chiuso);
@@ -520,7 +548,7 @@ function vistaMagazzino(){
       <br><span style="font-size:13px">Il riordino si prepara nella pagina del fornitore (scheda <b>Fornitori</b>).</span></div>` : ""}
     <div class="riga"><button type="button" class="verde" data-art-nuovo style="margin:0">+ Nuova montatura</button>
       <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button>${selFormatoQr()}
-      <button type="button" data-stampa-mag style="margin:0">Stampa report</button></div>
+      <button type="button" data-stampa-mag style="margin:0">Stampa report</button><button type="button" class="grigio" data-csv="magazzino" style="margin:0">Esporta per Excel</button></div>
     <div class="filtri"><input id="magCerca" value="${esc(magF.q)}" placeholder="Codice, modello, colore, calibro" aria-label="Cerca montatura" autocomplete="off">
       ${sel("forn", [["", "Tutti i fornitori"]].concat(d.fornitori.map(f => [f.ID, f.Nome])))}${sel("dove", [["", "Ogni sede"]].concat(sedi().map(([k, t]) => [k, k === "MAG" ? "In magazzino" : "Esposte da " + t])))}
       ${sel("stato", Object.entries(MAG_STATI).map(([k, v]) => [k, v[0]]))}</div>

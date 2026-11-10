@@ -57,5 +57,9 @@ module.exports = L.wrap(async (req, res) => {
   let acc = null; try { acc = isOtt ? await L.DB.ottico(s.id) : await L.DB.login("caf", s.id); } catch(e){ console.error(e); }
   const q = new URL(req.url, "http://x").searchParams, gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
   // solo i propri conteggi (compensi secondo l'accordo e pagamenti ricevuti): gli incassi di SocialGlass non si mostrano
-  L.send(res, 200, {clienti: list, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
+  // l'ottico vede anche le montature esposte nella sua ottica
+  let esposte; if (isOtt) try { esposte = (await L.DB.lista("mont")).filter(m => !m.Eliminata).map(m => { const {g, r} = L.scorte(m);
+    return {codice: m.Codice || m._id, modello: m.Modello || "", colore: m.Colore || "", calibro: m.Calibro || "", asse: m.Asse || "", qta: g[s.id] || 0, prenotate: r.filter(x => x.ottica === s.id).length}; })
+    .filter(m => m.qta || m.prenotate).sort((a, b) => a.codice.localeCompare(b.codice)); } catch(e){ console.error(e); }
+  L.send(res, 200, {clienti: list, esposte, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
 });

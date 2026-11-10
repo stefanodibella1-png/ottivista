@@ -75,28 +75,17 @@ document.querySelectorAll("img[data-fallback]").forEach(img => {
   img.onerror = swap; if (img.complete && !img.naturalWidth) swap();
 });
 
-/* ---------- pannello amministratore: 7 tocchi sul logo ---------- */
+/* ---------- pannello amministratore: 7 tocchi sul logo, oppure indirizzo /admin ---------- */
+function apriAdmin(){
+  const go = () => window.SG_ADMIN && window.SG_ADMIN.apri();
+  if (window.SG_ADMIN) return go();
+  const sc = document.createElement("script"); sc.src = "admin.js?v=" + Date.now(); sc.onload = go; document.head.appendChild(sc);
+}
 { let n = 0, t = 0;
   document.querySelectorAll("#mobile-image,#immagineCadente1").forEach(img => img.addEventListener("click", () => {
     clearTimeout(t); t = setTimeout(() => { n = 0; }, 2500);
-    if (++n < 7) return; n = 0;
-    const go = () => window.SG_ADMIN && window.SG_ADMIN.apri();
-    if (window.SG_ADMIN) return go();
-    const sc = document.createElement("script"); sc.src = "admin.js?v=" + Date.now(); sc.onload = go; document.head.appendChild(sc);
+    if (++n < 7) return; n = 0; apriAdmin();
   })); }
-
-/* ---------- logo cadente (come nel sito originale) ---------- */
-function dropImage(el, startY, endY, done){
-  let y = startY;
-  const step = () => { y = Math.min(endY, y + Math.max(2, (endY - y)*.06)); el.style.top = y + "px"; if (y < endY) requestAnimationFrame(step); else done && done(); };
-  step();
-}
-window.addEventListener("load", () => {
-  if (matchMedia("(max-width:768px)").matches) return;
-  const t = $("immagineCadente1"), s = $("immagineCadente2"), end = 140;
-  const show2 = () => { if (!s.hasAttribute("data-off")){ s.hidden = false; s.style.top = (end + t.offsetHeight + 10) + "px"; } };
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches){ t.style.top = end + "px"; show2(); } else dropImage(t, -200, end, show2);
-});
 
 /* ---------- popup ---------- */
 // accessibilità: ogni finestra è un dialogo modale con titolo, il focus resta dentro e torna dove era
@@ -126,10 +115,28 @@ document.querySelectorAll(".popup .popup-content").forEach(c => {
 function aggiornaIndietro(){
   document.querySelectorAll(".popup").forEach(p => { const b = p.querySelector(".back-btn"), c = p.querySelector(".popup-content"); if (!b) return; const si = !p.hidden && storia.length > 0; b.hidden = !si; if (c) c.classList.toggle("con-indietro", si); });
 }
-function indietro(){ const prev = storia.pop(); if (prev) open(prev, true); else closeAll(); }
+// cronologia del browser allineata alle finestre aperte
+let nStati = 0, ignoraPop = false;
+const spingi = () => { try { history.pushState({sg: 1}, ""); nStati++; } catch(_){} };
+const scarica = n => { n = Math.min(n, nStati); if (n > 0){ nStati -= n; ignoraPop = true; try { history.go(-n); } catch(_){ ignoraPop = false; } } };
+function indietro(daPop){
+  const prev = storia.pop(); if (!prev) return closeAll(daPop);
+  if (daPop !== true) scarica(1);
+  open(prev, true);
+  if (prev === "optionsPopup" || prev === "optionsOtticoPopup") apriCruscotto(prev === "optionsPopup" ? "caf" : "ottico", true);   // numeri aggiornati al ritorno
+}
+// tasto «indietro» del telefono o del browser: chiude la finestra aperta invece di uscire dal sito
+window.addEventListener("popstate", () => {
+  if (ignoraPop){ ignoraPop = false; return; }
+  nStati = Math.max(0, nStati - 1);
+  if (!$("video-container").hidden){ stopScan(); return; }
+  const aperta = [...document.querySelectorAll(".popup")].find(x => !x.hidden); if (!aperta) return;
+  if (storia.length) indietro(true); else closeAll(true);
+});
 function open(id, daIndietro){
   const aperta = [...document.querySelectorAll(".popup")].find(x => !x.hidden);
-  if (!aperta) primaDelPopup = document.activeElement;
+  if (!aperta){ primaDelPopup = document.activeElement; spingi(); }
+  else if (!daIndietro && aperta.id !== id) spingi();
   if (!daIndietro){ if (aperta && aperta.id !== id && !NON_IN_STORIA.includes(aperta.id)) storia.push(aperta.id); else if (!aperta) storia = []; }
   setTimeout(aggiornaIndietro, 0);
   document.querySelectorAll(".popup").forEach(p => p.hidden = p.id !== id);
@@ -138,15 +145,15 @@ function open(id, daIndietro){
   const f = el.querySelector("input:not([disabled]):not([type=checkbox]):not([type=radio]),select:not([disabled])");
   if (f && !("ontouchstart" in window)) setTimeout(() => f.focus(), 50);
 }
-function closeAll(){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); storia = []; ritornaFocus(); }
+function closeAll(daPop){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); storia = []; if (daPop !== true) scarica(nStati); else nStati = 0; ritornaFocus(); }
 function ritornaFocus(){ if (primaDelPopup && document.contains(primaDelPopup)) try { primaDelPopup.focus(); } catch(_){} primaDelPopup = null; }
 document.addEventListener("click", e => {
-  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; storia = []; ritornaFocus(); return; }
+  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; storia = []; scarica(nStati); ritornaFocus(); return; }
   const o = e.target.closest("[data-open]");
   if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); if (o.dataset.open === "ordinePopup") resetOrdine(); return; }
-  if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id"].forEach(k => sessionStorage.removeItem(k)); closeAll(); return; }
-  if (e.target.closest("[data-clienti]")){ apriClienti(); return; }
-  if (e.target.classList && e.target.classList.contains("popup")){ e.target.hidden = true; storia = []; }
+  if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id","sg_listino"].forEach(k => sessionStorage.removeItem(k)); cruDati = null; closeAll(); return; }
+  if (e.target.closest("[data-clienti]")){ apriClienti({}); return; }
+  if (e.target.classList && e.target.classList.contains("popup") && !e.target.classList.contains("pagina")){ e.target.hidden = true; storia = []; scarica(nStati); }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeAll(); stopScan(); } });
 function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.setAttribute("role", kind === "err" ? "alert" : "status"); el.hidden = !txt; }
@@ -295,10 +302,9 @@ const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(bod
 
 /* ---------- accesso CAF e ottico ---------- */
 const ruolo = () => sessionStorage.getItem("sg_tok") ? sessionStorage.getItem("sg_ruolo") : null;
-$("loginButton").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : "passwordPopup"));
-$("otticoButton").addEventListener("click", () => open(ruolo() === "ottico" ? "optionsOtticoPopup" : "otticoPopup"));
-$("mCaf").addEventListener("click", () => open(ruolo() === "caf" ? "optionsPopup" : "passwordPopup"));
-$("mOtt").addEventListener("click", () => open(ruolo() === "ottico" ? "optionsOtticoPopup" : "otticoPopup"));
+const entra = r0 => ruolo() === r0 ? apriCruscotto(r0) : open(r0 === "caf" ? "passwordPopup" : "otticoPopup");
+$("loginButton").addEventListener("click", () => entra("caf")); $("mCaf").addEventListener("click", () => entra("caf"));
+$("otticoButton").addEventListener("click", () => entra("ottico")); $("mOtt").addEventListener("click", () => entra("ottico"));
 // il link del cliente non mostra gli accessi riservati
 if (par("Univoco")) $("areaMobile").hidden = true;
 document.querySelectorAll("form[data-login]").forEach(f => f.addEventListener("submit", async e => {
@@ -309,20 +315,144 @@ document.querySelectorAll("form[data-login]").forEach(f => f.addEventListener("s
   btn.disabled = false;
   if (!r.ok){ err.textContent = r.data.errore || "Codice o password non valida."; err.hidden = false; return; }
   sessionStorage.setItem("sg_tok", r.data.token); sessionStorage.setItem("sg_ruolo", r0); sessionStorage.setItem("sg_id", r.data.id); sessionStorage.setItem("sg_nome", r.data.nome);
-  p.value = "";
-  contaAvvisi();
-  if (r0 === "caf"){ $("cafNome").textContent = r.data.nome; open("optionsPopup"); }
-  else { $("ottNome").textContent = r.data.nome; $("codiceUnivocoContainer").textContent = "Cod.Ottico: " + r.data.id; open("optionsOtticoPopup"); }
+  if (r.data.listino) sessionStorage.setItem("sg_listino", r.data.listino);
+  p.value = ""; cruDati = null;
+  if (r0 === "ottico") $("codiceUnivocoContainer").textContent = "Cod.Ottico: " + r.data.id;
+  apriCruscotto(r0);
 }));
-if (ruolo()){ $("cafNome").textContent = $("ottNome").textContent = sessionStorage.getItem("sg_nome") || ""; }
-// numero di avvisi da inviare, mostrato sul pulsante "I MIEI CLIENTI"
-async function contaAvvisi(){
-  const r = await api("api/clienti"); if (!r.ok) return;
-  const n = (r.data.clienti || []).filter(c => c.avviso).length;
-  document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; });
-}
-if (sessionStorage.getItem("sg_tok")) contaAvvisi();
 function scaduta(r){ if (r.status === 401){ sessionStorage.removeItem("sg_tok"); open(sessionStorage.getItem("sg_ruolo") === "ottico" ? "otticoPopup" : "passwordPopup"); return true; } return false; }
+
+/* ---------- cruscotti CAF e ottico ---------- */
+const ICO = {
+  nuovo: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+  cf: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h5M7 14h3M15 13l2 2 3-4"/>',
+  rinnovo: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
+  clienti: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  conti: '<path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  stampa: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  chiave: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2M16 7l3 3"/>',
+  aiuto: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  ordine: '<circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M10 15h4M2.5 13 5 5M21.5 13 19 5"/>',
+  esposte: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  listino: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1"/>',
+  cerca: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'
+};
+const ico = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k]}</svg>`;
+const tessera = (k, titolo, sotto, attr, primo) => `<button type="button" ${attr}${primo ? ' class="primo"' : ""}>${ico(k)}<span>${titolo}</span><small>${sotto}</small></button>`;
+const giorniDa = d => d ? (Date.now() - new Date(d)) / 864e5 : 0;
+let cruDati = null;
+async function apriCruscotto(r0, silenzioso){
+  const isOtt = r0 === "ottico";
+  if (!silenzioso){ open(isOtt ? "optionsOtticoPopup" : "optionsPopup"); disegnaCruscotto(isOtt, cruDati); }
+  const r = await api("api/clienti"); if (scaduta(r)) return;
+  cruDati = r.ok ? r.data : {clienti: []}; clienti = cruDati.clienti || [];
+  if (ruolo() === r0) disegnaCruscotto(isOtt, cruDati);
+}
+function disegnaCruscotto(isOtt, d){
+  const box = $(isOtt ? "cruOtt" : "cruCaf"), nome = sessionStorage.getItem("sg_nome") || "", id = sessionStorage.getItem("sg_id") || "";
+  const oggi = new Date().toLocaleDateString("it-IT", {weekday: "long", day: "numeric", month: "long"});
+  const testa = `<div class="cru-top"><div><span class="cru-ruolo">${isOtt ? "OTTICA" : "CAF"} · ${esc(id)}</span><div class="cru-nome">${esc(nome)}</div><p>${oggi}</p></div><button type="button" class="grigio" data-logout style="margin:0">Esci</button></div>`;
+  if (!d){ box.innerHTML = testa + `<div class="cru-kpi">${'<div class="scheletro"></div>'.repeat(4)}</div><div class="scheletro" style="height:160px"></div>`; return; }
+  const l = d.clienti || [], n = f => l.filter(f).length, e = d.estratto, attivi = n(c => c.attivatoIl && !c.chiuso);
+  const kpi = (v, t, attr, cl) => `<button type="button" ${attr}${cl ? ` class="${cl}"` : ""}><b>${v}</b>${t}</button>`;
+  const fare = [], f = (num, t, sotto, attr, urg) => { if (num) fare.push(`<button type="button" ${attr}${urg ? ' class="urg"' : ""}><span class="n">${num}</span><span>${t}<small>${sotto}</small></span><span class="va">Apri ›</span></button>`); };
+  let k, tess;
+  if (isOtt){
+    const esp = (d.esposte || []).reduce((t, m) => t + m.qta, 0);
+    f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
+    f(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", "Il cliente ha scelto la montatura: inserisci lenti e ricetta", `data-vai="stato:${STATI.MONTATURA}"`);
+    f(n(SIT_P.lab), "Montature da dare al laboratorio", "Mettile da parte con il codice del cliente", 'data-vai="sit:lab"');
+    f(n(c => c.stato === STATI.PRONTO), "Occhiali pronti da consegnare", "Quando il cliente li ritira, segna «consegnato»", `data-vai="stato:${STATI.PRONTO}"`);
+    f(n(c => c.daRitirare), "Occhiali da ritirare dal cliente", "Fine abbonamento, recesso o rinnovo", 'data-vai="sit:ritiro"', l.some(c => c.ritiroInRitardo));
+    f(n(c => c.stato === STATI.PAGAMENTO), "Clienti che devono attivare l'abbonamento", "Preventivo inviato: ricordaglielo", `data-vai="stato:${STATI.PAGAMENTO}"`);
+    f(n(c => c.rinnovabile && c.stato === STATI.CONSEGNATO && !c.bloccato), "Clienti che possono rinnovare", "Proponi l'occhiale nuovo", 'data-vai="sit:rinnovabili"');
+    f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
+    k = kpi(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", `data-vai="stato:${STATI.MONTATURA}"`) + kpi(n(c => c.stato === STATI.ATTIVO), "In laboratorio", `data-vai="stato:${STATI.ATTIVO}"`)
+      + kpi(n(c => c.stato === STATI.PRONTO), "Da consegnare", `data-vai="stato:${STATI.PRONTO}"`) + kpi(attivi, "Abbonamenti attivi", 'data-vai="sit:attivi"', "ok")
+      + kpi(esp, "Montature esposte", "data-esposte") + (e && e.accordo ? kpi(euro(e.saldoAttuale), "Compensi da ricevere", "data-conti") : "");
+    tess = tessera("ordine", "Ordine cliente", "Lenti, ricetta e preventivo", 'data-open="ordinePopup"', true) + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
+      + tessera("esposte", "Montature esposte", "Cosa hai in negozio", "data-esposte") + tessera("listino", "Listino e canoni", "Calcola il canone al cliente", "data-listino")
+      + tessera("cerca", "Assistenza cliente", "Cerca per codice", 'data-open="popupAssistenza"') + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti")
+      + tessera("chiave", "Cambia password", "Del tuo accesso", 'data-open="passwordCambioPopup"') + tessera("aiuto", "Contatta SocialGlass", "Telefono ed email", "data-contatti");
+  } else {
+    f(n(SIT_P.fermi), "Non hanno ancora scelto la montatura", "Registrati da più di 3 giorni: reinvia il link", 'data-vai="sit:fermi"');
+    f(n(c => c.stato === STATI.PAGAMENTO), "Devono attivare l'abbonamento", "Hanno il preventivo: un promemoria aiuta", `data-vai="stato:${STATI.PAGAMENTO}"`);
+    f(n(SIT_P.scadenza), "Abbonamenti in scadenza", "Proponi il rinnovo con un occhiale nuovo", 'data-vai="sit:scadenza"');
+    f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
+    f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
+    const mese = new Date().toISOString().slice(0, 7);
+    k = kpi(l.length, "Clienti registrati", "data-clienti") + kpi(n(c => String(c.creato).slice(0, 7) === mese), "Nuovi questo mese", 'data-vai="sit:mese"')
+      + kpi(n(c => !c.attivatoIl && !c.esito), "In attesa di attivazione", 'data-vai="sit:inattesa"') + kpi(attivi, "Abbonamenti attivi", 'data-vai="sit:attivi"', "ok")
+      + kpi(n(SIT_P.scadenza), "In scadenza", 'data-vai="sit:scadenza"') + (e && e.accordo ? kpi(euro(e.saldoAttuale), "Compensi da ricevere", "data-conti") : "");
+    tess = tessera("nuovo", "Nuovo cliente", "Registra e invia il link", 'data-open="popupForm" data-reset-form', true) + tessera("cf", "Verifica codice fiscale", "È già cliente?", 'data-open="codiceFiscalePopup"')
+      + tessera("rinnovo", "Rinnovo occhiale", "Per chi è a fine periodo", 'data-open="rinnovoPopup"') + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
+      + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti") + tessera("stampa", "Volantino per il cliente", "Stampa «come funziona»", "data-volantino")
+      + tessera("chiave", "Cambia password", "Del tuo accesso", 'data-open="passwordCambioPopup"') + tessera("aiuto", "Contatta SocialGlass", "Telefono ed email", "data-contatti");
+  }
+  box.innerHTML = testa + `<div class="cru-kpi">${k}</div><div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: non hai niente in sospeso.</div>'}</div>
+    <div class="cru-box"><h3>${isOtt ? "Strumenti dell'ottica" : "Strumenti del CAF"}</h3><div class="tessere">${tess}</div></div></div>`;
+}
+// clic nei cruscotti
+document.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || !b.closest("#cruCaf,#cruOtt")) return;
+  if (b.dataset.vai){ const [tipo, v] = [b.dataset.vai.slice(0, b.dataset.vai.indexOf(":")), b.dataset.vai.slice(b.dataset.vai.indexOf(":") + 1)]; apriClienti(tipo === "stato" ? {stato: v} : {sit: v}); return; }
+  if (b.hasAttribute("data-conti")){ apriClienti({conti: true}); return; }
+  if (b.hasAttribute("data-esposte")){ apriEsposte(); return; }
+  if (b.hasAttribute("data-listino")){ apriListino(); return; }
+  if (b.hasAttribute("data-contatti")){ apriContatti(); return; }
+  if (b.hasAttribute("data-volantino")){ stampaVolantino(); return; }
+});
+function apriContatti(){
+  const t = (window.SG_INFO && SG_INFO.titolare) || {}, tel = String(t.telefono || "").replace(/[^\d+]/g, "");
+  $("contattiCorpo").innerHTML = (t.telefono || t.email) ? `<p style="margin:0 0 10px;color:var(--tenue)">Per anagrafiche bloccate, compensi, problemi con un ordine o con l'accesso.</p>
+    <div class="scheda"><b>${esc(t.ragione || "SocialGlass")}</b></div><div class="riga">${t.telefono ? `<a class="btn-link" href="tel:${esc(tel)}">Chiama ${esc(t.telefono)}</a>` : ""}${t.email ? `<a class="btn-link" style="background:var(--blu)" href="mailto:${esc(t.email)}">Scrivi un'email</a>` : ""}</div>`
+    : `<p>I contatti dell'amministratore non sono ancora stati inseriti. Rivolgiti a chi ti ha dato l'accesso.</p>`;
+  open("contattiPopup");
+}
+function stampaVolantino(){
+  const A = LISTINI.LISTINI.abbonamento, nome = sessionStorage.getItem("sg_nome") || "";
+  stampaDoc("Occhiali nuovi ogni anno, con un piccolo canone mensile", `<p style="font-size:12pt">Con SocialGlass hai montatura e lenti graduate in abbonamento, a partire da <b>${euro(A.minimoMensile)} al mese</b>, senza interessi.</p>
+    <h2>Come funziona</h2><ol style="font-size:11.5pt;line-height:1.6">${[...document.querySelectorAll("#comePopup ol li")].map(li => `<li>${li.innerHTML}</li>`).join("")}</ol>
+    <h2>Cosa è incluso</h2><ul style="font-size:11.5pt;line-height:1.6">${A.servizi.map(s => `<li>${esc(s)}</li>`).join("")}</ul>
+    <p style="margin-top:14px;font-size:11.5pt">Chiedi qui: <b>${esc(nome)}</b></p>`);
+}
+function apriEsposte(){
+  const l = (cruDati && cruDati.esposte) || [];
+  $("esposteCorpo").innerHTML = l.length ? `<p class="hint" style="margin:0 0 8px">${l.reduce((t, m) => t + m.qta, 0)} pezzi disponibili in ${l.length} modelli · <button type="button" class="linkbtn" id="stampaEsposte">Stampa elenco</button></p>
+    <div class="lista">${l.map(m => `<div class="riga-cli" style="cursor:default"><span><span class="nome">${esc(m.codice)}</span> ${esc(m.modello)} ${esc(m.colore)}<span class="cod">${esc(m.calibro)}${m.asse ? "-" + esc(m.asse) : ""}</span></span>
+      <span class="bad">${m.prenotate ? `<span class="chip s2">PRENOTATE ${m.prenotate}</span>` : ""}<span class="chip ${m.qta ? "s4" : "s3"}">${m.qta ? "DISPONIBILI " + m.qta : "NESSUNA DISPONIBILE"}</span></span></div>`).join("")}</div>
+    <p class="hint" style="margin-top:10px">Per avere altre montature o segnalarne una rotta o mancante, contatta SocialGlass.</p>`
+    : `<div class="vuoto">${cruDati && cruDati.esposte ? "Non risultano montature esposte nella tua ottica. Se le hai in negozio, chiedi a SocialGlass di registrarle." : "Elenco non disponibile in questa anteprima."}</div>`;
+  open("espostePopup");
+  const s = $("stampaEsposte"); if (s) s.onclick = () => stampaDoc(`Montature esposte · ${sessionStorage.getItem("sg_id") || ""}`, `<table><tr><th>Codice</th><th>Modello</th><th>Colore</th><th>Calibro</th><th class="n">Disponibili</th><th class="n">Prenotate</th><th>Controllo</th></tr>${l.map(m => `<tr><td>${esc(m.codice)}</td><td>${esc(m.modello)}</td><td>${esc(m.colore)}</td><td>${esc(m.calibro)}${m.asse ? "-" + esc(m.asse) : ""}</td><td class="n">${m.qta}</td><td class="n">${m.prenotate}</td><td></td></tr>`).join("")}</table>`);
+}
+function apriListino(){
+  const lis = sessionStorage.getItem("sg_listino") || "A", c = LISTINI.conv(lis), A = LISTINI.LISTINI.abbonamento;
+  $("listinoCorpo").innerHTML = `<p class="hint" style="margin:-6px 0 8px">Convenzione ${esc(lis)} · prezzi IVA inclusa. Scegli lenti e trattamenti per vedere il canone.</p>
+    <div class="scelte" id="lisLenti">${Object.entries(c.lenti).map(([k, v], i) => `<label class="scelta"><input type="radio" name="lisL" value="${k}" ${i ? "" : "checked"}><span class="t">${esc(v.nome)}<small>${esc(v.desc || "")}</small></span><span class="p">${euro(v.prezzo)}</span></label>`).join("")}</div>
+    <h3>Trattamenti</h3><div class="scelte">${Object.entries(c.trattamenti).map(([k, v]) => `<label class="scelta"><input type="checkbox" name="lisT" value="${k}"><span class="t">${esc(v.nome)}</span><span class="p">${euro(v.prezzo)}</span></label>`).join("")}</div>
+    <div class="totale" id="lisTot" aria-live="polite"></div>
+    <p class="hint">Montatura ${euro(c.montatura)} (se non ha un prezzo suo). Canone = ${Math.round(A.quotaAnnua * 100)}% del valore all'anno diviso 12, minimo ${euro(A.minimoMensile)}. Riscatto a fine periodo: ${Math.round(A.riscatto * 100)}% del valore.</p>`;
+  const calc = () => { const p = LISTINI.preventivo(lis, $("listinoCorpo").querySelector("[name=lisL]:checked").value, [...$("listinoCorpo").querySelectorAll("[name=lisT]:checked")].map(x => x.value));
+    $("lisTot").innerHTML = `Canone <b>${euro(p.rata)}</b> al mese · valore occhiale ${euro(p.totale)}<br>Primo pagamento ${euro(p.rata + p.spedizione)} (canone + spedizione) · riscatto ${euro(p.riscatto)}`; };
+  $("listinoCorpo").onchange = calc; calc(); open("listinoPopup");
+}
+$("formCambioPw").addEventListener("submit", async e => {
+  e.preventDefault(); const es = $("pwEsito");
+  if ($("pwNuo").value !== $("pwNuo2").value) return esito(es, "Le due nuove password non coincidono.", "err");
+  const r = await post("api/login", {azione: "cambiaPassword", attuale: $("pwAtt").value, nuova: $("pwNuo").value});
+  if (r.status === 401 && !r.data.errore) return scaduta(r);
+  if (!r.ok) return esito(es, r.data.errore || "Non è stato possibile cambiare la password.", "err");
+  e.target.reset(); esito(es, "Password cambiata. Dal prossimo accesso usa quella nuova.", "ok");
+});
+// "Ho già il mio codice": apre la pagina personale del cliente
+$("hoCodice").addEventListener("click", () => open("codicePopup"));
+$("formCodice").addEventListener("submit", async e => {
+  e.preventDefault(); const c = $("codiceCliente").value.trim().toUpperCase(); if (!c) return;
+  const r = await api(`api/benvenuto?univoco=${encodeURIComponent(c)}&espositore=`);
+  if (!r.ok) return esito($("codiceErr"), "Codice non trovato. Controlla il messaggio che hai ricevuto dal CAF.", "err");
+  location.href = `${location.pathname.replace(/\/(caf|ottico|admin)\/?$/, "/")}?Univoco=${encodeURIComponent(c)}`;
+});
 
 /* ---------- nuovo utente (CAF) ---------- */
 const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","ottica","gdprAcceptance"];
@@ -409,15 +539,19 @@ $("come-funziona").addEventListener("click", () => open("comePopup"));
 
 /* ---------- i miei clienti (CAF e ottico) ---------- */
 let clienti = [];
-async function apriClienti(){
+async function apriClienti(pre){
+  pre = pre && !pre.target ? pre : {};
+  $("filtroClienti").value = ""; $("filtroSit").value = pre.sit || "";
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
   const [da, a] = periodoDa(perCli.p, perCli.da, perCli.a);
   const r = await api(`api/clienti${da || a ? `?da=${da}&a=${a}` : ""}`); if (scaduta(r)) return;
   clienti = r.ok ? r.data.clienti : []; disegnaConti(r.ok ? r.data.estratto : null);
-  { const n = clienti.filter(c => c.avviso).length; document.querySelectorAll("[data-clienti]").forEach(b => { b.textContent = n ? `I MIEI CLIENTI · ${n} ${n === 1 ? "avviso" : "avvisi"} da inviare` : "I MIEI CLIENTI"; }); }
   const sel = $("filtroStato"); sel.length = 1;
   ORDINE_STATI.forEach(s => { if (clienti.some(c => c.stato === s)){ const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); } });
+  sel.value = pre.stato && [...sel.options].some(o => o.value === pre.stato) ? pre.stato : "";
+  cruDati = r.ok ? r.data : cruDati;
   disegnaClienti();
+  if (pre.conti && !$("clientiConti").hidden){ $("clientiConti").open = true; $("clientiConti").scrollIntoView({block: "start"}); } else $("clientiConti").open = false;
 }
 function rinnovoBtn(c, attr){
   if (c.stato !== STATI.CONSEGNATO) return "";
@@ -433,7 +567,10 @@ function linkBtn(c){
 }
 const SIT_P = {
   bloccati: c => c.bloccato, scadenza: c => c.periodo && !c.esito && c.periodo.aperto && !c.periodo.scaduto,
-  ultimati: c => c.periodo && c.periodo.scaduto, consegnati: c => !!c.consegnatoIl || c.stato === STATI.CONSEGNATO, avvisi: c => !!c.avviso
+  ultimati: c => c.periodo && c.periodo.scaduto, consegnati: c => !!c.consegnatoIl || c.stato === STATI.CONSEGNATO, avvisi: c => !!c.avviso,
+  attivi: c => c.attivatoIl && !c.chiuso, inattesa: c => !c.attivatoIl && !c.esito, mese: c => String(c.creato).slice(0, 7) === new Date().toISOString().slice(0, 7),
+  fermi: c => c.stato === STATI.REGISTRATO && giorniDa(c.creato) > 3, ritiro: c => !!c.daRitirare, rinnovabili: c => c.rinnovabile && c.stato === STATI.CONSEGNATO && !c.bloccato,
+  lab: c => c.lab && c.lab.fonte === "OTTICA" && !c.lab.ritirata && c.lab.stato !== "PRONTO"
 };
 const dIt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
 const voce = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : "";
@@ -895,5 +1032,8 @@ async function verificaQR(raw){
 $("scan-btn").addEventListener("click", startScan);
 $("close-video-btn").addEventListener("click", () => { stopScan(); if (mio) open("miaPagina"); });
 $("qr-riprova").addEventListener("click", () => { $("popup").hidden = true; startScan(); });
+// indirizzi diretti: /caf, /ottico e /admin aprono subito l'accesso giusto
+{ const m = location.pathname.match(/\/(caf|ottico|admin)\/?$/);
+  if (m && !UNIVOCO) ready.finally(() => m[1] === "admin" ? apriAdmin() : entra(m[1])); }
 $("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; stopScan(); verificaQR(c); });
 })();

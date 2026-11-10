@@ -28,6 +28,18 @@
     {
       "source": "/laboratorio",
       "destination": "/laboratorio.html"
+    },
+    {
+      "source": "/caf",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/ottico",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
     }
   ]
 }

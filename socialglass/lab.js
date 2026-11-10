@@ -45,10 +45,26 @@
     pronti: ["Pronti (30 giorni)", b => b.lab.stato === "PRONTO" && Date.now() - new Date(b.lab.pronto) < 30 * 864e5],
     tutti: ["Tutti", () => true]
   };
+  // montature da ritirare raggruppate per ottica: il giro da fare
+  function gruppiRitiro(l){ const g = {}; l.forEach(b => { const k = b.lab.fonte === "MAG" ? "MAG" : b.ottica.id; (g[k] = g[k] || {ottica: b.ottica, mag: b.lab.fonte === "MAG", buste: []}).buste.push(b); }); return Object.values(g); }
+  function giroRitiri(l){
+    return `<div class="giro"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h4>Giro ritiri: ${gruppiRitiro(l).length} ${gruppiRitiro(l).length === 1 ? "tappa" : "tappe"}, ${l.length} montature</h4><button type="button" class="grigio" id="stampaGiro">Stampa giro ritiri</button></div>
+      ${gruppiRitiro(l).map(g => `<div style="margin-top:8px"><b>${g.mag ? "Magazzino SocialGlass" : esc(g.ottica.id) + " " + esc(g.ottica.nome)}</b>${!g.mag && g.ottica.indirizzo ? " · " + esc(g.ottica.indirizzo) : ""}${!g.mag && g.ottica.telefono ? ` · <a href="tel:${esc(g.ottica.telefono)}">${esc(g.ottica.telefono)}</a>` : ""}
+        <ul>${g.buste.map(b => `<li><b>${esc(b.montatura ? b.montatura.codice : "")}</b> ${esc(b.montatura ? b.montatura.modello + " " + b.montatura.colore : "")} · cliente ${esc(b.univoco)}</li>`).join("")}</ul></div>`).join("")}</div>`;
+  }
+  function stampaGiro(l){
+    const w = window.open("", "_blank"); if (!w){ messaggio = ["Il browser ha bloccato la finestra di stampa: consenti i popup.", "err"]; return disegna(); }
+    w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Giro ritiri · SocialGlass</title><style>@page{margin:12mm}body{font-family:Arial,sans-serif;font-size:11pt}h1{font-size:15pt;color:#0069D9;border-bottom:2px solid #0069D9;padding-bottom:4px}h2{font-size:12pt;margin:14px 0 2px}table{border-collapse:collapse;width:100%;margin-top:4px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eef2f7}</style></head><body>
+      <h1>SocialGlass · Giro ritiri montature · ${new Date().toLocaleDateString("it-IT")}</h1>${gruppiRitiro(l).map(g => `<h2>${g.mag ? "Magazzino SocialGlass" : esc(g.ottica.id) + " " + esc(g.ottica.nome)}</h2><div>${g.mag ? "" : esc(g.ottica.indirizzo) + (g.ottica.telefono ? " · tel. " + esc(g.ottica.telefono) : "")}</div>
+        <table><tr><th>Montatura</th><th>Modello</th><th>Calibro</th><th>Codice cliente</th><th>Ritirata</th></tr>${g.buste.map(b => { const m = b.montatura || {}; return `<tr><td>${esc(m.codice)}</td><td>${esc(m.modello)} ${esc(m.colore)}</td><td>${esc(m.calibro)}</td><td>${esc(b.univoco)}</td><td style="width:22mm"></td></tr>`; }).join("")}</table>`).join("")}
+      <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
+    w.document.close();
+  }
+  const attesa = b => { const g = Math.floor((Date.now() - new Date(b.lab.creato)) / 864e5); return b.lab.stato !== "PRONTO" && !b.chiuso && g >= 4 ? `<span class="chip c-rit">IN ATTESA DA ${g} GIORNI</span>` : ""; };
   function statoChip(b){
     if (b.chiuso && b.lab.stato !== "PRONTO") return '<span class="chip c-rit">ORDINE CHIUSO</span>';
     return (b.lab.stato === "PRONTO" ? `<span class="chip c-pronto">PRONTO ${dt(b.lab.pronto)}</span>` : b.lab.stato === "IN LAVORAZIONE" ? '<span class="chip c-lav">IN LAVORAZIONE</span>' : '<span class="chip c-dafare">DA FARE</span>')
-      + (daRitirare(b) ? `<span class="chip c-rit">MONTATURA DA RITIRARE</span>` : "");
+      + (daRitirare(b) ? `<span class="chip c-rit">MONTATURA DA RITIRARE</span>` : "") + attesa(b);
   }
   const dio = (v, max) => { if (v == null || v === "") return ""; let x = Number(v); if (Math.abs(x) > max && Number.isInteger(x)) x /= 100; return (x > 0 ? "+" : "") + x.toFixed(2).replace(".", ","); };
   function ricetta(r){
@@ -88,11 +104,15 @@
     const conta = k => buste.filter(FILTRI[k][1]).length;
     const l = buste.filter(FILTRI[filtro][1]).filter(b => !q || `${b.univoco} ${b.nome} ${b.cognome} ${b.ottica.id} ${b.ottica.nome} ${b.montatura && b.montatura.codice}`.toUpperCase().includes(q));
     const aperti = new Set([...document.querySelectorAll("details.busta[open]")].map(d => d.dataset.u));
+    const oggi = new Date().toISOString().slice(0, 10), prontiOggi = buste.filter(b => b.lab.stato === "PRONTO" && String(b.lab.pronto).slice(0, 10) === oggi).length;
+    const kp = (k, v, t, cl) => `<button type="button" data-f="${k}" class="${filtro === k ? "on " : ""}${cl || ""}"><b>${v}</b>${t}</button>`;
     app.innerHTML = `${messaggio ? `<div class="msg ${messaggio[1]}" role="status">${esc(messaggio[0])}</div>` : ""}
+      <div class="kpi">${kp("dafare", conta("dafare"), "Da fare")}${kp("lav", conta("lav"), "In lavorazione")}${kp("ritiro", conta("ritiro"), "Montature da ritirare", conta("ritiro") ? "att" : "")}${kp("pronti", prontiOggi, "Pronti oggi", "ok")}</div>
       <div class="tabs" role="tablist">${Object.entries(FILTRI).map(([k, v]) => `<button type="button" role="tab" data-f="${k}" class="${filtro === k ? "on" : ""}" aria-selected="${filtro === k}">${v[0]} (${conta(k)})</button>`).join("")}</div>
       <div class="barra"><input id="cerca" placeholder="Cerca per codice, cliente, ottica o montatura" value="${esc(cerca)}" aria-label="Cerca">
         <div class="az"><button type="button" class="grigio" id="aggiorna">Aggiorna</button><button type="button" id="stampaSel" ${sel.size ? "" : "disabled"}>Stampa buste selezionate (${sel.size})</button></div></div>
       ${l.length ? `<p style="margin:4px 0;color:#666;font-size:13px">${l.length} buste · <button type="button" class="link" id="selTutte">${l.every(b => sel.has(b.univoco)) ? "deseleziona" : "seleziona"} tutte</button></p>` : ""}
+      ${filtro === "ritiro" && l.length ? giroRitiri(l) : ""}
       ${l.map(b => `<details class="busta" data-u="${esc(b.univoco)}" ${aperti.has(b.univoco) ? "open" : ""}><summary>
           <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}" onclick="event.stopPropagation()">
             <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
@@ -107,6 +127,7 @@
     const c = $("cerca"); c.oninput = () => { cerca = c.value; const p = c.selectionStart; disegna(); const n = $("cerca"); n.focus(); try { n.setSelectionRange(p, p); } catch(_){} };
     $("aggiorna").onclick = () => location.reload();
     $("stampaSel").onclick = () => stampa(buste.filter(b => sel.has(b.univoco)));
+    const sg = $("stampaGiro"); if (sg) sg.onclick = () => stampaGiro(l);
     const st = $("selTutte"); if (st) st.onclick = () => { const tutte = l.every(b => sel.has(b.univoco)); l.forEach(b => tutte ? sel.delete(b.univoco) : sel.add(b.univoco)); disegna(); };
   }
 
@@ -150,5 +171,10 @@
     w.document.close();
   }
 
+  // aggiornamento automatico ogni 2 minuti, se nessuno sta scrivendo o confermando
+  setInterval(async () => {
+    if (!token || document.hidden || document.querySelector("[data-ok]") || document.activeElement === $("cerca")) return;
+    const r = await api("api/clienti"); if (r.ok){ buste = r.data.buste || []; disegna(); }
+  }, 120000);
   token ? carica() : login();
 })();
