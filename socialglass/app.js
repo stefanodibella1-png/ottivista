@@ -760,7 +760,7 @@ $("formOrdine").addEventListener("submit", async e => {
 const UNIVOCO = par("Univoco"), ESPOSITORE = par("espositore");
 if (UNIVOCO) document.body.classList.add("cliente");
 let mio = null, pollT = 0;
-if (UNIVOCO || ESPOSITORE) $("scan-btn").hidden = false;
+if (UNIVOCO || ESPOSITORE){ $("scan-btn").hidden = false; document.body.classList.add("con-scan"); }
 // [testo quando la tappa è fatta, testo quando è la prossima da fare]
 const TAPPE = [
   ["Registrazione", "Registrazione"],

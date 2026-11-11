@@ -93,8 +93,12 @@ input:disabled,select:disabled{background:#f1f3f7;opacity:.7}
 /* pagina del cliente (link personale): niente pubblicità, solo le sue azioni */
 body.cliente .hero-testo,body.cliente .area{display:none}
 .azioni-cliente{display:none}
-body.cliente .azioni-cliente{position:relative;z-index:2;display:grid;gap:12px;width:min(420px,calc(100% - 36px));margin:clamp(20px,8vh,80px) auto 0}
-body.cliente .azioni-cliente button{margin:0;padding:18px 20px;font-size:18px;border-radius:18px;box-shadow:var(--ombra);animation:sale .5s both}
+body.cliente .azioni-cliente,body.con-scan .azioni-cliente{position:relative;z-index:2;display:grid;gap:12px;width:min(420px,calc(100% - 36px));margin:clamp(20px,8vh,80px) auto 0}
+body.cliente .azioni-cliente button,body.con-scan .azioni-cliente button{margin:0;padding:18px 20px;font-size:18px;border-radius:18px;box-shadow:var(--ombra);animation:sale .5s both}
+/* link dell'espositore senza codice cliente: pulsante scanner fisso in basso, al posto degli accessi operatori */
+body.con-scan .area-mobile{display:none}
+body.con-scan:not(.cliente) .azioni-cliente{position:fixed;left:0;right:0;bottom:0;width:auto;margin:0;z-index:7;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 12px);background:rgba(255,255,255,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--bordo)}
+@media (min-width:769px){ body.con-scan:not(.cliente) .azioni-cliente{left:auto;right:24px;bottom:24px;width:340px;border:1px solid var(--bordo);border-radius:22px;box-shadow:var(--ombra)} }
 #scan-btn{background-color:var(--verde)}#scan-btn:hover{background-color:var(--verde-scuro)}
 #mio-ordine{background-color:var(--notte)}
 body.cliente{padding-bottom:0}
@@ -299,11 +303,11 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 #video-container{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:16px}
 #video-container .riquadro{position:relative;width:min(340px,92vw)}
 #preview{width:100%;border-radius:12px;background:#000;display:block}
-#video-container .mirino{position:absolute;inset:16%;border:3px solid rgba(255,255,255,.85);border-radius:14px;pointer-events:none}
+#video-container .video{position:relative}#video-container .mirino{position:absolute;inset:14% 22%;border:3px solid rgba(255,255,255,.85);border-radius:14px;pointer-events:none}
 #video-container p{color:#fff;text-align:center;margin:10px 0 0}
 #video-container.senza-video .riquadro{padding-top:44px}
 .rosso{position:absolute;top:-12px;right:-12px;border-radius:50%;background-color:var(--rosso);color:#fff;width:34px;height:34px;font-size:18px;line-height:1;padding:0;margin:0}
-.manuale{display:flex;gap:8px;margin-top:12px}
+.manuale{display:flex;gap:8px;margin-top:12px}.manuale input{flex:1;min-width:0;margin:0}.manuale button{flex:0 0 auto;margin:0;white-space:nowrap}
 .manuale input{flex:1;margin:0}
 .manuale button{margin:0}
 .demo-nota{position:fixed;left:max(10px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:6;background:#fff8d6;color:#5b4a00;border:1px solid #f2d96b;border-radius:8px;font-size:12px;line-height:1.4;padding:6px 10px;max-width:min(92vw,520px)}
@@ -532,12 +536,11 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
   <!-- scanner -->
   <div id="video-container" hidden>
     <div class="riquadro">
-      <video id="preview" playsinline muted></video>
-      <div class="mirino"></div>
+      <div class="video"><video id="preview" playsinline muted></video><div class="mirino"></div></div>
       <button id="close-video-btn" class="rosso" type="button" aria-label="Chiudi">×</button>
       <p>Inquadra il QR code sulla montatura</p>
       <label for="codiceManuale" class="lbl" style="color:#fff;margin-top:12px">Oppure scrivi il codice della montatura (es. SG-1042)</label>
-      <form class="manuale" id="formManuale" style="margin-top:4px"><input type="text" id="codiceManuale" placeholder="SG-…" autocomplete="off" style="text-transform:uppercase"><button type="submit" class="verde">Conferma codice</button></form>
+      <form class="manuale" id="formManuale" style="margin-top:4px"><input type="text" id="codiceManuale" placeholder="SG-…" autocomplete="off" style="text-transform:uppercase"><button type="submit" class="verde">Conferma</button></form>
     </div>
   </div>
 
@@ -605,8 +608,8 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1794900000"></script>
-<script src="listini.js?v=1794900000"></script>
-<script src="app.js?v=1794900000"></script>
+<script src="cf.js?v=1795000000"></script>
+<script src="listini.js?v=1795000000"></script>
+<script src="app.js?v=1795000000"></script>
 </body>
 </html>
