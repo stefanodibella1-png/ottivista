@@ -411,7 +411,7 @@ function apriContatti(){
 }
 function stampaVolantino(){
   const A = LISTINI.LISTINI.abbonamento, nome = sessionStorage.getItem("sg_nome") || "";
-  stampaDoc("Occhiali nuovi ogni anno, con un piccolo canone mensile", `<p style="font-size:12pt">Con SocialGlass hai montatura e lenti graduate in abbonamento, a partire da <b>${euro(A.minimoMensile)} al mese</b>, senza interessi.</p>
+  stampaDoc("Occhiali nuovi ogni anno, con un piccolo canone mensile", `<p style="font-size:12pt">Con SocialGlass hai montatura e lenti graduate in abbonamento, <b>pagati un mese alla volta</b>, senza interessi.</p>
     <h2>Come funziona</h2><ol style="font-size:11.5pt;line-height:1.6">${[...document.querySelectorAll("#comePopup ol li")].map(li => `<li>${li.innerHTML}</li>`).join("")}</ol>
     <h2>Cosa è incluso</h2><ul style="font-size:11.5pt;line-height:1.6">${A.servizi.map(s => `<li>${esc(s)}</li>`).join("")}</ul>
     <p style="margin-top:14px;font-size:11.5pt">Chiedi qui: <b>${esc(nome)}</b></p>`);
