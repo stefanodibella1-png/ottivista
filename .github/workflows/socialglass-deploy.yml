@@ -8,7 +8,7 @@ on:
   push:
     branches: [main]
     paths: ["socialglass/**"]
-concurrency: socialglass-deploy
+concurrency: socialglass-deploy-2
 jobs:
   deploy:
     runs-on: ubuntu-latest
