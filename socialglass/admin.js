@@ -54,11 +54,12 @@ function ricettaHtml(r){
     ${r.pd ? `<div>Distanza pupillare: <b>${esc(r.pd)} mm</b></div>` : ""}${r.note ? `<div>Note: ${esc(r.note)}</div>` : ""}`;
 }
 // accordo economico con il CAF o l'ottica e riepilogo dei conti
-function campiCompenso(pfx){
+function campiCompenso(pfx, ruolo){
+  const base = ruolo === "ottica" ? {t: "rata", v: ""} : {t: "fisso", v: "3"}, o = (k, t) => `<option value="${k}"${k === base.t ? " selected" : ""}>${t}</option>`;
   return `<fieldset style="border:1px solid #e3e6ea;border-radius:8px;padding:6px 10px;margin:8px 0"><legend style="font-size:13px;color:#555;padding:0 4px">Accordo economico con SocialGlass</legend>
-    <label class="lbl" for="${pfx}CT">Compenso</label><select id="${pfx}CT" name="CompensoTipo"><option value="">Di base (ottica: una rata + spedizione · CAF: 3 €)</option><option value="rata">Una rata + spedizione del cliente, per ogni abbonamento attivato</option><option value="fisso">€ per ogni abbonamento attivato</option><option value="percentuale">% sui canoni incassati</option></select>
-    <label class="lbl" for="${pfx}CV">Valore (€ o %)</label><input id="${pfx}CV" name="CompensoValore" inputmode="decimal">
-    <p class="hint" style="margin:4px 0;font-size:12.5px">Importi IVA compresa. Se non scegli niente valgono quelli di base: ottica una rata + spedizione, CAF 3 € per abbonamento attivato. I pagamenti al partner (acconti e saldi) si registrano nella sezione <b>Conteggi</b>.</p></fieldset>`;
+    <label class="lbl" for="${pfx}CT">Compenso</label><select id="${pfx}CT" name="CompensoTipo" data-compenso>${o("rata", "Una rata + spedizione del cliente, per ogni abbonamento attivato")}${o("fisso", "€ per ogni abbonamento attivato")}${o("percentuale", "% sui canoni incassati")}</select>
+    <label class="lbl" for="${pfx}CV">Valore (€ o %)</label><input id="${pfx}CV" name="CompensoValore" inputmode="decimal" value="${base.v}"${base.t === "rata" ? " disabled placeholder=\"non serve\"" : ""}>
+    <p class="hint" style="margin:4px 0;font-size:12.5px">Importi IVA compresa. Proposta di base: ottica una rata + spedizione, CAF 3 € per abbonamento attivato; cambiala se con il partner avete concordato altro. Ogni cambio vale da oggi: i compensi già maturati restano con l'accordo di prima. I pagamenti al partner (acconti e saldi) si registrano nella sezione <b>Conteggi</b>.</p></fieldset>`;
 }
 let perAdm = {p: "", da: "", a: ""};
 // riga breve nelle schede CAF/Ottici: il dettaglio è nella sezione Conteggi
@@ -248,7 +249,7 @@ function disegna(){
       <label class="lbl" for="aCafId">Codice CAF</label><input id="aCafId" name="ID" required style="text-transform:uppercase">
       <label class="lbl" for="aCafNome">Nome</label><input id="aCafNome" name="Nome">
       <label class="lbl" for="aCafPw">Password (almeno 8 caratteri; vuota = non cambiare)</label><input id="aCafPw" name="Password" type="text" autocomplete="off">
-      ${campiCompenso("aCaf")}
+      ${campiCompenso("aCaf", "caf")}
       <button type="submit" class="verde full">Salva CAF</button></form>
       <div class="lista">${d.caf.map(c => `<div class="cli"><div class="top"><div><b>${esc(c.ID)}</b> ${esc(c.Nome)}${c.prova ? ' <span class="chip">PROVA</span>' : ""}</div></div>${contiHtml(c, "caf")}
         <div class="az"><button type="button" class="grigio" data-mod-caf="${esc(c.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="caf" data-id="${esc(c.ID)}">Elimina</button></div></div>`).join("")}</div>`;
@@ -262,7 +263,7 @@ function disegna(){
       <label class="lbl" for="aOTel">Telefono</label><input id="aOTel" name="Telefono" inputmode="tel">
       <label class="lbl" for="aOList">Convenzione (listino)</label><select id="aOList" name="Listino">${opt("A")}</select>
       <label class="lbl" for="aOPw">Password di accesso (almeno 8; vuota = non cambiare)</label><input id="aOPw" name="Password" type="text" autocomplete="off">
-      ${campiCompenso("aO")}
+      ${campiCompenso("aO", "ottica")}
       <button type="submit" class="verde full">Salva ottica</button></form>
       <div class="lista">${d.ottici.map(o => `<div class="cli"><div class="top"><div><b>${esc(o.ID)}</b> ${esc(o.Intestatario)}${o.prova ? ' <span class="chip">PROVA</span>' : ""}</div>${o.accesso ? '<span class="chip s4">ACCESSO ATTIVO</span>' : '<span class="chip s3">SENZA PASSWORD</span>'}</div>
         <div>${esc(o.Indirizzo)}${esc(o.Citta)} · listino ${esc(o.Listino)}${o.Telefono ? " · " + esc(o.Telefono) : ""}</div>
@@ -320,7 +321,9 @@ function disegna(){
   if (ultimo && Date.now() - ultimo.il < 8000){ const u = ultimo; msg(u.t, u.k); ultimo.il = u.il; }
 }
 function inCima(){ const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); }
-function riempi(f, o){ for (const [k, v] of Object.entries(o)) if (f.elements[k]) f.elements[k].value = v ?? ""; f.scrollIntoView({behavior: "smooth", block: "start"}); }
+function valoreCompenso(sel){ const v = sel.form && sel.form.elements.CompensoValore; if (!v) return; v.disabled = sel.value === "rata"; v.placeholder = sel.value === "rata" ? "non serve" : sel.value === "percentuale" ? "es. 10" : "es. 3"; if (v.disabled) v.value = ""; }
+function riempi(f, o){ for (const [k, v] of Object.entries(o)) if (f.elements[k]) f.elements[k].value = v ?? ""; if (f.elements.CompensoTipo) valoreCompenso(f.elements.CompensoTipo); f.scrollIntoView({behavior: "smooth", block: "start"}); }
+document.addEventListener("change", e => { if (e.target.matches && e.target.matches("[data-compenso]")) valoreCompenso(e.target); });
 document.addEventListener("change", async e => { if (e.target.matches && e.target.matches("[data-legale]")){ await call("legale", {valore: e.target.checked}); await carica(); msg("Salvato."); } });
 async function clic(e){
   const am = e.target.closest("[data-amano]");

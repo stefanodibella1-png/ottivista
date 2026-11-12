@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796000000**, prossimo 1796100000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796100000**, prossimo 1796200000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -29,7 +29,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Formula fiscale scelta (12/11/2026) — documento «SocialGlass — fisco, vendite e contratti»
 - SocialGlass (ditta individuale) è l'unico venditore: noleggia l'occhiale al cliente e incassa canoni, spedizione e «acquisto dell'usato». Ottica, CAF e laboratorio le fatturano i loro compensi.
-- Compensi di base (IVA compresa, `COMPENSO_BASE` in `api/_lib.js`), usati quando nel pannello non c'è un accordo: ottica = una rata + la spedizione del cliente per ogni abbonamento attivato (tipo `rata`); CAF = 3 € per abbonamento attivato. Il laboratorio lo paga SocialGlass.
+- Compensi di base (IVA compresa, `COMPENSO_BASE` in `api/_lib.js`), proposti già compilati nel modulo del nuovo CAF/ottica e modificabili alla stipula (ogni cambio vale da oggi, i compensi maturati restano con l'accordo di prima); per chi non ha un accordo salvato valgono comunque: ottica = una rata + la spedizione del cliente per ogni abbonamento attivato (tipo `rata`); CAF = 3 € per abbonamento attivato. Il laboratorio lo paga SocialGlass.
 - Riscatto → «acquisto dell'usato» nei testi (i codici interni restano `riscatta`/`riscatto`).
 - Recesso → «annullamento» solo prima che il laboratorio inizi la lavorazione (`L.inLavorazione`, `L.annullabile`); terza spunta obbligatoria all'attivazione (`consensoSuMisura`, salvata in `ord.consensi.suMisura`).
 - Codice ATECO di noleggio: Stefano lo aggiunge con ComUnica entro 30 giorni dal primo noleggio.
