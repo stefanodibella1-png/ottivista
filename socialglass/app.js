@@ -1197,7 +1197,15 @@ async function caricaMio(apri){
   mio = r.data; $("mio-ordine").hidden = false;
   disegnaMio(); return mio;
 }
-window.SG_PROVE = {mio: () => mio, ricarica: () => caricaMio(false)};   // PROVE TECNICHE: aggancio della barra del tempo (prove-tempo.js), da togliere con lei
+window.SG_PROVE = {mio: () => mio, ricarica: () => caricaMio(false)};
+// PROVE TECNICHE: il canone non pagato creato dalla barra del tempo non ha una fattura Stripe: «Paga ora» lo salda in simulazione
+document.addEventListener("click", async e => {
+  const b = e.target.closest && e.target.closest("[data-paga-simulato]"); if (!b) return;
+  b.disabled = true; b.textContent = "Pagamento in corso…";
+  const r = await post("api/benvenuto", {azione: "tempo", univoco: UNIVOCO, op: "paga"});
+  if (!r.ok){ b.disabled = false; b.textContent = (r.data && r.data.errore) || "Non riuscito, riprova."; return; }
+  await caricaMio(false);
+});   // PROVE TECNICHE: aggancio della barra del tempo (prove-tempo.js), da togliere con lei
 const dt = d => new Date(d).toLocaleDateString("it-IT");
 // regole di fine periodo spiegate al cliente, con le sue date
 function regoleFine(p, per){
@@ -1313,7 +1321,7 @@ function disegnaMio(){
   } else if (u.stato === STATI.CONSEGNATO){
     const per = od.periodo, fp = od.finePeriodo, pgx = od.pagamento || {};
     a = (pgx.chiuso || pgx.esito ? `<div class="esito ${/MANCATO/.test(pgx.esito || "") ? "err" : "ok"}">${testoEsito(pgx, od)}</div>`
-      : per && per.aperto && !per.chiuso && !fp ? `<div class="esito info"><b>${per.scaduto ? "I 12 mesi minimi sono finiti" : `Tra ${per.giorni} giorni finiscono i ${per.mesi} mesi minimi`}</b>: scegli qui sotto se vuoi un occhiale nuovo, tenerlo o restituirlo.</div>`
+      : per && per.aperto && !per.chiuso && !fp ? `<div class="esito info"><b>${per.scaduto ? "I 12 mesi minimi sono finiti" : `Tra ${per.giorni} giorni finiscono i ${per.mesi} mesi minimi`}</b>: scegli qui sotto se vuoi un occhiale nuovo, comprarlo usato o restituirlo.</div>`
       : od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato && od.ritiro.rinnovo ? `<div class="esito info"><b>Ricordati di riconsegnare il vecchio occhiale</b> in ottica: resta di SocialGlass e serve per chiudere il cambio.</div>`
       : `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>`) + boxAbbonamento(od);
   }
@@ -1328,7 +1336,8 @@ function disegnaMio(){
   if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}).
     ${ins.tipo !== "riscatto" && ins.giorni != null ? `<div style="font-size:18px;font-weight:700;margin:6px 0">${ins.giorni > 0 ? `Mancano ${ins.giorni} ${ins.giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento` : "L'abbonamento si chiude oggi"}</div>` : ""}
     Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.tipo !== "riscatto" ? " Se non paghi, alla chiusura l'occhiale va restituito." : ""}
-    ${ins.link ? `<a class="btn-link" style="display:block;margin-top:8px;text-align:center" href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia carta</a>` : ""}</div>` + a;
+    ${ins.simulato || /[?&]Univoco=/.test(ins.link || "") ? `<button type="button" class="btn-link" style="display:block;width:100%;margin-top:8px" data-paga-simulato>Paga ora (prova tecnica: pagamento simulato)</button>`
+      : ins.link ? `<a class="btn-link" style="display:block;margin-top:8px;text-align:center" href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia carta</a>` : ""}</div>` + a;
   if (od.pagamento && od.pagamento.ratePagate && od.prezzi && !od.pagamento.chiuso) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Mesi pagati in questo periodo: ${od.pagamento.ratePagate} su ${od.prezzi.mesi} minimi</p>`;
   if (od.prezzi && !a.includes(`id="mpCond"`)) a += `<p class="piede-cli"><button type="button" class="linkbtn" id="mpCond">Condizioni dell'abbonamento</button></p>`;
   a += bannerApp(u) + strumentiCli(u);

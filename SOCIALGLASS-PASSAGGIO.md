@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796300000**, prossimo 1796400000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796400000**, prossimo 1796500000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -42,6 +42,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 ## Barra del tempo (PROVE TECNICHE — da togliere prima dell'uscita al pubblico)
 - Etichetta «⏱ PROVE» in alto a sinistra nella pagina del cliente, **solo** per i clienti di prova (CAF001, OTT07, OTT12); sparisce da sola dopo «rimuovi dati di prova».
 - Pulsanti: +1 g, +7 g, +30 g, +6 mesi, «A 20 giorni dalla scadenza», canone non pagato, paga il canone, controllo di oggi. Ogni salto sposta indietro le date del cliente (tranne l'appuntamento) a tappe di 29 giorni ed esegue il controllo del mattino (`controlla` in `api/scadenze.js`); ogni uso finisce nel Registro.
+- «Canone non pagato» della barra crea un insoluto `simulato` (senza fattura Stripe): sulla pagina del cliente «Paga ora» lo salda in simulazione (handler `data-paga-simulato` in `app.js`, da togliere con la barra).
 - Limite: Stripe non si sposta nel tempo (i canoni veri non vengono addebitati dai salti; «canone non pagato» e «paga» sono simulati). La restituzione con Stripe chiude a fine del mese reale.
 - Per toglierla: file `socialglass/prove-tempo.js` + il suo `<script>` in `index.html`; in `api/benvenuto.js` il blocco «PROVE TECNICHE» (funzione `tempo`, azione `tempo`, campo `barraTempo`); in `app.js` la riga `window.SG_PROVE`. Il campo `ProveGiorni` dei clienti di prova sparisce con loro.
 - Prova locale: `prove-socialglass/tempo.py [riscatta|restituisci|rinnova]` (PC, tablet, telefono e laboratorio).
