@@ -87,7 +87,7 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.salva("segn", x.ID || x._id, {stato: "risolta", risolta: ora, da: "SocialGlass", risposta});
     const c = await L.DB.utente("Univoco", x.univoco);
     if (c){ const o = L.parseOrdine(c.f.Ordine); (o.segnalazioni || []).forEach(y => { if (y.id === (x.ID || x._id)){ y.stato = "risolta"; y.risposta = risposta; y.risolta = ora; } }); await L.DB.aggiorna(c, {Ordine: JSON.stringify(o)});
-      if (risposta) try { await L.pushCliente(c.f, `SocialGlass: ${c.f.Nome}, abbiamo risposto alla tua segnalazione: ${risposta}`, "Risposta da SocialGlass"); } catch(_){} }
+      if (risposta) try { await L.pushCliente(c.f, `SocialGlass: ${L.nm(c.f.Nome)}, abbiamo risposto alla tua segnalazione: ${risposta}`, "Risposta da SocialGlass"); } catch(_){} }
     return L.send(res, 200, {ok: true});
   }
 
@@ -168,7 +168,7 @@ module.exports = L.wrap(async (req, res) => {
       previsione: L.previsione(utenti.map(u => u.f), caf, ottici),
       // recensioni dei clienti, occhiali restituiti da donare, amici portati
       servizio: (() => { const rec = [], dona = [], amici = []; let donati = 0;
-        for (const {f} of utenti){ const o = L.parseOrdine(f.Ordine), nome = `${f.Nome || ""} ${f.Cognome || ""}`.trim(), ott = String(f.Ottica1 || "").split(" - ")[0];
+        for (const {f} of utenti){ const o = L.parseOrdine(f.Ordine), nome = `${L.nm(f.Nome)} ${L.nm(f.Cognome)}`.trim(), ott = String(f.Ottica1 || "").split(" - ")[0];
           if (o.recensione) rec.push(Object.assign({univoco: f.Univoco, nome, ottica: ott}, o.recensione));
           if (o.dona && o.dona.donato) donati++; else if (o.dona && o.dona.daDonare) dona.push({univoco: f.Univoco, nome, ottica: ott, dal: o.dona.daDonare, montatura: o.montatura ? `${o.montatura.codice} ${o.montatura.modello} ${o.montatura.colore}` : ""});
           if (f.PresentatoDa && f.AmicoPremiato) amici.push({da: f.PresentatoDa, nuovo: f.Univoco, il: f.AmicoPremiato}); }
@@ -251,7 +251,7 @@ module.exports = L.wrap(async (req, res) => {
     const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(x => pulito(x, 20).toUpperCase()).filter(Boolean).slice(0, 200), ora = new Date().toISOString();
     for (const id of ids){ const u = await L.DB.utente("Univoco", id); if (!u) continue; const o = L.parseOrdine(u.f.Ordine);
       if (az === "recensioneLetta" && o.recensione) o.recensione.letta = ora;
-      if (az === "donati" && o.dona && o.dona.daDonare){ o.dona.donato = ora; try { await L.pushCliente(u.f, `SocialGlass: ${u.f.Nome}, il tuo occhiale è stato donato a chi ne aveva bisogno. Grazie di cuore!`, "Il tuo occhiale ha aiutato qualcuno"); } catch(_){} }
+      if (az === "donati" && o.dona && o.dona.daDonare){ o.dona.donato = ora; try { await L.pushCliente(u.f, `SocialGlass: ${L.nm(u.f.Nome)}, il tuo occhiale è stato donato a chi ne aveva bisogno. Grazie di cuore!`, "Il tuo occhiale ha aiutato qualcuno"); } catch(_){} }
       o.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); }
     return L.send(res, 200, {ok: true});
   }
@@ -268,12 +268,12 @@ module.exports = L.wrap(async (req, res) => {
       if (!(ins && !pg.chiuso) && !daRiportare) continue;
       const ottId = String(f.Ottica1 || "").split(" - ")[0], ott = ottici.find(x => (x.ID || x._id) === ottId) || {}, caf = cafs.find(x => (x.ID || x._id) === f.CAF) || {};
       const consegnato = !!o.consegnatoIl || f.Stato === L.STATI.CONSEGNATO, giorni = ins && !pg.chiuso ? L.giorniAllaChiusura(ins, ora) : 0;
-      out.push({univoco: f.Univoco, nome: `${f.Nome || ""} ${f.Cognome || ""}`.trim(), cf: f["Codice Fiscale"] || "", cellulare: L.numeroCliente(f), stato: f.Stato || "",
+      out.push({univoco: f.Univoco, nome: `${L.nm(f.Nome)} ${L.nm(f.Cognome)}`.trim(), cf: f["Codice Fiscale"] || "", cellulare: L.numeroCliente(f), stato: f.Stato || "",
         caf: f.CAF || "", cafNome: caf.Nome || "", ottica: ottId, otticaNome: ott.Intestatario || "", otticaTel: ott.Telefono || "",
         tipo: ins ? ins.tipo : "", importo: ins ? ins.importo : 0, dal: ins ? ins.dal : "", tentativi: ins ? ins.tentativi : 0, prossimoTentativo: ins ? ins.prossimoTentativo : "", link: ins ? ins.link : "",
         giorni, chiuso: pg.chiuso || "", esito: pg.esito || "", consegnato, canone: (o.prezzi || {}).rata || 0, ratePagate: pg.ratePagate || 0, riscatto: (o.prezzi || {}).riscatto || 0,
         messaggi: ins ? (ins.messaggi || []) : [], note: ins ? (ins.note || []) : [], ritiroDal: daRiportare ? o.ritiro.dal : "",
-        testo: ins && !pg.chiuso ? L.testoSollecito(f, ins, giorni, consegnato) : `SocialGlass: ${f.Nome || ""}, l'abbonamento è stato chiuso per mancato pagamento: riporta l'occhiale in ottica o contattaci per riscattarlo.`});
+        testo: ins && !pg.chiuso ? L.testoSollecito(f, ins, giorni, consegnato) : `SocialGlass: ${L.nm(f.Nome)}, l'abbonamento è stato chiuso per mancato pagamento: riporta l'occhiale in ottica o contattaci per riscattarlo.`});
     }
     out.sort((a, b) => (a.chiuso ? 1 : 0) - (b.chiuso ? 1 : 0) || a.giorni - b.giorni);
     return L.send(res, 200, {solleciti: out, canali: L.canaliCollegati()});
@@ -417,7 +417,7 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "clienti"){
     const tutti = await L.DB.tutti();
     return L.send(res, 200, {clienti: tutti.map(({f}) => { const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, si = L.situazione(f), per = L.PREZZI.periodo(o);
-      return {univoco: f.Univoco, nome: `${f.Nome || ""} ${f.Cognome || ""}`.trim(), cf: f["Codice Fiscale"] || "", caf: f.CAF || "", ottica: String(f.Ottica1 || "").split(" - ")[0],
+      return {univoco: f.Univoco, nome: `${L.nm(f.Nome)} ${L.nm(f.Cognome)}`.trim(), cf: f["Codice Fiscale"] || "", caf: f.CAF || "", ottica: String(f.Ottica1 || "").split(" - ")[0],
         stato: f.Stato || "", abbonamentoAttivo: !!(pg.abbonamento && !pg.chiuso), creato: f.Creato || "", moroso: si.moroso, bloccato: si.bloccato,
         scadenza: per && !per.chiuso ? per.scadenza : "", inScadenza: !!(per && !per.chiuso && per.aperto && !per.scaduto), chiuso: !!pg.chiuso, esito: pg.esito || ""}; })
       .sort((a, b) => String(b.creato).localeCompare(String(a.creato)))});

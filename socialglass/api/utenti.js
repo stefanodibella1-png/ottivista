@@ -24,7 +24,7 @@ module.exports = L.wrap(async (req, res) => {
       if (!L.CF.valido(cf)) return L.send(res, 200, {valido: false});
       const u = await L.DB.utente("Codice Fiscale", cf);
       const o = u ? L.parseOrdine(u.f.Ordine) : null, per = o ? L.PREZZI.periodo(o) : null;
-      return L.send(res, 200, {valido: true, stato: u ? u.f.Stato || "REGISTRATO" : null, nome: u ? `${u.f.Nome} ${u.f.Cognome}` : null, univoco: u ? u.f.Univoco : null,
+      return L.send(res, 200, {valido: true, stato: u ? u.f.Stato || "REGISTRATO" : null, nome: u ? `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}` : null, univoco: u ? u.f.Univoco : null,
         ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: u ? u.f.Stato === L.STATI.CONSEGNATO && L.PREZZI.rinnovabile(o) : false,
         rinnovoDal: per && !per.chiuso ? per.preavviso : null, bloccato: u ? L.situazione(u.f).bloccato : false});
     }

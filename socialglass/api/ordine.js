@@ -65,7 +65,7 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.salva("segn", x.ID || x._id, {stato: "risolta", risolta: ora, da: "ottica " + s.id, risposta});
     const c = await L.DB.utente("Univoco", x.univoco);
     if (c){ const o = L.parseOrdine(c.f.Ordine); (o.segnalazioni || []).forEach(y => { if (y.id === (x.ID || x._id)){ y.stato = "risolta"; y.risposta = risposta; y.risolta = ora; } }); await L.DB.aggiorna(c, {Ordine: JSON.stringify(o)});
-      if (risposta) try { await L.pushCliente(c.f, `SocialGlass: ${c.f.Nome}, l'ottica ha risposto alla tua segnalazione: ${risposta}`, "Risposta dall'ottica"); } catch(_){} }
+      if (risposta) try { await L.pushCliente(c.f, `SocialGlass: ${L.nm(c.f.Nome)}, l'ottica ha risposto alla tua segnalazione: ${risposta}`, "Risposta dall'ottica"); } catch(_){} }
     await L.registra("ottica " + s.id, "segnalazione risolta", x.univoco, risposta);
     return L.send(res, 200, {ok: true});
   }
@@ -83,7 +83,7 @@ module.exports = L.wrap(async (req, res) => {
     if (u.f.Stato === L.STATI.CONSEGNATO || u.f.Stato === L.STATI.PRONTO) ord.ritiro = {daRitirare: u.f.Stato === L.STATI.CONSEGNATO, dal: ora};
     ord.aggiornato = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-    const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, abbiamo registrato il recesso: l'abbonamento è chiuso e non ci saranno altri addebiti. Il rimborso arriva sul metodo di pagamento usato.${ord.ritiro && ord.ritiro.daRitirare ? " Riporta l'occhiale in ottica." : ""}`);
+    const av = await L.avvisa(u, `SocialGlass: ${L.nm(u.f.Nome)}, abbiamo registrato il recesso: l'abbonamento è chiuso e non ci saranno altri addebiti. Il rimborso arriva sul metodo di pagamento usato.${ord.ritiro && ord.ritiro.daRitirare ? " Riporta l'occhiale in ottica." : ""}`);
     return L.send(res, 200, {ok: true, avviso: av});
   }
   if (b.azione === "ritirato"){
@@ -94,7 +94,7 @@ module.exports = L.wrap(async (req, res) => {
     if (!ord.ritiro.rinnovo){ ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; }
     if (ord.dona && ord.dona.si && !ord.dona.donato) ord.dona.daDonare = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.si)});
+    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.si), rinnovo: !!ord.ritiro.rinnovo, chiuso: !!(ord.pagamento && ord.pagamento.chiuso)});
   }
   if ((b.azione === "pronto" || b.azione === "consegnato") && ord.lab && ord.lab.stato !== "PRONTO") return L.send(res, 409, {errore: "L'occhiale è ancora in laboratorio: lo segna pronto il laboratorio quando ha finito."});
   if (b.azione === "pronto" || b.azione === "consegnato"){
@@ -136,6 +136,6 @@ module.exports = L.wrap(async (req, res) => {
   Object.assign(ord, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione, riscatto: prev.riscatto, modello: prev.modello},
     ottico: s.id, aggiornato: new Date().toISOString()});
   await L.DB.aggiorna(u, {Stato: L.STATI.PAGAMENTO, Ordine: JSON.stringify(ord)});
-  const av = await L.avvisa(u, `SocialGlass: ${u.f.Nome}, ${ord.rinnovo && ord.rinnovo.prosegue ? "il preventivo del tuo occhiale nuovo è pronto" : "il tuo ottico ha preparato il preventivo"}: ${prev.rata.toFixed(2).replace(".", ",")} €/mese, durata minima ${prev.mesi} mesi. Apri il link, controlla il riepilogo e conferma: ${L.linkCliente(u.f.Univoco, s.id)}`);
+  const av = await L.avvisa(u, `SocialGlass: ${L.nm(u.f.Nome)}, ${ord.rinnovo && ord.rinnovo.prosegue ? "il preventivo del tuo occhiale nuovo è pronto" : "il tuo ottico ha preparato il preventivo"}: ${prev.rata.toFixed(2).replace(".", ",")} €/mese, durata minima ${prev.mesi} mesi. Apri il link, controlla il riepilogo e conferma: ${L.linkCliente(u.f.Univoco, s.id)}`);
   L.send(res, 200, {ok: true, prezzi: ord.prezzi, avviso: av});
 });

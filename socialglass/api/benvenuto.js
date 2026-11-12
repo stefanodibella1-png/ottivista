@@ -15,7 +15,7 @@ module.exports = L.wrap(async (req, res) => {
       const s = b.sub || {}; if (!/^https:\/\//.test(s.endpoint || "") || !s.keys || !s.keys.p256dh || !s.keys.auth) return L.send(res, 400, {errore: "Iscrizione non valida."});
       const l = (u.f.Push || []).filter(x => x.endpoint !== s.endpoint).concat([{endpoint: s.endpoint, keys: {p256dh: String(s.keys.p256dh), auth: String(s.keys.auth)}}]).slice(-5);
       await L.DB.aggiorna(u, {Push: l});
-      const ok = await L.pushCliente(Object.assign({}, u.f, {Push: [l[l.length - 1]]}), `SocialGlass: ${u.f.Nome}, notifiche attive! Ti scriviamo qui quando c'è una novità sui tuoi occhiali.`, "Notifiche attive");
+      const ok = await L.pushCliente(Object.assign({}, u.f, {Push: [l[l.length - 1]]}), `SocialGlass: ${L.nm(u.f.Nome)}, notifiche attive! Ti scriviamo qui quando c'è una novità sui tuoi occhiali.`, "Notifiche attive");
       return L.send(res, 200, {ok: true, prova: ok});
     }
     if (b.azione === "recensione"){

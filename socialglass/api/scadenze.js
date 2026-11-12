@@ -18,7 +18,7 @@ async function esegui(u, ord, p, ora){
     pg.chiuso = ora; pg.esito = u.f.Stato === L.STATI.CONSEGNATO ? "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE" : "CHIUSO PER MANCATO PAGAMENTO: ORDINE ANNULLATO";
     if (u.f.Stato === L.STATI.CONSEGNATO) ord.ritiro = {daRitirare: true, dal: ora};
     // messaggio di chiusura al cliente con lo stesso canale dei solleciti (resta nell'elenco Solleciti dell'amministratore)
-    const testo = `SocialGlass: ${u.f.Nome}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo." : " L'ordine non verrà completato."}`;
+    const testo = `SocialGlass: ${L.nm(u.f.Nome)}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo." : " L'ordine non verrà completato."}`;
     const e = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ","), "0", u.f.Stato === L.STATI.CONSEGNATO ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", pg.insoluto.link || L.CFG.site]);
     pg.insoluto.messaggi = (pg.insoluto.messaggi || []).concat([Object.assign({il: ora, passo: 0, giorni: 0, testo}, e)]).slice(-20);
     return "chiuso per insoluto";
@@ -30,7 +30,7 @@ async function esegui(u, ord, p, ora){
   }
   // 30 giorni prima
   if (p.aperto && !p.scaduto && !(ord.avvisi && ord.avvisi.preavviso)){
-    await annota(u, ord, "preavviso", `SocialGlass: ${u.f.Nome}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Nella tua pagina trovi le montature nuove esposte nella tua ottica. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);
+    await annota(u, ord, "preavviso", `SocialGlass: ${L.nm(u.f.Nome)}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Nella tua pagina trovi le montature nuove esposte nella tua ottica. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);
     return "preavviso";
   }
   if (!p.scaduto || (fp && fp.eseguita)) return null;
@@ -54,20 +54,21 @@ async function esegui(u, ord, p, ora){
     }
     pg.chiuso = ora; pg.esito = "RISCATTATO: L'OCCHIALE È DEL CLIENTE";
     fp.eseguita = ora;
-    await annota(u, ord, "esito", `SocialGlass: ${u.f.Nome}, il tuo abbonamento è chiuso e l'occhiale ora è tuo. ${imp ? `Abbiamo addebitato il riscatto di ${imp.toFixed(2).replace(".", ",")} €. ` : ""}Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`);
+    await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, il tuo abbonamento è chiuso e l'occhiale ora è tuo. ${imp ? `Abbiamo addebitato il riscatto di ${imp.toFixed(2).replace(".", ",")} €. ` : ""}Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`);
     return "riscattato";
   }
   if (scelta === "restituisci"){
     if (stripeOk) await L.stripeApi("POST", `subscriptions/${pg.abbonamento}`, {cancel_at_period_end: true});
+    else pg.chiuso = ora;   // senza Stripe (prove) non arriva l'avviso di fine mese: si chiude adesso
     pg.esito = "DISDETTO: CHIUDE A FINE MESE";
     ord.ritiro = {daRitirare: true, dal: ora};
     fp.eseguita = ora;
-    await annota(u, ord, "esito", `SocialGlass: ${u.f.Nome}, abbiamo registrato la restituzione. Riporta l'occhiale in ottica entro 15 giorni: l'abbonamento si chiude a fine mese, senza altri costi.`);
+    await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, abbiamo registrato la restituzione. Riporta l'occhiale in ottica entro 15 giorni: l'abbonamento si chiude a fine mese, senza altri costi.`);
     return "restituzione";
   }
   // nessuna scelta: continua mese per mese, secondo promemoria
   if (!(ord.avvisi && ord.avvisi.scadenza)){
-    await annota(u, ord, "scadenza", `SocialGlass: ${u.f.Nome}, la durata minima del tuo abbonamento è finita. Continua mese per mese allo stesso canone e puoi disdire quando vuoi. Se vuoi un occhiale nuovo, tenerlo o restituirlo, scegli qui: ${link}`);
+    await annota(u, ord, "scadenza", `SocialGlass: ${L.nm(u.f.Nome)}, la durata minima del tuo abbonamento è finita. Continua mese per mese allo stesso canone e puoi disdire quando vuoi. Se vuoi un occhiale nuovo, tenerlo o restituirlo, scegli qui: ${link}`);
     return "continua";
   }
   return null;
@@ -79,7 +80,7 @@ async function attesa(u, ora){
     await L.liberaMontatura(o.montatura.codice, u.f.Univoco);
     const prima = o.montatura; delete o.montatura; delete o.prezzi; delete o.lenti; delete o.pagamento;
     o.scaduta = {montatura: prima, il: ora};
-    await annota(u, o, "prenotazioneScaduta", `SocialGlass: ${u.f.Nome}, la montatura ${prima.modello} ${prima.colore} era prenotata da oltre 30 giorni senza conferma ed è tornata disponibile. Quando vuoi, torna in ottica e scegline una dal tuo link.`);
+    await annota(u, o, "prenotazioneScaduta", `SocialGlass: ${L.nm(u.f.Nome)}, la montatura ${prima.modello} ${prima.colore} era prenotata da oltre 30 giorni senza conferma ed è tornata disponibile. Quando vuoi, torna in ottica e scegline una dal tuo link.`);
     o.aggiornato = ora;
     await L.DB.aggiorna(u, {Stato: L.STATI.REGISTRATO, Ordine: JSON.stringify(o)});
     return "prenotazione scaduta";
@@ -87,15 +88,15 @@ async function attesa(u, ora){
   // preventivo pronto ma abbonamento non attivato dopo 3 giorni: un promemoria automatico
   if (u.f.Stato === L.STATI.PAGAMENTO && da > 3*864e5 && !(o.avvisi && (o.avvisi.attivazione || o.avvisi.attesa))){
     const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
-    await annota(u, o, "attivazione", `SocialGlass: ${u.f.Nome}, il preventivo del tuo occhiale è pronto: attiva l'abbonamento dal tuo link e l'ottica lo prepara subito. ${link}`);
+    await annota(u, o, "attivazione", `SocialGlass: ${L.nm(u.f.Nome)}, il preventivo del tuo occhiale è pronto: attiva l'abbonamento dal tuo link e l'ottica lo prepara subito. ${link}`);
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
     return "promemoria attivazione";
   }
   if (da > 14*864e5 && !(o.avvisi && o.avvisi.attesa)){
     const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
     await annota(u, o, "attesa", u.f.Stato === L.STATI.PAGAMENTO
-      ? `SocialGlass: ${u.f.Nome}, il preventivo del tuo occhiale ti aspetta: conferma dal tuo link entro 30 giorni dalla scelta, poi la montatura torna disponibile. ${link}`
-      : `SocialGlass: ${u.f.Nome}, la montatura che hai scelto è prenotata per te: passa in ottica per lenti e ricetta entro 30 giorni. ${link}`);
+      ? `SocialGlass: ${L.nm(u.f.Nome)}, il preventivo del tuo occhiale ti aspetta: conferma dal tuo link entro 30 giorni dalla scelta, poi la montatura torna disponibile. ${link}`
+      : `SocialGlass: ${L.nm(u.f.Nome)}, la montatura che hai scelto è prenotata per te: passa in ottica per lenti e ricetta entro 30 giorni. ${link}`);
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
     return "promemoria attesa";
   }
@@ -116,7 +117,7 @@ const handler = L.wrap(async (req, res) => {
     // occhiale da restituire non ancora riportato dopo 15 giorni
     { const o = L.parseOrdine(u.f.Ordine);
       if (o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && new Date(ora) - new Date(o.ritiro.dal) > 15*864e5 && !(o.avvisi && o.avvisi.ritardoRitiro)){
-        await annota(u, o, "ritardoRitiro", `SocialGlass: ${u.f.Nome}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di riscattarlo.`);
+        await annota(u, o, "ritardoRitiro", `SocialGlass: ${L.nm(u.f.Nome)}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di riscattarlo.`);
         await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); esiti.push({univoco: u.f.Univoco, esito: "sollecito restituzione"});
       } }
     if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) continue;
@@ -124,7 +125,7 @@ const handler = L.wrap(async (req, res) => {
     // 7 giorni dopo la consegna: «come ti trovi?» (notifica gratuita; la domanda compare anche nella sua pagina)
     if (ord.consegnatoIl && !ord.recensione && !ord.recensioneChiesta && new Date(ora) - new Date(ord.consegnatoIl) >= 7*864e5){
       ord.recensioneChiesta = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-      try { await L.pushCliente(u.f, `SocialGlass: ${u.f.Nome}, come ti trovi con i tuoi occhiali nuovi? Dicci la tua con un tocco.`, "Come ti trovi?"); } catch(e){}
+      try { await L.pushCliente(u.f, `SocialGlass: ${L.nm(u.f.Nome)}, come ti trovi con i tuoi occhiali nuovi? Dicci la tua con un tocco.`, "Come ti trovi?"); } catch(e){}
       esiti.push({univoco: u.f.Univoco, esito: "richiesta recensione"});
     }
     // ogni anno dalla consegna: controllo della vista incluso, da prenotare dal link
@@ -132,7 +133,7 @@ const handler = L.wrap(async (req, res) => {
       const anni = Math.floor((new Date(ora) - new Date(ord.consegnatoIl)) / (365*864e5));
       if (anni >= 1 && (ord.controlloAvvisato || 0) < anni){
         ord.controlloAvvisato = anni;
-        await annota(u, ord, "controllo" + anni, `SocialGlass: ${u.f.Nome}, è il momento del controllo della vista, incluso nel tuo abbonamento. Prenota giorno e ora dal tuo link: ${L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino)}`);
+        await annota(u, ord, "controllo" + anni, `SocialGlass: ${L.nm(u.f.Nome)}, è il momento del controllo della vista, incluso nel tuo abbonamento. Prenota giorno e ora dal tuo link: ${L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino)}`);
         await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); esiti.push({univoco: u.f.Univoco, esito: "promemoria controllo vista"});
       }
     }

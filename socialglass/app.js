@@ -389,7 +389,7 @@ function disegnaCruscotto(isOtt, d){
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
     tess = tessera("cf", "Verifica codice fiscale", "È già cliente?", 'data-open="codiceFiscalePopup"')
       + tessera("rinnovo", "Rinnovo occhiale", "Per chi è a fine periodo", 'data-open="rinnovoPopup"') + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
-      + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti") + tessera("stampa", "Volantino per il cliente", "Stampa «come funziona»", "data-volantino")
+      + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti") + tessera("stampa", "Locandina da appendere", "Stampa la locandina A4", "data-volantino")
       + tessera("chiave", "Cambia password", "Del tuo accesso", 'data-open="passwordCambioPopup"') + tessera("aiuto", "Contatta SocialGlass", "Telefono ed email", "data-contatti");
   }
   // solo due numeri che non compaiono altrove; un'azione principale ben visibile
@@ -452,15 +452,54 @@ function apriContatti(){
     : `<p>I contatti dell'amministratore non sono ancora stati inseriti. Rivolgiti a chi ti ha dato l'accesso.</p>`;
   open("contattiPopup");
 }
+// locandina A4 da appendere al CAF: titolo grande, 3 passi, cosa è incluso, QR al sito e nome del CAF
 async function stampaVolantino(){
-  const A = LISTINI.LISTINI.abbonamento, nome = sessionStorage.getItem("sg_nome") || "";
-  // QR verso il sito (chi lo inquadra legge «come funziona»)
-  let qr = ""; try { await caricaQr(); const d = document.createElement("div"); new QRCode(d, {text: location.origin + "/", width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M}); const c = d.querySelector("canvas"); qr = c ? c.toDataURL("image/png") : ""; } catch(_){}
-  stampaDoc("Occhiali nuovi ogni anno, un mese alla volta", `<p style="font-size:15pt;margin:4px 0 10px">Montatura e lenti graduate in abbonamento: <b>paghi un mese alla volta, senza interessi</b>. Controllo della vista incluso.</p>
-    <h2 style="font-size:14pt">Come funziona</h2><ol style="font-size:12.5pt;line-height:1.6">${[...document.querySelectorAll("#comePopup ol li")].map(li => `<li>${li.innerHTML}</li>`).join("")}</ol>
-    <h2 style="font-size:14pt">Cosa è incluso</h2><ul style="font-size:12.5pt;line-height:1.6">${A.servizi.map(s => `<li>${esc(s)}</li>`).join("")}</ul>
-    <div style="display:flex;align-items:center;gap:18px;margin-top:16px;border:2px solid #0069D9;border-radius:10px;padding:12px">${qr ? `<img src="${qr}" alt="" style="width:34mm;height:34mm">` : ""}
-      <div style="font-size:14pt"><b>Chiedi qui: ${esc(nome)}</b><br><span style="font-size:11pt">Ti registriamo in pochi minuti: porta la tessera sanitaria e il cellulare.${qr ? "<br>Oppure inquadra il codice per saperne di più." : ""}</span></div></div>`, true);
+  const A = LISTINI.LISTINI.abbonamento, nome = sessionStorage.getItem("sg_nome") || "", base = location.origin;
+  // la finestra si apre subito al tocco (dopo un'attesa i browser la bloccano), poi si riempie
+  const w = window.open("", "_blank"); if (!w){ alertStampa(); return; }
+  w.document.write('<p style="font-family:Arial;padding:20px">Preparo la locandina…</p>');
+  let qr = ""; try { await caricaQr(); const d = document.createElement("div"); new QRCode(d, {text: base + "/", width: 360, height: 360, correctLevel: QRCode.CorrectLevel.M}); const c = d.querySelector("canvas"); qr = c ? c.toDataURL("image/png") : ""; } catch(_){}
+  // logo e illustrazione dentro la pagina: la finestra di stampa non deve scaricare niente
+  const dati = async u => { try { const b = await (await fetch(u)).blob(); return await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.onerror = () => r(u); f.readAsDataURL(b); }); } catch(_){ return u; } };
+  const [logo, ill] = await Promise.all([dati(base + "/assets/logo-social-glass.png"), dati(base + "/assets/sfondo-mobile-socialglass.jpg")]);
+  w.document.open();
+  const ok = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const passi = [["Ti registri qui", "Bastano pochi minuti: ricevi sul cellulare il tuo link personale."],
+    ["Scegli in ottica", "Nell'ottica convenzionata scegli la montatura; l'ottico prepara le lenti per te."],
+    ["Attivi dal telefono", "Paghi solo il primo mese. Ti avvisiamo quando gli occhiali sono pronti."]];
+  w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Locandina SocialGlass</title><style>
+  @page{size:A4;margin:0}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{margin:0;background:#fff}body{font-family:"Helvetica Neue",Arial,sans-serif;color:#0A1F5C}
+  .foglio{width:210mm;height:297mm;overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .alto{display:flex;justify-content:space-between;align-items:center;padding:10mm 14mm 4mm}.alto img{height:15mm}
+  .alto span{font-size:12pt;font-weight:700;color:#0069D9;border:2px solid #0069D9;border-radius:30px;padding:2.5mm 6mm}
+  .hero{margin:0 10mm;border-radius:9mm;background:linear-gradient(135deg,#E8F1FF 0%,#D6E7FF 100%);display:flex;align-items:center;padding:7mm 4mm 7mm 11mm;gap:2mm;height:88mm}
+  .hero .t{flex:2}.hero h1{font-size:42pt;line-height:1;margin:0 0 4mm;letter-spacing:-.02em;font-weight:900}.hero h1 em{font-style:normal;color:#0069D9}
+  .hero p{font-size:15.5pt;line-height:1.35;margin:0;color:#1d3470}.hero p b{color:#2E7D32}
+  .hero .ill{flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center}.hero .ill img{height:100%;mix-blend-mode:multiply}
+  h2{font-size:17pt;margin:7mm 14mm 3.5mm;letter-spacing:-.01em}
+  .passi{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm;margin:0 14mm}
+  .passo{border:1.6px solid #c9d9f5;border-radius:6mm;padding:4mm 5mm 5mm}.passo i{display:flex;align-items:center;justify-content:center;width:13mm;height:13mm;border-radius:50%;background:#0069D9;color:#fff;font-style:normal;font-weight:900;font-size:20pt;margin-bottom:3mm}
+  .passo b{display:block;font-size:15pt;margin-bottom:1.5mm}.passo span{font-size:12pt;line-height:1.35;color:#33456f}
+  .incl{display:grid;grid-template-columns:1fr 1fr;gap:3mm 7mm;margin:0 14mm 7mm}.incl div{display:flex;align-items:center;gap:3mm;font-size:13pt;line-height:1.3}
+  .incl div em{flex:0 0 auto;width:9mm;height:9mm;border-radius:50%;background:#2E7D32;display:flex;align-items:center;justify-content:center}
+  .basso{margin-top:auto;background:#0A1F5C;color:#fff;display:flex;align-items:center;gap:8mm;padding:7mm 14mm 8mm}
+  .basso .t{flex:1}.basso small{display:block;font-size:12pt;opacity:.8;margin-bottom:1.5mm;text-transform:uppercase;letter-spacing:.08em}
+  .basso b{display:block;font-size:24pt;line-height:1.1;margin-bottom:3mm}.basso p{margin:0;font-size:12.5pt;line-height:1.4;opacity:.95}
+  .qr{background:#fff;border-radius:4mm;padding:3mm;text-align:center;color:#0A1F5C;font-size:9pt;font-weight:700}.qr img{width:28mm;height:28mm;display:block;margin:0 auto 1.5mm}
+  @media screen{body{background:#e9edf4}.foglio{margin:10mm auto;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.18)}}
+  </style></head><body><div class="foglio">
+    <div class="alto"><img src="${logo}" alt="SocialGlass"><span>Ti aiutiamo noi del CAF</span></div>
+    <div class="hero"><div class="t"><h1>Occhiali nuovi<br><em>ogni anno</em></h1><p>Montatura e lenti graduate in abbonamento.<br><b>Paghi un mese alla volta, senza pensieri.</b></p></div>
+      <div class="ill"><img src="${ill}" alt=""></div></div>
+    <h2>Come funziona</h2>
+    <div class="passi">${passi.map(([t, d], i) => `<div class="passo"><i>${i + 1}</i><b>${t}</b><span>${d}</span></div>`).join("")}</div>
+    <h2>Cosa è incluso</h2>
+    <div class="incl">${A.servizi.map(x => `<div><em>${ok}</em>${esc(x)}</div>`).join("")}</div>
+    <div class="basso"><div class="t"><small>Chiedi qui</small><b>${esc(nome || "Il tuo CAF")}</b><p>Porta la tessera sanitaria e il cellulare: ti registriamo in pochi minuti.</p></div>
+      ${qr ? `<div class="qr"><img src="${qr}" alt="">Scopri di più</div>` : ""}</div>
+  </div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);
+  w.document.close();
 }
 function apriEsposte(){
   const l = (cruDati && cruDati.esposte) || [];
@@ -608,7 +647,7 @@ function strumentiCli(u){
   return `<div class="extra-cli">${B("mpTessera", I.tes, "La mia tessera")}${B("mpPrenota", I.cal, u.appuntamento ? "Il mio appuntamento" : "Prenota in ottica")}
     ${scegli ? B("mpCatalogo", I.occ, "Montature in ottica") : ""}${B("mpAmico", I.amico, "Porta un amico")}
     ${anno ? B("mpAnno", I.anno, "Il mio anno") : B("mpChiama", I.tel, "La mia ottica")}
-    ${[STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(st) ? B("mpSegnala", I.aiuto, "Segnala un problema") : ""}
+    ${[STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(st) && !pg.chiuso ? B("mpSegnala", I.aiuto, "Segnala un problema") : ""}
     ${u.haCarta ? B("mpCarta", I.carta, "Cambia carta") : ""}${pg.attivatoIl ? B("mpRicevute", I.ric, "Ricevute") : ""}${u.contratto ? B("mpContratto", I.doc, "Il mio contratto") : ""}</div>`;
 }
 const fData = d => new Date(d + (d.length <= 10 ? "T12:00:00" : "")).toLocaleDateString("it-IT", {weekday: "long", day: "numeric", month: "long"});
@@ -1010,7 +1049,9 @@ $("clientiLista").addEventListener("click", async e => {
     if (!r.ok) alertBox(r.data.errore);
     await apriClienti();
     if (r.ok && r.data.avviso) avvisoCliente(r.data.avviso, "Occhiali segnati come pronti.");
-    if (r.ok && b.dataset.azione === "ritirato") alertBox("Occhiale restituito registrato. L'abbonamento è già disdetto e si chiude da solo alla fine del mese in corso.");
+    if (r.ok && b.dataset.azione === "ritirato") alertBox(r.data.rinnovo ? "Occhiale vecchio ritirato: il cambio è completo, l'abbonamento continua con quello nuovo."
+      : r.data.chiuso ? `Occhiale restituito registrato: l'abbonamento era già chiuso.${r.data.daDonare ? " Il cliente ha scelto di donarlo: tienilo da parte per SocialGlass." : ""}`
+      : `Occhiale restituito registrato: l'abbonamento si chiude da solo alla fine del mese in corso.${r.data.daDonare ? " Il cliente ha scelto di donarlo: tienilo da parte per SocialGlass." : ""}`);
     return;
   }
   if (b.dataset.recesso){
@@ -1134,10 +1175,21 @@ function regoleFine(p, per){
     <li><b>Lo restituisco:</b> riporti l'occhiale in ottica entro 15 giorni; l'abbonamento si chiude a fine mese, senza altri costi.</li>
     <li><b>Se non scegli niente:</b> ${sc} l'abbonamento continua mese per mese allo stesso canone, con lo stesso occhiale, e puoi disdire quando vuoi.</li></ul>`;
 }
+// come spiegare al cliente la chiusura (i codici interni restano per ottica e amministratore)
+const entro15 = d => new Date(new Date(d).getTime() + 15 * 864e5).toLocaleDateString("it-IT", {day: "numeric", month: "long"});
+function testoEsito(pg, od){
+  const e = String(pg.esito || ""), rit = od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato && !od.ritiro.rinnovo, quando = rit ? ` entro il <b>${entro15(od.ritiro.dal)}</b>` : "";
+  if (/RISCATTAT/.test(e)) return `<b>L'occhiale ora è tuo.</b> L'abbonamento è chiuso${pg.chiuso ? ` dal ${dt(pg.chiuso)}` : ""}: niente più canoni. Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`;
+  if (/RESTITUITO/.test(e)) return `<b>Occhiale restituito, grazie.</b> L'abbonamento è chiuso${pg.chiuso ? ` dal ${dt(pg.chiuso)}` : " a fine mese"}, senza altri costi.`;
+  if (/DISDETTO|RESTITUZIONE/.test(e)) return `<b>Hai scelto di restituire l'occhiale.</b> Riportalo in ottica${quando}: l'abbonamento si chiude a fine mese, senza altri costi.`;
+  if (/MANCATO PAGAMENTO/.test(e)) return `<b>L'abbonamento è stato chiuso</b> perché un canone non è stato pagato per oltre 30 giorni.${rit ? ` Riporta l'occhiale in ottica${quando}, oppure chiedi all'ottico di riscattarlo.` : ""}`;
+  if (/RECESSO/.test(e)) return `<b>Hai esercitato il recesso:</b> l'abbonamento è chiuso e non ci saranno altri addebiti. Il rimborso arriva sul metodo di pagamento usato.${rit ? ` Riporta l'occhiale in ottica${quando}.` : ""}`;
+  return `<b>Abbonamento chiuso</b>${pg.chiuso ? ` dal ${dt(pg.chiuso)}` : ""}.${rit ? ` Riporta l'occhiale in ottica${quando}.` : ""}`;
+}
 function boxAbbonamento(od){
   const p = od.prezzi || {}, per = od.periodo, pg = od.pagamento || {};
   if (!per) return "";
-  if (pg.chiuso || pg.esito) return `<div class="scheda"><b>Abbonamento</b><br>${esc(pg.esito || "Chiuso")}${pg.chiuso ? ` il ${dt(pg.chiuso)}` : ""}.${od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato ? `<br><b>Riporta l'occhiale in ottica entro 15 giorni.</b>` : ""}</div>`;
+  if (pg.chiuso || pg.esito) return "";   // la chiusura si spiega nel messaggio in alto (testoEsito)
   const fp = od.finePeriodo;
   const stato = per.scaduto ? `La durata minima è finita il ${dt(per.scadenza)}: l'abbonamento continua mese per mese.`
     : per.aperto ? `<b>Mancano ${per.giorni} giorni</b> alla fine della durata minima (${dt(per.scadenza)}). Scegli cosa fare:`
@@ -1151,7 +1203,7 @@ function boxAbbonamento(od){
       <div class="date"><span>Inizio <b>${dt(per.inizio)}</b></span><span>Durata minima fino al <b>${dt(per.scadenza)}</b></span><span>Canone <b>${euro(p.rata)}/mese</b></span></div>
       <p style="margin:8px 0 4px">${stato}</p>
       ${fp ? `<div class="esito ok" style="margin-top:8px">Hai scelto: <b>${esc(fp.descrizione)}</b>.${fp.eseguita ? "" : per.scaduto ? " La eseguiamo a breve." : ` Vale dal ${dt(per.scadenza)}: puoi cambiare idea fino ad allora.`}</div>` : ""}
-      ${per.aperto && !per.chiuso && !(fp && fp.eseguita) ? `<button type="button" class="grigio full" id="mpRinnovaCat" style="margin:6px 0">Guarda le montature nuove nella tua ottica</button>` : ""}
+      ${per.aperto && !per.chiuso && !(fp && fp.eseguita) && !(fp && fp.scelta !== "rinnova") ? `<button type="button" class="grigio full" id="mpRinnovaCat" style="margin:6px 0">Guarda le montature nuove nella tua ottica</button>` : ""}
       ${aperte ? regoleFine(p, per) + bottoni
         : `<details class="regole-box"><summary>Cosa succede alla scadenza</summary>${regoleFine(p, per)}${bottoni}</details>`}
     </div>`;
@@ -1222,16 +1274,20 @@ function disegnaMio(){
   } else if (u.stato === STATI.PRONTO){
     a = `<div class="esito ok"><b>I tuoi occhiali sono pronti!</b> Passa a ritirarli mostrando il codice <b>${esc(UNIVOCO)}</b>. L'ottico li regola sul tuo viso.</div>${o ? `<div class="scheda">${dove}</div>` : ""}${boxAbbonamento(od)}`;
   } else if (u.stato === STATI.CONSEGNATO){
-    const per = od.periodo, fp = od.finePeriodo;
-    a = (per && per.aperto && !per.chiuso && !fp ? `<div class="esito info"><b>${per.scaduto ? "I 12 mesi minimi sono finiti" : `Tra ${per.giorni} giorni finiscono i ${per.mesi} mesi minimi`}</b>: scegli qui sotto se vuoi un occhiale nuovo, tenerlo o restituirlo.</div>`
+    const per = od.periodo, fp = od.finePeriodo, pgx = od.pagamento || {};
+    a = (pgx.chiuso || pgx.esito ? `<div class="esito ${/MANCATO/.test(pgx.esito || "") ? "err" : "ok"}">${testoEsito(pgx, od)}</div>`
+      : per && per.aperto && !per.chiuso && !fp ? `<div class="esito info"><b>${per.scaduto ? "I 12 mesi minimi sono finiti" : `Tra ${per.giorni} giorni finiscono i ${per.mesi} mesi minimi`}</b>: scegli qui sotto se vuoi un occhiale nuovo, tenerlo o restituirlo.</div>`
       : od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato && od.ritiro.rinnovo ? `<div class="esito info"><b>Ricordati di riconsegnare il vecchio occhiale</b> in ottica: resta dell'ottica e serve per chiudere il cambio.</div>`
       : `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>`) + boxAbbonamento(od);
   }
-  if (u.stato === STATI.CONSEGNATO || u.stato === STATI.PRONTO) a = boxRecensione(u) + a;
+  const pgr = od.pagamento || {};
+  // chiusura negli altri stati (recesso prima della consegna, ordine annullato…): stesso messaggio chiaro in alto
+  if ((pgr.chiuso || pgr.esito) && u.stato !== STATI.CONSEGNATO && od.prezzi) a = `<div class="esito ${/MANCATO/.test(pgr.esito || "") ? "err" : "info"}">${testoEsito(pgr, od)}</div>` + a;
+  if ((u.stato === STATI.CONSEGNATO || u.stato === STATI.PRONTO) && !pgr.chiuso && !pgr.insoluto) a = boxRecensione(u) + a;
   a = boxAppuntamento(u) + a;
   a += boxDona(u);
   if (u.stato === STATI.PAGAMENTO && par("pagamento") === "annullato") a = `<div class="esito info">Pagamento annullato: non ti è stato addebitato nulla. Quando vuoi, riprova da qui.</div>` + a;
-  const ins = od.pagamento && od.pagamento.insoluto;
+  const ins = od.pagamento && !od.pagamento.chiuso && od.pagamento.insoluto;
   if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}).
     ${ins.tipo !== "riscatto" && ins.giorni != null ? `<div style="font-size:18px;font-weight:700;margin:6px 0">${ins.giorni > 0 ? `Mancano ${ins.giorni} ${ins.giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento` : "L'abbonamento si chiude oggi"}</div>` : ""}
     Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.tipo !== "riscatto" ? " Se non paghi, alla chiusura l'occhiale va restituito." : ""}

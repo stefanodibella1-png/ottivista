@@ -255,7 +255,7 @@ async function premiaAmico(u, ord){
   } else if (pg.stato === "SIMULATO" || (!CFG.stripeKey && pg.attivatoIl)) voce.stato = "accreditato (prova)";
   ro.amici = (ro.amici || []).filter(x => x.univoco !== voce.univoco).concat([voce]);
   ro.aggiornato = ora; await DB.aggiorna(r, {Ordine: JSON.stringify(ro)});
-  await pushCliente(r.f, `SocialGlass: ${r.f.Nome}, ${u.f.Nome || "il tuo amico"} si è abbonato grazie a te: ${voce.stato.startsWith("accreditato") ? "il prossimo canone è gratis" : "ti spetta un mese gratis"}. Grazie!`, "Un mese gratis per te");
+  await pushCliente(r.f, `SocialGlass: ${nm(r.f.Nome)}, ${nm(u.f.Nome) || "il tuo amico"} si è abbonato grazie a te: ${voce.stato.startsWith("accreditato") ? "il prossimo canone è gratis" : "ti spetta un mese gratis"}. Grazie!`, "Un mese gratis per te");
 }
 async function avvisa(u, testo){
   testo = bel(u.f, testo);
@@ -271,7 +271,7 @@ async function avvisa(u, testo){
 // se il canale non è collegato resta il link WhatsApp da inviare a mano
 async function avvisaPronto(u){
   const ott = String(u.f.Ottica1 || "").split(" - ")[0], link = linkCliente(u.f.Univoco, ott, u.f.CAF, u.f.Listino);
-  const testo = `SocialGlass: ${u.f.Nome}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`;
+  const testo = `SocialGlass: ${nm(u.f.Nome)}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`;
   const e = await inviaCliente(u.f, testo, [u.f.Nome || "", u.f.Univoco, link], CFG.waTemplatePronto);
   return {sms: e.inviato, inviato: e.inviato, canale: e.canale, motivo: e.motivo || "", testo, whatsapp: `https://wa.me/${numeroCliente(u.f).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
 }
@@ -282,7 +282,7 @@ const numeroCliente = f => { const n = String(f.Cellulare || "").replace(/[^\d+]
 function giorniAllaChiusura(ins, ora){ return Math.max(0, Math.ceil(GIORNI_CHIUSURA - (new Date(ora || Date.now()) - new Date(ins.dal)) / 864e5)); }
 function testoSollecito(f, ins, giorni, consegnato){
   const imp = Number(ins.importo || 0).toFixed(2).replace(".", ",");
-  return `SocialGlass: ${f.Nome || ""}, il canone di ${imp} € non risulta pagato. ` + (giorni > 0
+  return `SocialGlass: ${nm(f.Nome)}, il canone di ${imp} € non risulta pagato. ` + (giorni > 0
     ? `Mancano ${giorni} ${giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento: dopo, ${consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato"}. `
     : `Oggi l'abbonamento verrà chiuso. `) + `Paga o cambia carta qui: ${ins.link || linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino)}`;
 }
@@ -644,7 +644,7 @@ function righeCompenso(utenti, acc){
   const l = accordiDi(acc), out = []; if (!l.length) return out;
   const pc = v => String(v).replace(".", ",");
   for (const f of utenti){
-    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, base = {univoco: f.Univoco, cliente: `${f.Nome || ""} ${f.Cognome || ""}`.trim()};
+    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, base = {univoco: f.Univoco, cliente: `${nm(f.Nome)} ${nm(f.Cognome)}`.trim()};
     const attivazioni = (o.storico || []).filter(st => st.inizio).map(st => ({il: st.inizio, prec: true})).concat(pg.attivatoIl && pg.stato !== "SIMULATO" ? [{il: pg.attivatoIl}] : []);
     for (const x of attivazioni){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${x.prec ? " (periodo precedente)" : ""} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base)); }
     for (const x of incassi(o)) if (x.canone > 0){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "percentuale") out.push(Object.assign({il: x.il, descrizione: `Canone pagato ${e2(x.canone)} × ${pc(ac.valore)}%`, importo: Math.round(x.canone * ac.valore) / 100, stima: !!x.stima}, base)); }
