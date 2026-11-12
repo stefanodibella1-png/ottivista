@@ -10,12 +10,14 @@ module.exports = L.wrap(async (req, res) => {
   // cambia carta e ricevute: pagina sicura di Stripe e elenco dei pagamenti fatti
   if (b.azione === "carta" || b.azione === "ricevute"){
     const pg = L.parseOrdine(u.f.Ordine).pagamento || {};
-    if (!L.CFG.stripeKey || !pg.cliente) return L.send(res, 200, b.azione === "ricevute" ? {ricevute: [], prova: true} : {errore: "Il metodo di pagamento si può cambiare dopo il primo pagamento con carta.", prova: true});
+    // fatture di SocialGlass (copia di cortesia; quella valida arriva nel cassetto fiscale del cliente)
+    const fatture = b.azione === "ricevute" ? (await L.DB.lista("fatt")).filter(x => x.univoco === u.f.Univoco).sort((a, c) => String(c.creata).localeCompare(String(a.creata))).map(require("./_fattura").cortesia) : [];
+    if (!L.CFG.stripeKey || !pg.cliente) return L.send(res, 200, b.azione === "ricevute" ? {ricevute: [], fatture, prova: true} : {errore: "Il metodo di pagamento si può cambiare dopo il primo pagamento con carta.", prova: true});
     try {
       if (b.azione === "ricevute"){
         const l = await L.stripeApi("GET", "invoices", {customer: pg.cliente, status: "paid", limit: 36});
         return L.send(res, 200, {ricevute: (l.data || []).map(i => ({il: new Date(i.status_transitions && i.status_transitions.paid_at ? i.status_transitions.paid_at * 1000 : i.created * 1000).toISOString(),
-          importo: (i.amount_paid || 0) / 100, numero: i.number || "", url: i.hosted_invoice_url || "", pdf: i.invoice_pdf || ""}))});
+          importo: (i.amount_paid || 0) / 100, numero: i.number || "", url: i.hosted_invoice_url || "", pdf: i.invoice_pdf || ""})), fatture});
       }
       const conf = await L.portaleStripe();
       const s = await L.stripeApi("POST", "billing_portal/sessions", {customer: pg.cliente, configuration: conf, locale: "it",
@@ -25,6 +27,7 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (u.f.Stato !== L.STATI.PAGAMENTO) return L.send(res, 409, {errore: "Non c'è un ordine da attivare."});
   if (!b.consensoContratto || !b.consensoAddebito || !b.consensoSuMisura) return L.send(res, 400, {errore: "Per attivare l'abbonamento servono tutte le conferme."});
+  if (!u.f.Residenza || !u.f.Residenza.cap){ const r = L.residenza(b.residenza); if (r.errore) return L.send(res, 400, Object.assign(r, {residenza: true})); await L.DB.aggiorna(u, {Residenza: r}); }
   const ord = L.parseOrdine(u.f.Ordine), p = ord.prezzi;
   // le due conferme del cliente, con data e ora: finiscono nella copia del contratto
   { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t, suMisura: t}; }

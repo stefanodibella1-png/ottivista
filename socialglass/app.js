@@ -704,11 +704,26 @@ async function apriCarta(){
 }
 async function apriRicevute(){
   apriExtra("Ricevute dei pagamenti", '<div class="vuoto">Caricamento…</div>');
-  const r = await post("api/pagamento", {azione: "ricevute", univoco: UNIVOCO}), l = r.ok ? r.data.ricevute || [] : [];
-  $("extraCorpo").innerHTML = l.length ? `<div class="ricevute">${l.map(x => `<div class="ric"><span><b>${euro(x.importo)}</b><small>${dt(x.il)}${x.numero ? " · n. " + esc(x.numero) : ""}</small></span>
+  const r = await post("api/pagamento", {azione: "ricevute", univoco: UNIVOCO}), l = r.ok ? r.data.ricevute || [] : [], fz = r.ok ? r.data.fatture || [] : [];
+  const fat = fz.length ? `<h3 style="margin:4px 0 6px">Fatture</h3><div class="ricevute">${fz.map((x, i) => `<div class="ric"><span><b>Fattura n. ${esc(x.numero)} · ${euro(x.totale)}</b><small>${dt(x.data)}</small></span><button type="button" class="grigio" data-fattura="${i}" style="margin:0">Vedi</button></div>`).join("")}</div>
+    <p class="hint" style="margin:6px 0 14px">La fattura valida per la detrazione arriva anche nel tuo cassetto fiscale (Agenzia delle Entrate). Questa è la copia di cortesia.</p>${l.length ? '<h3 style="margin:4px 0 6px">Pagamenti</h3>' : ""}` : "";
+  $("extraCorpo").innerHTML = fat + (l.length ? `<div class="ricevute">${l.map(x => `<div class="ric"><span><b>${euro(x.importo)}</b><small>${dt(x.il)}${x.numero ? " · n. " + esc(x.numero) : ""}</small></span>
       ${x.pdf ? `<a class="btn-link" href="${esc(x.pdf)}" target="_blank" rel="noopener">PDF</a>` : ""}${x.url ? `<a class="btn-link grigio" href="${esc(x.url)}" target="_blank" rel="noopener">Apri</a>` : ""}</div>`).join("")}</div>
-      <p class="hint" style="margin-top:10px">Le ricevute le emette Stripe, che gestisce i pagamenti. Per la detrazione chiedi all'ottica il documento fiscale dei canoni.</p>`
-    : `<div class="vuoto">${r.ok ? (r.data.prova ? "Le ricevute compaiono qui dopo il primo pagamento con carta." : "Nessun pagamento ancora registrato.") : esc(r.data.errore || "Non disponibile ora.")}</div>`;
+      <p class="hint" style="margin-top:10px">Le ricevute dei pagamenti le emette Stripe, che gestisce i pagamenti.${fz.length ? "" : " Per la detrazione servono le fatture di SocialGlass: compaiono qui dopo ogni pagamento."}</p>`
+    : (fz.length ? "" : `<div class="vuoto">${r.ok ? (r.data.prova ? "Le ricevute compaiono qui dopo il primo pagamento con carta." : "Nessun pagamento ancora registrato.") : esc(r.data.errore || "Non disponibile ora.")}</div>`));
+  $("extraCorpo").querySelectorAll("[data-fattura]").forEach(b => b.onclick = () => copiaFattura(fz[+b.dataset.fattura]));
+}
+// copia di cortesia della fattura (stampabile)
+function copiaFattura(f){
+  const T = (window.SG_INFO && SG_INFO.titolare) || {}, forf = f.regime === "RF19";
+  apriExtra(`Fattura n. ${f.numero}`, `<div class="scheda" id="copiaFatt"><p style="margin:0 0 6px"><b>${esc(T.ragione || "SocialGlass")}</b>${T.piva ? " · P.IVA " + esc(T.piva) : ""}${T.indirizzo ? "<br>" + esc(T.indirizzo) : ""}</p>
+    <p style="margin:0 0 8px">Fattura n. <b>${esc(f.numero)}</b> del <b>${dt(f.data)}</b> · intestata a ${esc(mio.nome)} ${esc(mio.cognome || "")}</p>
+    ${f.righe.map(x => `<div class="r-c"><span>${esc(x.descrizione)}</span><b>${euro(x.importo)}</b></div>`).join("")}
+    ${forf ? `<div class="r-c"><span>Operazione senza IVA (regime forfettario, art. 1, commi 54-89, L. 190/2014)</span><b></b></div>${f.bollo ? `<div class="r-c"><span>Imposta di bollo assolta in modo virtuale</span><b>${euro(f.bollo)}</b></div>` : ""}`
+      : `<div class="r-c"><span>Imponibile</span><b>${euro(f.imponibile)}</b></div><div class="r-c"><span>IVA ${String(f.aliquota).replace(".", ",")}%</span><b>${euro(f.imposta)}</b></div>`}
+    <div class="r-c"><span><b>Totale pagato</b></span><b>${euro(f.totale)}</b></div>
+    <p class="hint" style="margin:8px 0 0">Copia di cortesia. Spesa sanitaria detraibile: noleggio di occhiale da vista (dispositivo medico CE).</p></div>
+    <button type="button" class="full" onclick="window.print()">Stampa o salva in PDF</button>`);
 }
 // copia del contratto in PDF: condizioni con i dati del cliente e la data delle conferme
 const caricaPdf = () => window.jspdf ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
@@ -830,7 +845,7 @@ function linkAmico(){
 }
 
 /* ---------- nuovo utente (CAF) ---------- */
-const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","ottica","gdprAcceptance"];
+const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","residenza","cap","comune","provincia","ottica","gdprAcceptance"];
 function resetForm(){
   $("formCliente").reset(); $("codiceFiscale").disabled = false; $("attivaCodiceFiscale").hidden = false; $("segnoDiSpunta").hidden = true;
   campi.forEach(id => $(id).disabled = true); $("listinoTextBox").value = ""; $("inviaLink").disabled = true;
@@ -858,11 +873,28 @@ $("attivaCodiceFiscale").addEventListener("click", async () => {
   // data di nascita e sesso si leggono dal codice fiscale (restano modificabili)
   const dc = CF.dati(cf); if (dc){ if (!$("datanascita").value) $("datanascita").value = dc.data; if (!$("sesso").value) $("sesso").value = dc.sesso; }
 });
+// chi è stato registrato prima che si chiedesse la residenza la scrive all'attivazione
+function campiResidenza(){
+  if (!mio || mio.residenza) return "";
+  return `<div class="residenza"><label class="lbl" for="rsInd">Il tuo indirizzo di residenza (serve per la fattura)</label><input type="text" id="rsInd" placeholder="Via e numero civico" autocomplete="street-address">
+    <div class="riga"><input type="text" id="rsCap" placeholder="CAP" maxlength="5" inputmode="numeric" aria-label="CAP" style="width:90px"><input type="text" id="rsCom" placeholder="Comune" aria-label="Comune" style="flex:1;text-transform:uppercase"><input type="text" id="rsPrv" placeholder="Prov." maxlength="2" aria-label="Provincia" style="width:70px;text-transform:uppercase"></div></div>`;
+}
+// residenza del cliente (obbligatoria in fattura): via, CAP di 5 cifre, comune, sigla della provincia
+function residenzaMancante(r){
+  r = r || {}; const m = [];
+  if (!r.indirizzo || r.indirizzo.length < 4) m.push("Indirizzo di residenza");
+  if (!/^\d{5}$/.test(r.cap || "")) m.push("CAP (5 cifre)");
+  if (!r.comune) m.push("Comune");
+  if (!/^[A-Z]{2}$/.test(r.provincia || "")) m.push("Provincia (2 lettere)");
+  return m;
+}
 $("formCliente").addEventListener("submit", async e => {
   e.preventDefault();
   const v = id => $(id).value.trim();
-  const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), amico: v("amico").toUpperCase(), gdpr: $("gdprAcceptance").checked};
-  const manca = [["nome","Nome"],["cognome","Cognome"],["nato","Luogo di nascita"],["datanascita","Data di nascita"],["sesso","Sesso"],["cellulare","Cellulare"],["ottica","Ottica"]].filter(([k]) => !d[k]).map(([, n]) => n);
+  const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), amico: v("amico").toUpperCase(), gdpr: $("gdprAcceptance").checked,
+    residenza: {indirizzo: v("residenza"), cap: v("cap"), comune: v("comune").toUpperCase(), provincia: v("provincia").toUpperCase()}};
+  const manca = [["nome","Nome"],["cognome","Cognome"],["nato","Luogo di nascita"],["datanascita","Data di nascita"],["sesso","Sesso"],["cellulare","Cellulare"],["ottica","Ottica"]].filter(([k]) => !d[k]).map(([, n]) => n)
+    .concat(residenzaMancante(d.residenza));
   if (manca.length || !d.gdpr){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : "Serve il consenso GDPR del cliente.", "err"); return; }
   if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)){ esito($("formErr"), "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso: controlla i dati.", "err"); return; }
   $("inviaLink").disabled = true;
@@ -1240,6 +1272,7 @@ function disegnaMio(){
         <li>Confermi qui: non serve inserire di nuovo carta o IBAN.</li>
         <li>Dal prossimo mese paghi il nuovo canone; riparte la durata minima di ${p.mesi} mesi.</li>
         <li>L'ottico prepara il nuovo occhiale e ti avvisiamo quando è pronto. Quando ritiri il nuovo, riconsegni quello vecchio (resta di SocialGlass).</li></ol></div>
+      ${campiResidenza()}
       <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni dell'abbonamento</button>: nuovo canone ${euro(p.rata)} al mese, durata minima ${p.mesi} mesi da oggi.</span></label>
       <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Confermo l'addebito mensile sul metodo di pagamento già registrato.</span></label>
       <label class="consenso" for="c3"><input type="checkbox" id="c3"><span>So che le lenti sono fatte su misura per me: posso annullare solo finché il laboratorio non inizia la lavorazione.</span></label>
@@ -1265,6 +1298,7 @@ function disegnaMio(){
         <li>L'ottico riceve la conferma e prepara gli occhiali. Ti avvisiamo quando sono pronti.</li>
         <li>Dopo ${p.mesi} mesi scegli tu (ti avvisiamo 30 giorni prima).</li></ol>
         <details class="regole-box"><summary>Cosa succede dopo ${p.mesi} mesi</summary>${regoleFine(p, null)}</details></div>
+      ${campiResidenza()}
       <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni dell'abbonamento</button>: ${euro(p.rata)} al mese, durata minima ${p.mesi} mesi. È un noleggio: l'occhiale resta di SocialGlass.</span></label>
       <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Autorizzo l'addebito mensile automatico su carta o conto (SEPA).</span></label>
       <label class="consenso" for="c3"><input type="checkbox" id="c3"><span>So che le lenti sono fatte su misura per me: posso annullare solo finché il laboratorio non inizia la lavorazione.</span></label>
@@ -1334,11 +1368,13 @@ function disegnaMio(){
   if (u.stato === STATI.MONTATURA || (u.stato === STATI.PAGAMENTO && od.pagamento && od.pagamento.stato === "IN CORSO")) pollT = setTimeout(async () => { const prima = mio && mio.stato; await caricaMio(false); if (mio && mio.stato !== prima && $("miaPagina").hidden === false) disegnaMio(); }, 15000);
 }
 async function attivaRate(){
+  const rs = $("rsInd") ? {indirizzo: $("rsInd").value.trim(), cap: $("rsCap").value.trim(), comune: $("rsCom").value.trim().toUpperCase(), provincia: $("rsPrv").value.trim().toUpperCase()} : null;
+  if (rs && residenzaMancante(rs).length){ esito($("mpErr"), "Completa la residenza: " + residenzaMancante(rs).join(", ") + ".", "err"); return; }
   if (!$("c1").checked || !$("c2").checked || ($("c3") && !$("c3").checked)){ esito($("mpErr"), "Per attivare l'abbonamento spunta tutte le conferme.", "err"); return; }
   const rinnovo = !!$("mpPaga").dataset.rinnovo;
   if (!rinnovo && (DEMO === "browser" || (DEMO && !STRIPE))){ if (!(await checkoutProva())) return; }
   $("mpPaga").disabled = true; $("mpPaga").textContent = "Apro la pagina di pagamento…";
-  const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true});
+  const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true, residenza: rs || undefined});
   if (r.ok && r.data.url){ location.href = r.data.url; return; }
   $("mpPaga").disabled = false; $("mpPaga").textContent = rinnovo ? "Conferma l'occhiale nuovo" : "Attiva l'abbonamento";
   if (!r.ok){ esito($("mpErr"), r.data.errore || "Pagamento non riuscito. Riprova.", "err"); return; }

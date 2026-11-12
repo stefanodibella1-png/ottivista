@@ -300,6 +300,24 @@ function disegna(){
       <div class="scheda"><b>Copia dei dati</b><p class="hint" style="margin:4px 0">Ogni notte si salva una copia completa (clienti, CAF, ottiche, magazzino, fornitori, segnalazioni). Si tengono le ultime 7. Scaricala e conservala anche fuori dal sito.</p>
       ${(d.copie || []).length ? `<div class="ricevute" style="margin:6px 0">${d.copie.map(c => `<div class="ric"><span><b>${dt(c.data)}</b><small>${Math.round(c.byte / 1024)} KB</small></span><button type="button" class="grigio" data-copia="${esc(c.data)}" style="margin:0">Scarica</button></div>`).join("")}</div>` : '<p class="hint">La prima copia automatica si crea stanotte.</p>'}
       <button type="button" class="full" data-copia="">Scarica una copia adesso</button></div>`;
+    { const fz = d.fatturazione || {}, s = fz.impostazioni || {}, sel = (v, x) => v === x ? " selected" : "";
+      h += `<form data-f="salvaFatturazione" class="scheda"><b>Fatturazione elettronica ai clienti</b> ${s.attiva ? '<span class="chip s4">ATTIVA</span>' : '<span class="chip">SPENTA</span>'}
+      <p class="hint" style="margin:4px 0">Quando è attiva, per ogni incasso (canone, spedizione, acquisto dell'usato) si crea una fattura elettronica intestata al cliente, con il suo codice fiscale: vale per la detrazione. ${s.invio === "aruba" ? (fz.credenziali ? "Le credenziali Aruba sono impostate." : "<b>Credenziali Aruba non ancora impostate</b>: le fatture restano «da inviare» finché non si aggiungono i secrets ARUBA_USER e ARUBA_PASSWORD.") : "Invio spento: le fatture si creano ma non partono (le puoi scaricare)."}</p>
+      ${(fz.manca || []).length ? `<div class="esito err">Mancano: ${esc(fz.manca.join(", "))}.</div>` : ""}
+      <label class="gdpr"><input type="checkbox" name="attiva" ${s.attiva ? "checked" : ""}> Crea una fattura per ogni incasso</label>
+      <label class="lbl" for="fzReg">Regime fiscale</label><select id="fzReg" name="regime"><option value="RF01"${sel(s.regime, "RF01")}>Ordinario (con IVA)</option><option value="RF19"${sel(s.regime, "RF19")}>Forfettario (senza IVA, bollo 2 € oltre 77,47 €)</option></select>
+      <label class="lbl" for="fzAl">Aliquota IVA del noleggio (regime ordinario)</label><input id="fzAl" name="aliquota" inputmode="decimal" value="${esc(s.aliquota)}">
+      <div class="riga"><div style="flex:1"><label class="lbl" for="fzNo">Nome del titolare</label><input id="fzNo" name="nome" value="${esc(s.nome)}"></div><div style="flex:1"><label class="lbl" for="fzCo">Cognome</label><input id="fzCo" name="cognome" value="${esc(s.cognome)}"></div></div>
+      <label class="lbl" for="fzCf">Codice fiscale del titolare</label><input id="fzCf" name="cf" value="${esc(s.cf)}" style="text-transform:uppercase">
+      <label class="lbl" for="fzInd">Sede: via e numero civico</label><input id="fzInd" name="indirizzo" value="${esc(s.indirizzo)}">
+      <div class="riga"><input name="cap" placeholder="CAP" maxlength="5" inputmode="numeric" value="${esc(s.cap)}" aria-label="CAP" style="width:90px"><input name="comune" placeholder="Comune" value="${esc(s.comune)}" aria-label="Comune" style="flex:1;text-transform:uppercase"><input name="provincia" placeholder="Prov." maxlength="2" value="${esc(s.provincia)}" aria-label="Provincia" style="width:70px;text-transform:uppercase"></div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="fzInv">Invio</label><select id="fzInv" name="invio"><option value="spento"${sel(s.invio, "spento")}>Spento (solo creazione)</option><option value="aruba"${sel(s.invio, "aruba")}>Aruba</option></select></div>
+        <div style="flex:1"><label class="lbl" for="fzAmb">Ambiente Aruba</label><select id="fzAmb" name="ambiente"><option value="demo"${sel(s.ambiente, "demo")}>Prova (demo)</option><option value="produzione"${sel(s.ambiente, "produzione")}>Reale</option></select></div></div>
+      <p class="hint" style="margin:4px 0">La partita IVA si prende dai «Dati del titolare» qui sotto. Il cliente riceve la fattura nel suo cassetto fiscale; nell'app trova la copia di cortesia.</p>
+      <button type="submit" class="verde full">Salva fatturazione</button><button type="button" class="full" data-fattura-prova>Scarica una fattura di prova (XML)</button></form>
+      <div class="scheda"><b>Fatture emesse</b> (ultime ${(fz.fatture || []).length})
+      ${(fz.fatture || []).length ? `<div class="ricevute" style="margin:6px 0">${fz.fatture.map(x => `<div class="ric"><span><b>n. ${esc(x.numero)} · ${euro(x.totale)}</b><small>${esc(x.data)} · ${esc(x.cliente)} (${esc(x.univoco)}) · ${esc(x.stato)}${x.errore ? " · " + esc(x.errore) : ""}</small></span>
+        <span><button type="button" class="grigio" data-fattura-xml="${esc(x.id)}" data-num="${esc(x.numero)}" style="margin:0">XML</button>${/^inviata/.test(x.stato) ? "" : ` <button type="button" class="grigio" data-fattura-invia="${esc(x.id)}" style="margin:0">Invia</button>`}</span></div>`).join("")}</div>` : '<p class="hint">Nessuna fattura ancora.</p>'}</div>`; }
     h += `<form data-f="salvaTitolare" class="scheda"><b>Titolare del servizio</b><p style="margin:4px 0">Compare nell'informativa privacy e nelle condizioni dell'abbonamento.</p>
       <label class="lbl" for="tRag">Ragione sociale o nome e cognome</label><input id="tRag" name="ragione" value="${esc(t.ragione)}">
       <label class="lbl" for="tPiva">Partita IVA</label><input id="tPiva" name="piva" inputmode="numeric" value="${esc(t.piva)}">
@@ -343,6 +361,13 @@ async function clic(e){
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
   if (b.dataset.segnOk){ const box = b.closest("[data-sg]"), r = await call("segnalazioneRisolta", {id: b.dataset.segnOk, risposta: box.querySelector("[data-risp]").value}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); return msg("Segnalazione risolta."); }
   if (b.hasAttribute("data-report")) return apriReport($("repMese").value);
+  if (b.dataset.fatturaXml !== undefined || b.dataset.fatturaProva !== undefined){
+    const prova = b.dataset.fatturaProva !== undefined;
+    const r = await fetch("api/admin", {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + tok}, body: JSON.stringify(prova ? {azione: "provaFattura"} : {azione: "fatturaXml", id: b.dataset.fatturaXml})});
+    if (!r.ok){ const j = await r.json().catch(() => ({})); return msg(j.errore || "Non disponibile.", "err"); }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = prova ? "fattura-di-prova.xml" : `fattura-${String(b.dataset.num || "").replace(/\W+/g, "-")}.xml`; document.body.appendChild(a); a.click(); a.remove(); return;
+  }
+  if (b.dataset.fatturaInvia){ b.disabled = true; const r = await call("inviaFattura", {id: b.dataset.fatturaInvia}); await carica(); return msg(r.ok ? `Fattura inviata ad Aruba (${r.data.file || "ok"}).` : (r.data.errore || "Invio non riuscito."), r.ok ? "ok" : "err"); }
   if (b.dataset.copia !== undefined){ b.disabled = true; const t0 = b.textContent; b.textContent = "Preparo la copia…";
     try { const r = await fetch("api/admin", {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + tok}, body: JSON.stringify({azione: "scaricaCopia", data: b.dataset.copia || ""})});
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).errore || "Copia non disponibile.");

@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796100000**, prossimo 1796200000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796200000**, prossimo 1796300000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -33,7 +33,10 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Riscatto → «acquisto dell'usato» nei testi (i codici interni restano `riscatta`/`riscatto`).
 - Recesso → «annullamento» solo prima che il laboratorio inizi la lavorazione (`L.inLavorazione`, `L.annullabile`); terza spunta obbligatoria all'attivazione (`consensoSuMisura`, salvata in `ord.consensi.suMisura`).
 - Codice ATECO di noleggio: Stefano lo aggiunge con ComUnica entro 30 giorni dal primo noleggio.
-- Da fare: documento fiscale automatico a ogni canone (serve scegliere il servizio di fatturazione), contratti con l'avvocato, dati del titolare in Impostazioni.
+- Fatturazione (`api/_fattura.js`, non conta tra le 12 funzioni): una fattura FatturaPA FPR12 per ogni incasso Stripe (`invoice.paid` nel webhook), numero `n/SG` per anno senza buchi né doppioni (transazione `DB.nuovaFattura`, id = pagamento Stripe), archivio `sg_fatture`. Regime ordinario (IVA scorporata, 4% di base) o forfettario (N2.2, bollo virtuale oltre 77,47 €). Si attiva da Impostazioni › Fatturazione elettronica; il cliente vede la copia di cortesia in «Ricevute».
+- Invio Aruba: serve il piano Premium (API). Secrets del repo `ARUBA_USER` e `ARUBA_PASSWORD` (da passare a Vercel come le altre chiavi), ambiente demo/reale dal pannello. Senza credenziali le fatture restano «da inviare»; il controllo del mattino rimanda quelle in sospeso. Validate in locale con lo schema FatturaPA (codici natura attuali).
+- Residenza del cliente obbligatoria (campo `Residenza`): la chiede il CAF alla registrazione; chi è registrato prima la scrive all'attivazione.
+- Da fare: attivare Aruba Premium e inserire le credenziali, contratti con l'avvocato, dati del titolare in Impostazioni.
 
 ## Barra del tempo (PROVE TECNICHE — da togliere prima dell'uscita al pubblico)
 - Etichetta «⏱ PROVE» in alto a sinistra nella pagina del cliente, **solo** per i clienti di prova (CAF001, OTT07, OTT12); sparisce da sola dopo «rimuovi dati di prova».

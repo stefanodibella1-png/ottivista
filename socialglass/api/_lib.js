@@ -54,7 +54,7 @@ function fs(){
   fsDb = getFirestore(app);
   return fsDb;
 }
-const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta", forn: "sg_fornitori", ordForn: "sg_ordini_fornitori", segn: "sg_segnalazioni", registro: "sg_registro", copie: "sg_copie"};
+const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta", forn: "sg_fornitori", ordForn: "sg_ordini_fornitori", segn: "sg_segnalazioni", registro: "sg_registro", copie: "sg_copie", fatt: "sg_fatture"};
 // al primo avvio carica CAF, ottici e montature di prova (poi si gestiscono dalla console Firebase)
 function seed(db){
   if (seeded) return seeded;
@@ -113,6 +113,14 @@ const FS = {
   async tx(k, id, fn){
     const db = await fdb(), ref = db.collection(COL[k]).doc(String(id));
     return db.runTransaction(async t => { const d = await t.get(ref); if (!d.exists) return null; const out = fn(d.data()); if (out) t.update(ref, out); return out; });
+  },
+  async nuovaFattura(id, anno, crea){
+    const db = await fdb(), ref = db.collection(COL.fatt).doc(String(id)), cnt = db.collection(COL.meta).doc("fatture-" + anno);
+    return db.runTransaction(async t => {
+      const [d, c] = await Promise.all([t.get(ref), t.get(cnt)]); if (d.exists) return null;
+      const n = ((c.exists && c.data().ultimo) || 0) + 1, x = crea(n);
+      t.set(cnt, {ultimo: n}, {merge: true}); t.set(ref, x); return x;
+    });
   }
 };
 
@@ -143,8 +151,8 @@ async function find(base, table, formula, max = 1){
 const parseOrdine = s => { try { return s ? JSON.parse(s) : {}; } catch(e){ return {}; } };
 // dati di prova in memoria (server senza database): stesse funzioni del pannello
 const DEMOCOL = {caf: () => demo.caf, ottLogin: () => demo.ottLogin, ottici: () => demo.ottici, mont: () => demo.montature, utenti: () => demo.utenti, forn: () => (demo.fornitori = demo.fornitori || []), ordForn: () => (demo.ordForn = demo.ordForn || []),
-  segn: () => (demo.segn = demo.segn || []), registro: () => (demo.registro = demo.registro || []), copie: () => (demo.copie = demo.copie || [])};
-const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco", forn: "ID", ordForn: "ID", segn: "ID", registro: "ID", copie: "ID"};
+  segn: () => (demo.segn = demo.segn || []), registro: () => (demo.registro = demo.registro || []), copie: () => (demo.copie = demo.copie || []), fatt: () => (demo.fatt = demo.fatt || [])};
+const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco", forn: "ID", ordForn: "ID", segn: "ID", registro: "ID", copie: "ID", fatt: "ID"};
 const MEM = {
   async lista(k){ return DEMOCOL[k]().map(x => Object.assign({_id: x[DEMOKEY[k]]}, x)); },
   async ultimi(k, n){ return DEMOCOL[k]().slice().sort((a, b) => String(b.il).localeCompare(String(a.il))).slice(0, n).map(x => Object.assign({_id: x[DEMOKEY[k]]}, x)); },
@@ -152,7 +160,12 @@ const MEM = {
   async salva(k, id, data){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i < 0) a.push(Object.assign({[DEMOKEY[k]]: id}, data)); else Object.assign(a[i], data); },
   async elimina(k, id){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i >= 0) a.splice(i, 1); },
   async meta(id, data){ demo.meta = demo.meta || {}; if (data === undefined) return demo.meta[id] || null; demo.meta[id] = Object.assign(demo.meta[id] || {}, data); },
-  async tx(k, id, fn){ const x = DEMOCOL[k]().find(r => r[DEMOKEY[k]] === id); if (!x) return null; const out = fn(JSON.parse(JSON.stringify(x))); if (out) Object.assign(x, out); return out; }
+  async tx(k, id, fn){ const x = DEMOCOL[k]().find(r => r[DEMOKEY[k]] === id); if (!x) return null; const out = fn(JSON.parse(JSON.stringify(x))); if (out) Object.assign(x, out); return out; },
+  async nuovaFattura(id, anno, crea){
+    const a = DEMOCOL.fatt(); if (a.some(x => x.ID === id)) return null;
+    demo.meta = demo.meta || {}; const c = demo.meta["fatture-" + anno] = demo.meta["fatture-" + anno] || {ultimo: 0};
+    c.ultimo++; const x = crea(c.ultimo); a.push(x); return x;
+  }
 };
 const AT = {
   async login(ruolo, id){
@@ -418,6 +431,12 @@ const STATI = {
   PRONTO: "PRONTO PER IL RITIRO",
   CONSEGNATO: "CONSEGNATO"
 };
+// residenza del cliente (serve in fattura): controlla e normalizza
+function residenza(r){
+  r = r || {}; const x = {indirizzo: String(r.indirizzo || "").trim().slice(0, 80), cap: String(r.cap || "").replace(/\D/g, ""), comune: String(r.comune || "").trim().toUpperCase().slice(0, 60), provincia: String(r.provincia || "").trim().toUpperCase()};
+  if (x.indirizzo.length < 4 || !/^\d{5}$/.test(x.cap) || !x.comune || !/^[A-Z]{2}$/.test(x.provincia)) return {errore: "Indirizzo di residenza incompleto: via e numero, CAP di 5 cifre, comune e sigla della provincia."};
+  return x;
+}
 // lenti su misura: dopo l'inizio della lavorazione l'annullamento (recesso) non è più possibile
 function inLavorazione(o, stato){
   const lab = o && o.lab;
@@ -802,4 +821,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

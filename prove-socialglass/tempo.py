@@ -37,7 +37,7 @@ async def main():
         if await pc.locator("#attivaCodiceFiscale").is_visible(): await pc.click("#attivaCodiceFiscale"); await pc.wait_for_timeout(600)
         for k, v in {"nome": "Maria", "cognome": "Bianchi", "nato": "Catania"}.items():
             if not await pc.input_value("#" + k): await pc.fill("#" + k, v)
-        await pc.fill("#cellulare", "3331112233"); await pc.select_option("#ottica", "OTT07"); await pc.check("#gdprAcceptance")
+        await pc.fill("#cellulare", "3331112233"); await pc.fill("#residenza", "Via Etnea 100"); await pc.fill("#cap", "95124"); await pc.fill("#comune", "Catania"); await pc.fill("#provincia", "CT"); await pc.select_option("#ottica", "OTT07"); await pc.check("#gdprAcceptance")
         await pc.click("#inviaLink"); await pc.wait_for_timeout(1500); await pc.screenshot(path="t01_pc_caf.png")
         COD = (await pc.inner_text("#inviatoCodice")).strip(); print("1 PC CAF → cliente", COD)
         # 2. telefono — la cliente apre il link e sceglie la montatura (scanner, codice a mano)

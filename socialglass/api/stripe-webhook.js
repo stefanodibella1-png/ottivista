@@ -1,6 +1,6 @@
 // Stripe conferma il pagamento: l'ordine diventa attivo; poi canoni mensili, insoluti, chiusura.
 const crypto = require("crypto");
-const L = require("./_lib");
+const L = require("./_lib"), F = require("./_fattura");
 function valid(raw, header, secret){
   const parts = Object.fromEntries(String(header || "").split(",").map(x => x.split("=")));
   if (!parts.t || !parts.v1 || Math.abs(Date.now()/1000 - Number(parts.t)) > 600) return false;
@@ -52,6 +52,11 @@ module.exports = L.wrap(async (req, res) => {
       }
       ord.aggiornato = ora;
       await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      // fattura dell'incasso (una sola anche se Stripe ripete l'avviso)
+      if (ev.type === "invoice.paid" && o.amount_paid > 0){
+        const inc = (pg.pagamenti || []).find(x => x.id === o.id);
+        if (inc) try { const e = await F.emetti(u, inc); if (e.errore) await L.registra("fatturazione", "fattura NON emessa", u.f.Univoco, e.errore); } catch(e){ console.error(e); }
+      }
     }
   }
   L.send(res, 200, {ricevuto: true});

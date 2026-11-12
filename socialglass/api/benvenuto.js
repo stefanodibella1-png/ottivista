@@ -152,7 +152,8 @@ module.exports = L.wrap(async (req, res) => {
     appuntamento: ord.appuntamento && ord.appuntamento.il >= L.oraRoma().slice(0, 10) && !(ord.appuntamento.tipo === "scelta" && ord.montatura) ? Object.assign({descrizione: L.TIPI_APP[ord.appuntamento.tipo] || ""}, ord.appuntamento) : null,
     segnalazioni: (ord.segnalazioni || []).slice(-5).reverse(), haCarta: !!(ord.pagamento && ord.pagamento.cliente && !ord.pagamento.chiuso),
     contratto: ord.pagamento && ord.pagamento.attivatoIl ? {attivatoIl: ord.pagamento.attivatoIl, consensi: ord.consensi || null, caf: u.f.CAF || ""} : null,
-    barraTempo: barraAttiva(cfg, u.f) ? {giorni: Number(u.f.ProveGiorni) || 0} : null};
+    barraTempo: barraAttiva(cfg, u.f) ? {giorni: Number(u.f.ProveGiorni) || 0} : null,
+    residenza: !!(u.f.Residenza && u.f.Residenza.cap)};
   L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
     ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo || "", citta: o.Citta || "", telefono: o.Telefono || ""} : null,
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,

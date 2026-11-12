@@ -148,6 +148,8 @@ const handler = L.wrap(async (req, res) => {
   for (const u of tutti) await controlla(u, ora, esiti);
   // riordino automatico per i fornitori che lo hanno attivo
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
+  // fatture non ancora partite verso Aruba (errori di rete, credenziali arrivate dopo)
+  try { const inv = await require("./_fattura").inviaInSospeso(); if (inv.length) esiti.push({fatture: inv}); } catch(e){ esiti.push({errore: "fatture: " + String(e.message).slice(0, 200)}); }
   // copia di tutti i dati (si tengono le ultime 7), scaricabile dal pannello
   if (!url.searchParams.get("data")) try { esiti.push({copia: await L.copiaNotturna()}); } catch(e){ esiti.push({errore: "copia dei dati: " + String(e.message).slice(0, 200)}); }
   L.send(res, 200, {ok: true, data: ora, esiti});

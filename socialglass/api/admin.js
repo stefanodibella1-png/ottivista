@@ -1,6 +1,6 @@
 // Pannello amministratore (si apre toccando 7 volte il logo): accessi CAF e ottici, montature, dati di prova, numeri.
 // La password si sceglie al primo accesso e si può cambiare dal pannello; è salvata cifrata.
-const L = require("./_lib");
+const L = require("./_lib"), F = require("./_fattura");
 const S = L.STATI;
 const pulito = (v, n = 120) => String(v == null ? "" : v).trim().slice(0, n);
 const gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
@@ -45,6 +45,7 @@ module.exports = L.wrap(async (req, res) => {
   // registro delle operazioni: le azioni che cambiano qualcosa (con il riferimento dell'oggetto)
   const REG = {blocco: "blocco anagrafica", elimina: "eliminazione", liquidazione: "pagamento a CAF/ottica", stripePartner: "pagamento Stripe a partner", salvaCaf: "dati CAF", salvaOttico: "dati ottica",
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
+    salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
     salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", sollecito: "sollecito inviato", legale: "pratica legale",
     segnalazioneRisolta: "segnalazione risolta"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
@@ -186,7 +187,11 @@ module.exports = L.wrap(async (req, res) => {
         .sort((a, b) => String(b.il).localeCompare(String(a.il))),
       copie: (((await L.DB.meta("copie")) || {}).elenco) || [],
       prova, titolare: tit, pronto: lista, canali: L.canaliCollegati(), canaleSolleciti: (((await L.DB.meta("config")) || {}).canaleSolleciti) || "whatsapp",
-      listini: Object.keys(await L.caricaListini()), convenzioni: L.PREZZI.LISTINI.convenzioni
+      listini: Object.keys(await L.caricaListini()), convenzioni: L.PREZZI.LISTINI.convenzioni,
+      fatturazione: await (async () => { const s = await F.impostazioni();
+        const l = (await L.DB.lista("fatt")).sort((a, b) => String(b.creata).localeCompare(String(a.creata))).slice(0, 60)
+          .map(x => ({id: x.ID || x._id, numero: x.numero, data: x.data, cliente: `${L.nm(x.cliente.nome)} ${L.nm(x.cliente.cognome)}`, univoco: x.univoco, totale: x.totale, stato: x.stato, errore: x.errore || "", file: x.file || ""}));
+        return {impostazioni: s, manca: F.mancaPerEmettere(s), credenziali: F.credenziali(), fatture: l}; })()
     });
   }
   // pagamenti di SocialGlass al CAF o all'ottica (acconti, saldi): entrano nel loro estratto conto
@@ -298,6 +303,30 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true, esito});
   }
   if (az === "legale"){ await L.DB.meta("config", {legale: b.valore ? new Date().toISOString() : ""}); return L.send(res, 200, {ok: true}); }
+  // fatturazione elettronica al cliente (una fattura per ogni incasso), invio tramite Aruba
+  if (az === "salvaFatturazione"){
+    const c = {attiva: b.attiva === "on" || b.attiva === true, regime: b.regime === "RF19" ? "RF19" : "RF01", aliquota: numero(b.aliquota),
+      nome: pulito(b.nome, 60).toUpperCase(), cognome: pulito(b.cognome, 60).toUpperCase(), cf: pulito(b.cf, 16).toUpperCase().replace(/\s/g, ""),
+      indirizzo: pulito(b.indirizzo, 60), cap: pulito(b.cap, 5).replace(/\D/g, ""), comune: pulito(b.comune, 60).toUpperCase(), provincia: pulito(b.provincia, 2).toUpperCase(),
+      invio: b.invio === "aruba" ? "aruba" : "spento", ambiente: b.ambiente === "produzione" ? "produzione" : "demo"};
+    if (c.regime === "RF01" && !(c.aliquota > 0 && c.aliquota <= 22)) return L.send(res, 400, {errore: "Aliquota IVA tra 1 e 22."});
+    if (c.cf && !L.CF.valido(c.cf) && !/^\d{11}$/.test(c.cf)) return L.send(res, 400, {errore: "Codice fiscale del titolare non valido."});
+    if (c.cap && !/^\d{5}$/.test(c.cap)) return L.send(res, 400, {errore: "CAP: 5 cifre."});
+    if (c.provincia && !/^[A-Z]{2}$/.test(c.provincia)) return L.send(res, 400, {errore: "Provincia: sigla di 2 lettere."});
+    if (c.attiva){ const m = F.mancaPerEmettere(Object.assign(await F.impostazioni(), c)); if (m.length) return L.send(res, 400, {errore: "Per attivare la fatturazione mancano: " + m.join(", ") + " (partita IVA nei dati del titolare)."}); }
+    await L.DB.meta("fatturazione", c); return L.send(res, 200, {ok: true});
+  }
+  if (az === "fatturaXml" || az === "provaFattura"){
+    let x;
+    if (az === "provaFattura"){
+      const s = await F.impostazioni(), m = F.mancaPerEmettere(s); if (m.length) return L.send(res, 400, {errore: "Mancano: " + m.join(", ")});
+      const conti = F.calcola([{descrizione: "Noleggio occhiale da vista (dispositivo medico con marcatura CE) - canone di prova", lordo: 9.9}, {descrizione: "Spedizione dell'occhiale da vista", lordo: 9.9}], s);
+      x = F.xml(Object.assign({numero: "PROVA-1", data: L.oraRoma().slice(0, 10), progressivo: "PROVA00001", univoco: "PROVA",
+        cliente: {cf: "RSSMRA80A01C351O", nome: "MARIO", cognome: "ROSSI", indirizzo: "Via Etnea 1", cap: "95124", comune: "CATANIA", provincia: "CT"}}, conti), s);
+    } else { const f = (await L.DB.lista("fatt")).find(y => (y.ID || y._id) === b.id); if (!f) return L.send(res, 404, {errore: "Fattura non trovata."}); x = f.xml; }
+    res.statusCode = 200; res.setHeader("Content-Type", "application/xml; charset=utf-8"); res.setHeader("Cache-Control", "no-store"); return res.end(x);
+  }
+  if (az === "inviaFattura"){ const r = await F.invia(String(b.id || "")); return L.send(res, r.errore ? 502 : 200, r); }
   if (az === "salvaTitolare"){
     const t = {}; for (const k of ["ragione", "piva", "indirizzo", "email", "pec", "telefono"]) t[k] = pulito(b[k], 160);
     if (t.piva && !/^\d{11}$/.test(t.piva.replace(/\D/g, ""))) return L.send(res, 400, {errore: "Partita IVA: 11 cifre."});

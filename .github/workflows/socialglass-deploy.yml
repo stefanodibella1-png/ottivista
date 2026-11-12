@@ -19,6 +19,8 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       # avvisi automatici ai clienti (facoltativi): WhatsApp Business Cloud API oppure SMS (Twilio o webhook)
       WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+      ARUBA_USER: ${{ secrets.ARUBA_USER }}
+      ARUBA_PASSWORD: ${{ secrets.ARUBA_PASSWORD }}
       WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
       WHATSAPP_TEMPLATE: ${{ secrets.WHATSAPP_TEMPLATE }}
       WHATSAPP_TEMPLATE_PRONTO: ${{ secrets.WHATSAPP_TEMPLATE_PRONTO }}
@@ -100,7 +102,7 @@ jobs:
           setenv SITE_URL "$URL"
           [ -z "$AIRTABLE_TOKEN" ] || setenv AIRTABLE_TOKEN "$AIRTABLE_TOKEN"
           [ -z "$FIREBASE_SERVICE_ACCOUNT" ] || setenv FIREBASE_SERVICE_ACCOUNT "$FIREBASE_SERVICE_ACCOUNT"
-          for k in WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_TEMPLATE WHATSAPP_TEMPLATE_PRONTO TWILIO_SID TWILIO_TOKEN TWILIO_FROM SMS_WEBHOOK_URL; do
+          for k in WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_TEMPLATE WHATSAPP_TEMPLATE_PRONTO TWILIO_SID TWILIO_TOKEN TWILIO_FROM SMS_WEBHOOK_URL ARUBA_USER ARUBA_PASSWORD; do
             v=$(printf '%s' "${!k}" | tr -d '[:space:]'); [ -z "$v" ] || { echo "::add-mask::$v"; setenv "$k" "$v"; }
           done
           if [ -n "$STRIPE_SECRET_KEY" ]; then
