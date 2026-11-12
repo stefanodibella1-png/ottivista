@@ -346,6 +346,10 @@ async function clic(e){
       const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `copia-socialglass-${b.dataset.copia || new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove();
     } catch(err){ msg(err.message, "err"); } b.disabled = false; b.textContent = t0; return; }
   if (b.hasAttribute("data-reg-cerca")){ registroAdm = null; regQ = $("regQ").value; disegna(); return; }
+  if (b.dataset.lisElimina){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = `Confermi? Il listino ${b.dataset.lisElimina} sparisce: tocca di nuovo`; return; }
+    const r = await call("eliminaListino", {id: b.dataset.lisElimina}); if (!r.ok){ b.dataset.ok = ""; b.textContent = `Cancella il listino ${b.dataset.lisElimina}`; return msg(r.data.errore || "Errore", "err"); }
+    lisSel = "A"; lisBozza = null; await carica(); return msg(`Listino cancellato.${r.data.spostati ? ` ${r.data.spostati} clienti ora usano il listino della loro ottica.` : ""}`); }
   if (b.dataset.lisVai){ lisSel = b.dataset.lisVai; lisBozza = null; disegna(); return; }
   if (b.hasAttribute("data-lis-nuovo")){ const usati = Object.keys(dati.convenzioni || {}), id = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find(x => !usati.includes(x));
     lisSel = id; lisBozza = JSON.parse(JSON.stringify((dati.convenzioni || {})[usati[0] || "A"] || {montatura: 60, lenti: {}, trattamenti: {}})); lisBozza.nuovo = true; disegna(); return; }
@@ -751,7 +755,8 @@ function vistaListini(){
       <button type="button" class="grigio" data-lis-agg="lenti" style="margin:4px 0 0">+ Aggiungi lente</button>
       <h3>Trattamenti</h3>${Object.entries(c.trattamenti || {}).map(([k, x]) => voce("trattamenti", k, x)).join("") || '<p class="hint">Nessun trattamento.</p>'}
       <button type="button" class="grigio" data-lis-agg="trattamenti" style="margin:4px 0 0">+ Aggiungi trattamento</button>
-      <button type="submit" class="verde full" style="margin-top:14px">Salva listino ${esc(lisSel)}</button></form>
+      <button type="submit" class="verde full" style="margin-top:14px">Salva listino ${esc(lisSel)}</button>
+      ${c.nuovo ? "" : `<button type="button" class="grigio full" data-lis-elimina="${esc(lisSel)}" style="margin-top:6px">Cancella il listino ${esc(lisSel)}</button>`}</form>
     <p class="hint">Le lenti con «progressiv» o «multifocal» nel nome chiedono l'addizione nella ricetta.</p>`;
 }
 /* ---------- registro delle operazioni ---------- */

@@ -396,7 +396,9 @@ function disegnaCruscotto(isOtt, d){
   k = kpi(attivi, "Abbonamenti attivi", 'data-vai="sit:attivi"', "ok") + (e && e.accordo ? kpi(euro(e.saldoAttuale), "Compensi da ricevere", "data-conti") : "");
   const principale = isOtt ? tessera("ordine", "Ordine cliente", "Inserisci lenti, ricetta e preventivo", 'data-open="ordinePopup"', true)
     : tessera("nuovo", "Nuovo cliente", "Registra il cliente e invia il suo link", 'data-open="popupForm" data-reset-form', true);
-  box.innerHTML = testa + `<div class="cru-principale">${principale}</div><div class="cru-kpi due">${k}</div><div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: non hai niente in sospeso.</div>'}</div>
+  // il CAF non ha «Da fare oggi»: quei compiti li segue l'amministratore di SocialGlass
+  const daFare = isOtt ? `<div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: non hai niente in sospeso.</div>'}</div>` : "";
+  box.innerHTML = testa + `<div class="cru-principale">${principale}</div><div class="cru-kpi due">${k}</div><div class="cru-griglia${isOtt ? "" : " solo"}">${daFare}
     <div class="cru-box"><h3>${isOtt ? "Strumenti dell'ottica" : "Strumenti del CAF"}</h3><div class="tessere">${tess}</div></div></div>`;
 }
 // clic nei cruscotti

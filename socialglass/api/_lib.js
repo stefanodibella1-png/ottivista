@@ -719,7 +719,8 @@ async function caricaListini(){
   let c = null; try { c = m && m.json ? JSON.parse(m.json) : null; } catch(_){}
   const conv = PREZZI.LISTINI.convenzioni;
   for (const k of Object.keys(conv)) delete conv[k];
-  Object.assign(conv, JSON.parse(JSON.stringify(LISTINI_BASE)), c || {});
+  // una volta salvati dal pannello valgono solo quelli (così un listino cancellato non ritorna)
+  Object.assign(conv, c && Object.keys(c).length ? c : JSON.parse(JSON.stringify(LISTINI_BASE)));
   return conv;
 }
 async function salvaListini(conv){ await DB.meta("listini", {json: JSON.stringify(conv), il: new Date().toISOString()}); return caricaListini(); }

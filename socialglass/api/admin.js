@@ -92,6 +92,20 @@ module.exports = L.wrap(async (req, res) => {
   }
 
   // listini: prezzi di montatura base, lenti e trattamenti per ogni convenzione; prodotti nuovi o tolti
+  // cancella un listino: non se è l'unico o se un'ottica lo usa; i clienti che lo avevano passano al listino della loro ottica
+  if (az === "eliminaListino"){
+    const conv = await L.caricaListini(), id = pulito(b.id, 4).toUpperCase();
+    if (!conv[id]) return L.send(res, 404, {errore: "Listino non trovato."});
+    if (Object.keys(conv).length < 2) return L.send(res, 409, {errore: "È l'unico listino: creane un altro prima di cancellarlo."});
+    const ott = (await L.DB.lista("ottici")).filter(o => String(o.Listino || "A").toUpperCase() === id).map(o => o.ID || o._id);
+    if (ott.length) return L.send(res, 409, {errore: `Il listino ${id} è usato da ${ott.join(", ")}: nella scheda dell'ottica scegli un altro listino, poi cancellalo.`});
+    let spostati = 0;
+    for (const u of await L.DB.tutti()) if (String(u.f.Listino || "").toUpperCase() === id){
+      const o = await L.DB.ottico(String(u.f.Ottica1 || "").split(" - ")[0]); await L.DB.aggiorna(u, {Listino: (o && o.Listino) || ""}); spostati++; }
+    delete conv[id]; await L.salvaListini(conv);
+    await L.registra("amministratore", "listino cancellato", "listino " + id, spostati ? `${spostati} clienti passati al listino della loro ottica` : "");
+    return L.send(res, 200, {ok: true, spostati});
+  }
   if (az === "salvaListino"){
     const conv = await L.caricaListini(), id = pulito(b.id, 4).toUpperCase();
     if (!/^[A-Z][A-Z0-9]{0,3}$/.test(id)) return L.send(res, 400, {errore: "Nome del listino: una lettera (es. C)."});
