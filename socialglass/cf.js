@@ -26,6 +26,14 @@
   function coerente(cf, nome, cognome, data, sesso){
     return deomo(String(cf).toUpperCase()).slice(0, 11) === prefisso(nome, cognome, data, sesso);
   }
-  const api = {valido, coerente, prefisso, control};
+  // data di nascita (AAAA-MM-GG) e sesso ricavati dal codice fiscale, per compilare i campi
+  function dati(cf){
+    const c = deomo(String(cf).toUpperCase()); if (!valido(c)) return null;
+    const mesi = "ABCDEHLMPRST", m = mesi.indexOf(c[8]) + 1, g = parseInt(c.slice(9, 11), 10), aa = parseInt(c.slice(6, 8), 10);
+    if (!m || isNaN(g) || isNaN(aa)) return null;
+    const oggi = new Date().getFullYear() % 100, anno = (aa > oggi ? 1900 : 2000) + aa, giorno = g > 40 ? g - 40 : g;
+    return {data: `${anno}-${String(m).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`, sesso: g > 40 ? "F" : "M"};
+  }
+  const api = {valido, coerente, prefisso, control, dati};
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.CF = api;
 })(this);

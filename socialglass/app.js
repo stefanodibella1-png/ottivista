@@ -14,7 +14,7 @@ function pulisciStampa(nodo){
   c.querySelectorAll("[style]").forEach(x => { x.style.maxHeight = ""; x.style.overflow = ""; });
   return c.innerHTML;
 }
-function stampaDoc(titolo, corpo){
+function stampaDoc(titolo, corpo, pubblico){
   const w = window.open("", "_blank");
   if (!w){ alertStampa(); return false; }
   const t = (window.SG_INFO && SG_INFO.titolare) || {}, ora = new Date().toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"});
@@ -28,8 +28,8 @@ function stampaDoc(titolo, corpo){
     .conti{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0}.conti div{border:1px solid #ccc;border-radius:5px;padding:3px 6px;font-size:9pt}.conti b{display:block;font-size:11pt}
     .blocco{border:1px solid #c00;padding:4px 8px;border-radius:5px}.hint{color:#555;font-size:9pt}ul{margin:4px 0;padding-left:18px}summary{list-style:none;font-weight:600}
     footer{margin-top:14px;color:#777;font-size:8.5pt;border-top:1px solid #ddd;padding-top:4px}
-  </style></head><body><header><b>SocialGlass</b><small>${esc(t.ragione || "")}${t.ragione ? " · " : ""}stampato il ${ora}</small></header><h1>${esc(titolo)}</h1>${corpo}
-  <footer>Documento riservato: contiene dati personali, da conservare e distruggere secondo il GDPR.</footer>
+  </style></head><body><header><b>SocialGlass</b><small>${esc(t.ragione || "")}${pubblico ? "" : (t.ragione ? " · " : "") + "stampato il " + ora}</small></header><h1>${esc(titolo)}</h1>${corpo}
+  ${pubblico ? "" : "<footer>Documento riservato: contiene dati personali, da conservare e distruggere secondo il GDPR.</footer>"}
   <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
   w.document.close(); return true;
 }
@@ -452,12 +452,15 @@ function apriContatti(){
     : `<p>I contatti dell'amministratore non sono ancora stati inseriti. Rivolgiti a chi ti ha dato l'accesso.</p>`;
   open("contattiPopup");
 }
-function stampaVolantino(){
+async function stampaVolantino(){
   const A = LISTINI.LISTINI.abbonamento, nome = sessionStorage.getItem("sg_nome") || "";
-  stampaDoc("Occhiali nuovi ogni anno, con un piccolo canone mensile", `<p style="font-size:12pt">Con SocialGlass hai montatura e lenti graduate in abbonamento, <b>pagati un mese alla volta</b>, senza interessi.</p>
-    <h2>Come funziona</h2><ol style="font-size:11.5pt;line-height:1.6">${[...document.querySelectorAll("#comePopup ol li")].map(li => `<li>${li.innerHTML}</li>`).join("")}</ol>
-    <h2>Cosa è incluso</h2><ul style="font-size:11.5pt;line-height:1.6">${A.servizi.map(s => `<li>${esc(s)}</li>`).join("")}</ul>
-    <p style="margin-top:14px;font-size:11.5pt">Chiedi qui: <b>${esc(nome)}</b></p>`);
+  // QR verso il sito (chi lo inquadra legge «come funziona»)
+  let qr = ""; try { await caricaQr(); const d = document.createElement("div"); new QRCode(d, {text: location.origin + "/", width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M}); const c = d.querySelector("canvas"); qr = c ? c.toDataURL("image/png") : ""; } catch(_){}
+  stampaDoc("Occhiali nuovi ogni anno, un mese alla volta", `<p style="font-size:15pt;margin:4px 0 10px">Montatura e lenti graduate in abbonamento: <b>paghi un mese alla volta, senza interessi</b>. Controllo della vista incluso.</p>
+    <h2 style="font-size:14pt">Come funziona</h2><ol style="font-size:12.5pt;line-height:1.6">${[...document.querySelectorAll("#comePopup ol li")].map(li => `<li>${li.innerHTML}</li>`).join("")}</ol>
+    <h2 style="font-size:14pt">Cosa è incluso</h2><ul style="font-size:12.5pt;line-height:1.6">${A.servizi.map(s => `<li>${esc(s)}</li>`).join("")}</ul>
+    <div style="display:flex;align-items:center;gap:18px;margin-top:16px;border:2px solid #0069D9;border-radius:10px;padding:12px">${qr ? `<img src="${qr}" alt="" style="width:34mm;height:34mm">` : ""}
+      <div style="font-size:14pt"><b>Chiedi qui: ${esc(nome)}</b><br><span style="font-size:11pt">Ti registriamo in pochi minuti: porta la tessera sanitaria e il cellulare.${qr ? "<br>Oppure inquadra il codice per saperne di più." : ""}</span></div></div>`, true);
 }
 function apriEsposte(){
   const l = (cruDati && cruDati.esposte) || [];
@@ -593,7 +596,8 @@ function boxDona(u){
   return `<label class="dona" for="mpDona"><input type="checkbox" id="mpDona" ${d.si ? "checked" : ""} style="width:22px;height:22px;margin:2px 0 0;box-shadow:none;flex:0 0 auto"><div><b>Dono il mio occhiale</b><br>Quando lo riconsegni, lo doniamo a chi non può permettersi un paio di occhiali.</div></label>`;
 }
 function strumentiCli(u){
-  const anno = u.primaAttivazione && u.consegnatoIl, od = u.ordine || {}, pg = od.pagamento || {}, st = u.stato;
+  // «Il mio anno» ha senso dopo almeno 10 mesi di abbonamento
+  const anno = u.primaAttivazione && u.consegnatoIl && Date.now() - new Date(u.primaAttivazione) > 300 * 864e5, od = u.ordine || {}, pg = od.pagamento || {}, st = u.stato;
   const B = (id, ic, t) => `<button type="button" id="${id}">${svgI(ic)}${t}</button>`;
   const I = {tes: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>', amico: '<path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
     anno: '<path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/>', tel: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
@@ -812,6 +816,8 @@ $("attivaCodiceFiscale").addEventListener("click", async () => {
   if (r.ok && r.data.stato){ esito($("cfEsito"), `Questo cliente è già registrato${r.data.nome ? " (" + r.data.nome + ")" : ""}${r.data.univoco ? ", codice " + r.data.univoco : ""}. Stato: ${r.data.stato.toLowerCase()}. Per un occhiale nuovo usa RINNOVO OCCHIALE.`, "err"); return; }
   esito($("cfEsito"), "", ""); $("attivaCodiceFiscale").hidden = true; $("segnoDiSpunta").hidden = false; $("codiceFiscale").disabled = true;
   campi.forEach(id => $(id).disabled = false); $("inviaLink").disabled = false; $("nome").focus();
+  // data di nascita e sesso si leggono dal codice fiscale (restano modificabili)
+  const dc = CF.dati(cf); if (dc){ if (!$("datanascita").value) $("datanascita").value = dc.data; if (!$("sesso").value) $("sesso").value = dc.sesso; }
 });
 $("formCliente").addEventListener("submit", async e => {
   e.preventDefault();
@@ -1015,6 +1021,7 @@ $("clientiLista").addEventListener("click", async e => {
     return;
   }
   if (b.dataset.rinnovo || b.dataset.rinnovoUv){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi il rinnovo? Il cliente sceglie la nuova montatura: tocca di nuovo"; return; }
     b.disabled = true; const x = await post("api/utenti", b.dataset.rinnovoUv ? {azione: "rinnovo", univoco: b.dataset.rinnovoUv} : {azione: "rinnovo", cf: b.dataset.rinnovo}); if (scaduta(x)) return;
     if (!x.ok){ b.disabled = false; alertBox(x.data.errore); return; }
     await apriClienti(); avvisoCliente(x.data.avviso || {whatsapp: x.data.whatsapp, sms: x.data.smsInviato}, "Rinnovo avviato: il cliente sceglie la nuova montatura e conferma il nuovo canone dal suo link.");
@@ -1151,13 +1158,14 @@ function boxAbbonamento(od){
 }
 function disegnaMio(){
   const u = mio, o = u.ottico, od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato);
-  $("mpTitolo").textContent = u.stato === STATI.REGISTRATO ? `Benvenuto in SocialGlass, ${u.nome}` : `Ciao ${u.nome}`;
+  const rinnovo = (od.storico || 0) > 0;
+  $("mpTitolo").textContent = u.stato === STATI.REGISTRATO && !rinnovo ? `Benvenuto in SocialGlass, ${u.nome}` : rinnovo && [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO].includes(u.stato) ? `Il tuo occhiale nuovo, ${u.nome}` : `Ciao ${u.nome}`;
   // tracciamento: tappe fatte in verde, quella in corso in blu che pulsa
   $("mpTappe").outerHTML = `<div id="mpTappe">${traccia(u)}</div>`;
   let a = "";
   const dove = o ? `<b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}` : "";
   if (u.stato === STATI.REGISTRATO){
-    a = `<div class="scheda">1) Vai dall'ottico:<br>${dove}<br>2) All'ottico mostra il codice <b>${esc(UNIVOCO)}</b>: così trova il tuo ordine<br>3) Scegli la montatura, poi premi <b>«Ho scelto la montatura»</b> e inquadra il quadratino QR sul cartellino della montatura (o scrivi il codice che c'è sotto).</div>
+    a = `${rinnovo ? `<div class="esito info" style="margin-bottom:10px"><b>Cambio occhiale:</b> scegli la nuova montatura in ottica. Fino al ritiro del nuovo continui a usare quello che hai.</div>` : ""}<div class="scheda">1) Vai dall'ottico:<br>${dove}<br>2) All'ottico mostra il codice <b>${esc(UNIVOCO)}</b>: così trova il tuo ordine<br>3) Scegli la montatura, poi premi <b>«Ho scelto la montatura»</b> e inquadra il quadratino QR sul cartellino della montatura (o scrivi il codice che c'è sotto).</div>
       <button type="button" class="verde full" id="mpScan">Ho scelto la montatura</button>`;
   } else if (u.stato === STATI.MONTATURA){
     a = `<div class="esito ok">Montatura scelta: <b>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</b>.</div><p style="margin:0 0 10px">Ora l'ottico inserisce le lenti e la tua ricetta. Questa pagina si aggiorna da sola e ti mandiamo un messaggio: tra poco vedrai il riepilogo con il canone mensile.</p>
@@ -1214,7 +1222,10 @@ function disegnaMio(){
   } else if (u.stato === STATI.PRONTO){
     a = `<div class="esito ok"><b>I tuoi occhiali sono pronti!</b> Passa a ritirarli mostrando il codice <b>${esc(UNIVOCO)}</b>. L'ottico li regola sul tuo viso.</div>${o ? `<div class="scheda">${dove}</div>` : ""}${boxAbbonamento(od)}`;
   } else if (u.stato === STATI.CONSEGNATO){
-    a = `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>${boxAbbonamento(od)}`;
+    const per = od.periodo, fp = od.finePeriodo;
+    a = (per && per.aperto && !per.chiuso && !fp ? `<div class="esito info"><b>${per.scaduto ? "I 12 mesi minimi sono finiti" : `Tra ${per.giorni} giorni finiscono i ${per.mesi} mesi minimi`}</b>: scegli qui sotto se vuoi un occhiale nuovo, tenerlo o restituirlo.</div>`
+      : od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato && od.ritiro.rinnovo ? `<div class="esito info"><b>Ricordati di riconsegnare il vecchio occhiale</b> in ottica: resta dell'ottica e serve per chiudere il cambio.</div>`
+      : `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>`) + boxAbbonamento(od);
   }
   if (u.stato === STATI.CONSEGNATO || u.stato === STATI.PRONTO) a = boxRecensione(u) + a;
   a = boxAppuntamento(u) + a;
@@ -1246,7 +1257,7 @@ function disegnaMio(){
   const pc = $("mpPaga"); if (pc) pc.onclick = attivaRate;
   const cc = $("mpCond"); if (cc) cc.onclick = mostraCondizioni;
   $("mpAzione").querySelectorAll("[data-fine]").forEach(b => b.onclick = async () => {
-    const T = {rinnova: "Alla scadenza vuoi un occhiale nuovo? Il tuo ottico ti contatta per sceglierlo e l'abbonamento continua con il nuovo canone.",
+    const T = {rinnova: "Vuoi un occhiale nuovo? Passa dal tuo ottico (puoi prenotare da questa pagina): scegli la montatura e l'abbonamento continua con il nuovo canone. Il vecchio lo riconsegni quando ritiri il nuovo.",
       riscatta: `Vuoi tenere l'occhiale? Alla scadenza paghi ${euro((mio.ordine.prezzi || {}).riscatto)} una volta e l'abbonamento si chiude.`,
       restituisci: "Vuoi restituire l'occhiale? Alla scadenza lo riporti in ottica entro 15 giorni e l'abbonamento si chiude a fine mese."};
     const box = $("fineConferma");
@@ -1365,8 +1376,8 @@ async function verificaQR(raw){
   const t = $("qr-text"), b = $("qr-btn");
   if (r.ok && r.data.disponibile){
     const m = r.data;
-    t.innerHTML = `<b>MONTATURA DISPONIBILE</b><br>Modello: ${esc(m.modello)}<br>Colore: ${esc(m.colore)}<br>Calibro: ${esc(m.calibro)}<br>Asse: ${esc(m.asse)}`;
-    b.hidden = !UNIVOCO; b.textContent = "CONTINUA";
+    t.innerHTML = `<b>MONTATURA DISPONIBILE</b><br>Modello: ${esc(m.modello)}<br>Colore: ${esc(m.colore)}<br>Calibro: ${esc(m.calibro)}${m.asse ? `<br>Asta: ${esc(m.asse)}` : ""}`;
+    b.hidden = !UNIVOCO; b.textContent = "Scelgo questa montatura";
     b.onclick = async () => {
       b.disabled = true; const s = await post("api/montatura", {univoco: UNIVOCO, codice: m.codice}); b.disabled = false;
       if (!s.ok){ t.textContent = s.data.errore || "Si è verificato un errore. Riprova."; b.hidden = true; return; }

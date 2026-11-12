@@ -5,7 +5,7 @@ async function sendSms(to, text){
   try { const r = await fetch(L.CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to, text})}); return r.ok; }
   catch(e){ return false; }
 }
-function messaggio(nome, ottica, link){ return `SocialGlass: ciao ${nome}, ecco il tuo link personale per scegliere i nuovi occhiali da ${ottica}: ${link}`; }
+function messaggio(nome, ottica, link){ return `SocialGlass: ciao ${L.nm(nome)}, ecco il tuo link personale per scegliere i nuovi occhiali da ${ottica}. Aprilo e mostra all'ottico il tuo codice: ${link}`; }
 function wa(numero, testo){ return `https://wa.me/${String(numero).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`; }
 module.exports = L.wrap(async (req, res) => {
   const url = new URL(req.url, "http://x");

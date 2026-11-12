@@ -89,7 +89,9 @@ module.exports = L.wrap(async (req, res) => {
   if (b.azione === "ritirato"){
     if (!ord.ritiro || !ord.ritiro.daRitirare) return L.send(res, 409, {errore: "Non c'è un occhiale da ritirare."});
     const ora = new Date().toISOString();
-    ord.ritiro.ritirato = ora; ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; ord.aggiornato = ora;
+    // occhiale vecchio di un rinnovo: l'abbonamento continua, non si chiude niente
+    ord.ritiro.ritirato = ora; ord.aggiornato = ora;
+    if (!ord.ritiro.rinnovo){ ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; }
     if (ord.dona && ord.dona.si && !ord.dona.donato) ord.dona.daDonare = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.si)});
@@ -99,6 +101,8 @@ module.exports = L.wrap(async (req, res) => {
     if (b.azione === "consegnato" && L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});
     ord.aggiornato = new Date().toISOString(); ord[b.azione === "pronto" ? "prontoIl" : "consegnatoIl"] = ord.aggiornato;
+    if (b.azione === "consegnato" && (ord.storico || []).length && !(ord.ritiro && ord.ritiro.daRitirare && !ord.ritiro.ritirato))
+      ord.ritiro = {daRitirare: true, dal: ord.aggiornato, rinnovo: true, montatura: ((ord.storico[ord.storico.length - 1] || {}).montatura) || null};
     await L.DB.aggiorna(u, {Stato: b.azione === "pronto" ? L.STATI.PRONTO : L.STATI.CONSEGNATO, Ordine: JSON.stringify(ord)});
     const link = L.linkCliente(u.f.Univoco, s.id);
     const av = b.azione === "pronto" ? await L.avvisaPronto(u) : null;

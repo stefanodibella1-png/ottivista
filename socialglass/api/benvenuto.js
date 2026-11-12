@@ -105,7 +105,7 @@ module.exports = L.wrap(async (req, res) => {
     dona: ord.dona ? {si: !!ord.dona.si, donato: ord.dona.donato || "", daDonare: ord.dona.daDonare || ""} : null,
     amici: (ord.amici || []).map(x => ({nome: L.nm(x.nome), il: x.il, stato: x.stato})), linkAmico: `${SITO()}/?amico=${u.f.Univoco}`,
     primaAttivazione: ((ord.storico || [])[0] || {}).inizio || (ord.pagamento && ord.pagamento.attivatoIl) || "", creato: u.f.Creato || "",
-    appuntamento: ord.appuntamento && ord.appuntamento.il >= L.oraRoma().slice(0, 10) ? Object.assign({descrizione: L.TIPI_APP[ord.appuntamento.tipo] || ""}, ord.appuntamento) : null,
+    appuntamento: ord.appuntamento && ord.appuntamento.il >= L.oraRoma().slice(0, 10) && !(ord.appuntamento.tipo === "scelta" && ord.montatura) ? Object.assign({descrizione: L.TIPI_APP[ord.appuntamento.tipo] || ""}, ord.appuntamento) : null,
     segnalazioni: (ord.segnalazioni || []).slice(-5).reverse(), haCarta: !!(ord.pagamento && ord.pagamento.cliente && !ord.pagamento.chiuso),
     contratto: ord.pagamento && ord.pagamento.attivatoIl ? {attivatoIl: ord.pagamento.attivatoIl, consensi: ord.consensi || null, caf: u.f.CAF || ""} : null};
   L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",

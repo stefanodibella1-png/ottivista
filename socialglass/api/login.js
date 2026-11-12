@@ -35,17 +35,19 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true, codice: c});
   }
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0] || "ip";
-  if (L.tooMany(`login:${ip}`)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
+  // contano solo gli accessi sbagliati: chi entra correttamente non viene mai bloccato
+  if (L.giaTroppi(`login:${ip}`, 8)) return L.send(res, 429, {errore: "Troppi tentativi sbagliati. Riprova tra 10 minuti."});
+  const sbagliato = (msg) => { L.tooMany(`login:${ip}`); return L.send(res, 401, {errore: msg}); };
   // laboratorio: un solo accesso, password impostata dall'amministratore
   if (ruolo === "lab"){
     const l = (await L.DB.meta("laboratorio")) || {};
-    if (!password || !l.attivo || !l.password || !L.checkPw(l.password, password)) return L.send(res, 401, {errore: "Password non valida."});
+    if (!password || !l.attivo || !l.password || !L.checkPw(l.password, password)) return sbagliato("Password non valida.");
     return L.send(res, 200, {token: L.sign({ruolo: "lab", id: L.LAB}), nome: l.nome || "Laboratorio", id: L.LAB});
   }
   if (!["caf", "ottico"].includes(ruolo) || !codice || !password) return L.send(res, 400, {errore: "Inserisci codice e password."});
   const id = String(codice).trim().toUpperCase();
   const rec = await L.DB.login(ruolo, id);
-  if (!rec || !L.checkPw(rec.Password, password)) return L.send(res, 401, {errore: "Codice o password non valida."});
+  if (!rec || !L.checkPw(rec.Password, password)) return sbagliato("Codice o password non valida.");
   let nome = rec.Nome || id, listino = "";
   if (ruolo === "ottico"){ const o = await L.DB.ottico(id); if (o){ nome = o.Intestatario || nome; listino = o.Listino || ""; } }
   L.send(res, 200, {token: L.sign({ruolo, id, listino}), nome, id, listino});
