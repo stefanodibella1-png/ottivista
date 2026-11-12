@@ -56,9 +56,9 @@ function ricettaHtml(r){
 // accordo economico con il CAF o l'ottica e riepilogo dei conti
 function campiCompenso(pfx){
   return `<fieldset style="border:1px solid #e3e6ea;border-radius:8px;padding:6px 10px;margin:8px 0"><legend style="font-size:13px;color:#555;padding:0 4px">Accordo economico con SocialGlass</legend>
-    <label class="lbl" for="${pfx}CT">Compenso</label><select id="${pfx}CT" name="CompensoTipo"><option value="">Non ancora definito</option><option value="fisso">€ per ogni abbonamento attivato</option><option value="percentuale">% sui canoni incassati</option></select>
+    <label class="lbl" for="${pfx}CT">Compenso</label><select id="${pfx}CT" name="CompensoTipo"><option value="">Di base (ottica: una rata + spedizione · CAF: 3 €)</option><option value="rata">Una rata + spedizione del cliente, per ogni abbonamento attivato</option><option value="fisso">€ per ogni abbonamento attivato</option><option value="percentuale">% sui canoni incassati</option></select>
     <label class="lbl" for="${pfx}CV">Valore (€ o %)</label><input id="${pfx}CV" name="CompensoValore" inputmode="decimal">
-    <p class="hint" style="margin:4px 0;font-size:12.5px">I pagamenti al partner (acconti e saldi) si registrano nella sezione <b>Conteggi</b>.</p></fieldset>`;
+    <p class="hint" style="margin:4px 0;font-size:12.5px">Importi IVA compresa. Se non scegli niente valgono quelli di base: ottica una rata + spedizione, CAF 3 € per abbonamento attivato. I pagamenti al partner (acconti e saldi) si registrano nella sezione <b>Conteggi</b>.</p></fieldset>`;
 }
 let perAdm = {p: "", da: "", a: ""};
 // riga breve nelle schede CAF/Ottici: il dettaglio è nella sezione Conteggi
@@ -189,7 +189,7 @@ function disegna(){
     const daLiq = partner.filter(x => x.estratto && x.estratto.saldoAttuale > 0), totLiq = daLiq.reduce((t, x) => t + x.estratto.saldoAttuale, 0);
     const bozze = ord.filter(o => o.Stato === "BOZZA").length, inviati = ord.filter(o => o.Stato === "INVIATO").length;
     const daRiord = (d.fornitori || []).filter(f => f.proposta.length && !ord.some(o => o.Fornitore === f.ID && o.Stato === "BOZZA")).length;
-    const senza = partner.filter(x => !x.CompensoTipo).length, mancano = d.pronto.filter(([, ok]) => !ok).length;
+    const senza = partner.filter(x => !x.CompensoTipo && !x.CompensoBase).length, mancano = d.pronto.filter(([, ok]) => !ok).length;
     const fare = [], f = (num, t, sotto, tab, urg) => { if (num) fare.push(`<button type="button" data-tab="${tab}"${urg ? ' class="urg"' : ""}><span class="n">${num}</span><span>${t}<small>${sotto}</small></span><span class="va">Apri ›</span></button>`); };
     f(n.morosi, "Clienti con il canone non pagato", "Sollecita: testo e contatti già pronti", "solleciti", true);
     f(n.sottoScorta, "Montature sotto scorta o esaurite", "Controlla il magazzino e riordina", "magazzino", true);

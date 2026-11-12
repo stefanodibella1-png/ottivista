@@ -358,7 +358,7 @@ async function portaleStripe(){
 /* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
 async function rinnova(u, {otticoId, caf} = {}){
   const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
-  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
+  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
   // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
   const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl}
@@ -418,6 +418,15 @@ const STATI = {
   PRONTO: "PRONTO PER IL RITIRO",
   CONSEGNATO: "CONSEGNATO"
 };
+// lenti su misura: dopo l'inizio della lavorazione l'annullamento (recesso) non è più possibile
+function inLavorazione(o, stato){
+  const lab = o && o.lab;
+  return !!(lab && (lab.iniziato || lab.ritirata || lab.stato === "IN LAVORAZIONE" || lab.stato === "PRONTO")) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
+}
+function annullabile(o, stato){
+  const pg = (o && o.pagamento) || {};
+  return !!(pg.attivatoIl && !pg.chiuso && !pg.rinnovato && Date.now() - new Date(pg.attivatoIl) <= 14*864e5 && !inLavorazione(o, stato));
+}
 function linkCliente(uv, ottica, caf, listino){
   return `${CFG.site}/?Univoco=${encodeURIComponent(uv)}&espositore=${encodeURIComponent(ottica || "")}&promotore=${encodeURIComponent(caf || "")}&listino=${encodeURIComponent(listino || "")}`;
 }
@@ -633,27 +642,35 @@ function liquidazioniDi(acc){
   return l;
 }
 // storico degli accordi: ogni accordo vale dal giorno in cui è stato impostato, quelli vecchi restano per i movimenti precedenti
-function accordiDi(acc){
+// compenso di base quando l'amministratore non ha impostato un accordo (importi IVA compresa):
+// ottica = una rata + la spedizione del cliente per ogni abbonamento attivato; CAF = 3 € per ogni abbonamento attivato
+const COMPENSO_BASE = {ottica: {tipo: "rata", valore: 0}, caf: {tipo: "fisso", valore: 3}};
+function accordiDi(acc, ruolo){
   let l = Array.isArray(acc && acc.Accordi) ? acc.Accordi.slice() : [];
   const c = (acc && acc.Compenso) || {};
   if (!l.length && c.tipo) l = [{dal: "2000-01-01", tipo: c.tipo, valore: Number(c.valore) || 0}];
+  if (!l.length && COMPENSO_BASE[ruolo]) l = [Object.assign({dal: "2000-01-01", base: true}, COMPENSO_BASE[ruolo])];
   return l.sort((x, y) => String(x.dal).localeCompare(String(y.dal)));
 }
-function accordoAl(l, d){ const g = String(d || "").slice(0, 10); let r = null; for (const x of l) if (String(x.dal) <= g) r = x; return r && r.tipo && Number(r.valore) ? r : null; }
-function righeCompenso(utenti, acc){
-  const l = accordiDi(acc), out = []; if (!l.length) return out;
+function accordoAl(l, d){ const g = String(d || "").slice(0, 10); let r = null; for (const x of l) if (String(x.dal) <= g) r = x; return r && r.tipo && (Number(r.valore) || r.tipo === "rata") ? r : null; }
+function righeCompenso(utenti, acc, ruolo){
+  const l = accordiDi(acc, ruolo), out = []; if (!l.length) return out;
   const pc = v => String(v).replace(".", ",");
   for (const f of utenti){
     const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, base = {univoco: f.Univoco, cliente: `${nm(f.Nome)} ${nm(f.Cognome)}`.trim()};
-    const attivazioni = (o.storico || []).filter(st => st.inizio).map(st => ({il: st.inizio, prec: true})).concat(pg.attivatoIl && pg.stato !== "SIMULATO" ? [{il: pg.attivatoIl}] : []);
-    for (const x of attivazioni){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${x.prec ? " (periodo precedente)" : ""} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base)); }
+    const pr = o.prezzi || {};
+    const attivazioni = (o.storico || []).filter(st => st.inizio).map(st => ({il: st.inizio, prec: true, rata: Number(st.rata) || 0, sped: st.spedizione != null ? Number(st.spedizione) || 0 : Number(pr.spedizione) || 0}))
+      .concat(pg.attivatoIl && pg.stato !== "SIMULATO" ? [{il: pg.attivatoIl, rata: Number(pr.rata) || 0, sped: Number(pr.spedizione) || 0}] : []);
+    for (const x of attivazioni){ const ac = accordoAl(l, x.il), dopo = x.prec ? " (periodo precedente)" : "";
+      if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${dopo} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base));
+      if (ac && ac.tipo === "rata") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${dopo} · una rata ${e2(x.rata)} + spedizione ${e2(x.sped)}`, importo: Math.round((x.rata + x.sped) * 100) / 100}, base)); }
     for (const x of incassi(o)) if (x.canone > 0){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "percentuale") out.push(Object.assign({il: x.il, descrizione: `Canone pagato ${e2(x.canone)} × ${pc(ac.valore)}%`, importo: Math.round(x.canone * ac.valore) / 100, stima: !!x.stima}, base)); }
   }
   return out;
 }
-function estratto(utenti, acc, da, a){
+function estratto(utenti, acc, da, a, ruolo){
   const g = d => String(d || "").slice(0, 10), r2 = x => Math.round(x * 100) / 100, c = (acc && acc.Compenso) || {};
-  const tutte = righeCompenso(utenti, acc).map(x => Object.assign({tipo: "compenso"}, x))
+  const tutte = righeCompenso(utenti, acc, ruolo).map(x => Object.assign({tipo: "compenso"}, x))
     .concat(liquidazioniDi(acc).map(x => ({tipo: "pagamento", id: x.id, il: x.il, descrizione: [x.causale || "pagamento", x.metodo, x.nota].filter(Boolean).join(" · "), importo: Number(x.importo) || 0})))
     .sort((x, y) => g(x.il).localeCompare(g(y.il)) || (x.tipo === "pagamento") - (y.tipo === "pagamento"));
   let saldoIniziale = 0, maturato = 0, pagato = 0, maturatoTot = 0, pagatoTot = 0, stima = false; const righe = [];
@@ -667,8 +684,8 @@ function estratto(utenti, acc, da, a){
     righe.push(Object.assign({}, x, {importo: r2(x.importo)}));
   }
   let prog = saldoIniziale; righe.forEach(x => { prog += (x.tipo === "compenso" ? 1 : -1) * x.importo; x.saldo = r2(prog); });
-  const storia = accordiDi(acc), att = storia[storia.length - 1];
-  return {accordo: att && att.tipo ? {tipo: att.tipo, valore: Number(att.valore) || 0, dal: att.dal} : null, accordi: storia, periodo: {da: da || "", a: a || ""}, righe, stima,
+  const storia = accordiDi(acc, ruolo), att = storia[storia.length - 1];
+  return {accordo: att && att.tipo ? {tipo: att.tipo, valore: Number(att.valore) || 0, dal: att.dal, base: !!att.base} : null, accordi: storia, periodo: {da: da || "", a: a || ""}, righe, stima,
     saldoIniziale: r2(saldoIniziale), maturato: r2(maturato), pagato: r2(pagato), saldoFinale: r2(saldoIniziale + maturato - pagato),
     maturatoTot: r2(maturatoTot), pagatoTot: r2(pagatoTot), saldoAttuale: r2(maturatoTot - pagatoTot)};
 }
@@ -695,7 +712,7 @@ function previsione(utenti, cafs, ottici, ora){
 }
 // Conteggi con CAF e ottiche, filtrabili per periodo (da/a = AAAA-MM-GG, inclusi).
 // Compenso secondo l'accordo: fisso per abbonamento attivato nel periodo, oppure percentuale sui canoni incassati nel periodo.
-function conteggi(utenti, acc, da, a){
+function conteggi(utenti, acc, da, a, ruolo){
   const dentro = d => d && (!da || String(d).slice(0, 10) >= da) && (!a || String(d).slice(0, 10) <= a);
   const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, r2 = x => Math.round(x * 100) / 100;
   let clienti = 0, attivati = 0, attivi = 0, consegnati = 0, canoni = 0, spedizioni = 0, riscatti = 0, stima = false, attTot = 0, canTot = 0;
@@ -707,11 +724,11 @@ function conteggi(utenti, acc, da, a){
     if (o.consegnatoIl ? dentro(o.consegnatoIl) : (!da && !a && f.Stato === STATI.CONSEGNATO)) consegnati++;
     for (const x of incassi(o)){ canTot += x.canone || 0; if (!dentro(x.il)) continue; canoni += x.canone || 0; spedizioni += x.spedizione || 0; riscatti += x.riscatto || 0; if (x.stima) stima = true; }
   }
-  const comp = (n, can) => c.tipo === "fisso" ? v * n : c.tipo === "percentuale" ? can * v / 100 : 0;
-  const maturatoTot = comp(attTot, canTot), liquidato = Number(c.liquidato) || 0;
+  const righe = righeCompenso(utenti, acc, ruolo), st = accordiDi(acc, ruolo), ult = st[st.length - 1];
+  const maturatoTot = righe.reduce((t, x) => t + x.importo, 0), liquidato = liquidazioniDi(acc).reduce((t, x) => t + (Number(x.importo) || 0), 0);
   return {periodo: {da: da || "", a: a || ""}, clienti, attivati, attivi, consegnati, canoni: r2(canoni), spedizioni: r2(spedizioni), riscatti: r2(riscatti),
-    incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
-    maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
+    incassati: r2(canoni + spedizioni + riscatti), stima, accordo: ult && ult.tipo ? {tipo: ult.tipo, valore: Number(ult.valore) || 0, base: !!ult.base} : null,
+    maturato: r2(righe.filter(x => dentro(x.il)).reduce((t, x) => t + x.importo, 0)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
 
 /* ---------- listini modificabili dall'amministratore (sostituiscono quelli di listini.js) ---------- */
@@ -785,4 +802,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

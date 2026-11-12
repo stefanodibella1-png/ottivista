@@ -53,7 +53,7 @@ function campiPeriodo(pfx, st){
 const testoPeriodo = k => k && k.periodo && (k.periodo.da || k.periodo.a) ? `dal ${k.periodo.da ? new Date(k.periodo.da).toLocaleDateString("it-IT") : "inizio"} al ${k.periodo.a ? new Date(k.periodo.a).toLocaleDateString("it-IT") : "oggi"}` : "da sempre";
 // estratto conto del CAF o dell'ottica verso SocialGlass: compensi secondo l'accordo e pagamenti ricevuti
 const dataIt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
-function testoAccordo(acc){ return acc ? (acc.tipo === "fisso" ? `${euro(acc.valore)} per ogni abbonamento attivato` : `${String(acc.valore).replace(".", ",")}% su ogni canone pagato dai clienti`) : ""; }
+function testoAccordo(acc){ return acc ? (acc.tipo === "fisso" ? `${euro(acc.valore)} per ogni abbonamento attivato` : acc.tipo === "rata" ? "una rata + la spedizione del cliente per ogni abbonamento attivato" : `${String(acc.valore).replace(".", ",")}% su ogni canone pagato dai clienti`) + " (IVA compresa)" : ""; }
 function estrattoCorpo(e, conCliente){
   if (!e.accordo && !e.righe.length) return `<p class="hint">L'accordo economico con SocialGlass non è ancora stato impostato: chiedi all'amministratore.</p>`;
   return `<div class="conti"><div>Saldo a inizio periodo<b>${euro(e.saldoIniziale)}</b></div><div>Compensi maturati<b>${euro(e.maturato)}</b></div><div>Pagamenti ricevuti<b>${euro(e.pagato)}</b></div><div>Saldo a fine periodo<b>${euro(e.saldoFinale)}</b></div></div>
@@ -718,7 +718,7 @@ async function apriContratto(){
   const righe = [["Cliente", `${u.nome} ${u.cognome || ""}`.trim()], ["Codice cliente", UNIVOCO], ["Ottica", u.ottico ? `${u.ottico.nome}, ${u.ottico.indirizzo}${u.ottico.citta}` : ""],
     ["Occhiale", od.montatura ? `${od.montatura.modello} ${od.montatura.colore} con lenti ${od.lenti ? od.lenti.nome : ""}` : ""], ["Valore dell'occhiale", euro(p.totale)],
     ["Canone mensile", euro(p.rata)], ["Durata minima", `${p.mesi || 12} mesi`], ["Abbonamento attivato il", quando(c.attivatoIl)],
-    ["Condizioni accettate", c.consensi ? quando(c.consensi.contratto) : "all'attivazione (obbligatorie per attivare)"], ["Addebito automatico autorizzato", c.consensi ? quando(c.consensi.addebito) : "all'attivazione (obbligatorio per attivare)"]];
+    ["Condizioni accettate", c.consensi ? quando(c.consensi.contratto) : "all'attivazione (obbligatorie per attivare)"], ["Addebito automatico autorizzato", c.consensi ? quando(c.consensi.addebito) : "all'attivazione (obbligatorio per attivare)"], ["Lenti su misura: annullamento solo prima della lavorazione", c.consensi && c.consensi.suMisura ? quando(c.consensi.suMisura) : (c.consensi ? "non richiesto (attivato prima del 12/11/2026)" : "all'attivazione (obbligatorio per attivare)")]];
   apriExtra("Il mio contratto", `<div class="scheda">${righe.map(([k, v]) => `<div class="r-c"><span>${esc(k)}</span><b>${esc(v || "—")}</b></div>`).join("")}</div>
     <button type="button" class="verde full" id="ctPdf">Scarica il PDF</button><p class="hint">Il PDF contiene questi dati e le condizioni complete dell'abbonamento.</p>`);
   $("ctPdf").onclick = async () => {
@@ -1003,11 +1003,11 @@ function disegnaClienti(){
         + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
         + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
         + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
-        + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Recesso (14 giorni)</button>` : "")
+        + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "")
         + linkBtn(c)
       : rinnovoBtn(c, `data-rinnovo="${esc(c.cf)}"`) + linkBtn(c);
     // ritiro e recesso restano possibili anche con l'anagrafica bloccata
-    const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Recesso (14 giorni)</button>` : "") : "";
+    const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "") : "";
     return `<details class="cli" data-u="${esc(c.univoco)}" ${aperti.has(c.univoco) ? "open" : ""}><summary><div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>
         <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}</div></div></summary>
       <div class="corpo">
@@ -1172,7 +1172,7 @@ function regoleFine(p, per){
   const sc = per ? `il ${dt(per.scadenza)}` : `dopo ${p.mesi || 12} mesi`;
   return `<ul class="regole">
     <li><b>Occhiale nuovo:</b> vai dal tuo ottico (o da un altro ottico SocialGlass), scegli la nuova montatura e confermi il nuovo canone. L'abbonamento continua senza interruzioni; quando ritiri il nuovo riconsegni il vecchio.</li>
-    <li><b>Lo tengo:</b> paghi una volta ${p.riscatto ? euro(p.riscatto) : "il riscatto"}, l'abbonamento si chiude e l'occhiale diventa tuo.</li>
+    <li><b>Lo compro usato:</b> se vuoi, compri l'occhiale usato pagando una volta ${p.riscatto ? euro(p.riscatto) : "il prezzo dell'usato"}: il noleggio si chiude e l'occhiale diventa tuo. Non è un obbligo e non è compreso nei canoni.</li>
     <li><b>Lo restituisco:</b> riporti l'occhiale in ottica entro 15 giorni; l'abbonamento si chiude a fine mese, senza altri costi.</li>
     <li><b>Se non scegli niente:</b> ${sc} l'abbonamento continua mese per mese allo stesso canone, con lo stesso occhiale, e puoi disdire quando vuoi.</li></ul>`;
 }
@@ -1183,7 +1183,7 @@ function testoEsito(pg, od){
   if (/RISCATTAT/.test(e)) return `<b>L'occhiale ora è tuo.</b> L'abbonamento è chiuso${pg.chiuso ? ` dal ${dt(pg.chiuso)}` : ""}: niente più canoni. Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`;
   if (/RESTITUITO/.test(e)) return `<b>Occhiale restituito, grazie.</b> L'abbonamento è chiuso${pg.chiuso ? ` dal ${dt(pg.chiuso)}` : " a fine mese"}, senza altri costi.`;
   if (/DISDETTO|RESTITUZIONE/.test(e)) return `<b>Hai scelto di restituire l'occhiale.</b> Riportalo in ottica${quando}: l'abbonamento si chiude a fine mese, senza altri costi.`;
-  if (/MANCATO PAGAMENTO/.test(e)) return `<b>L'abbonamento è stato chiuso</b> perché un canone non è stato pagato per oltre 30 giorni.${rit ? ` Riporta l'occhiale in ottica${quando}, oppure chiedi all'ottico di riscattarlo.` : ""}`;
+  if (/MANCATO PAGAMENTO/.test(e)) return `<b>L'abbonamento è stato chiuso</b> perché un canone non è stato pagato per oltre 30 giorni.${rit ? ` Riporta l'occhiale in ottica${quando}, oppure chiedi all'ottico di comprarlo usato.` : ""}`;
   if (/RECESSO/.test(e)) return `<b>Hai esercitato il recesso:</b> l'abbonamento è chiuso e non ci saranno altri addebiti. Il rimborso arriva sul metodo di pagamento usato.${rit ? ` Riporta l'occhiale in ottica${quando}.` : ""}`;
   return `<b>Abbonamento chiuso</b>${pg.chiuso ? ` dal ${dt(pg.chiuso)}` : ""}.${rit ? ` Riporta l'occhiale in ottica${quando}.` : ""}`;
 }
@@ -1198,7 +1198,7 @@ function boxAbbonamento(od){
   const aperte = per.aperto || per.scaduto || !!fp;
   const bottoni = fp && fp.eseguita ? "" : `<div class="scelte" style="margin-top:8px">
         <button type="button" class="${fp && fp.scelta === "rinnova" ? "verde" : "grigio"} full" data-fine="rinnova">Occhiale nuovo</button>
-        <button type="button" class="${fp && fp.scelta === "riscatta" ? "verde" : "grigio"} full" data-fine="riscatta">Lo tengo${p.riscatto ? ` (${euro(p.riscatto)})` : ""}</button>
+        <button type="button" class="${fp && fp.scelta === "riscatta" ? "verde" : "grigio"} full" data-fine="riscatta">Lo compro usato${p.riscatto ? ` (${euro(p.riscatto)})` : ""}</button>
         <button type="button" class="${fp && fp.scelta === "restituisci" ? "verde" : "grigio"} full" data-fine="restituisci">Lo restituisco e chiudo</button></div><div id="fineConferma"></div>`;
   return `<div class="scheda"><b>Il tuo abbonamento</b>
       <div class="date"><span>Inizio <b>${dt(per.inizio)}</b></span><span>Durata minima fino al <b>${dt(per.scadenza)}</b></span><span>Canone <b>${euro(p.rata)}/mese</b></span></div>
@@ -1230,7 +1230,7 @@ function disegnaMio(){
     a = `<div class="rata">Il tuo occhiale nuovo<b>${euro(p.rata)}/mese</b>l'abbonamento continua · nessun nuovo contratto</div>
       <div class="riepilogo">
         <div class="r"><span>Montatura ${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</span><span>${euro(p.montatura)}</span></div>
-        <div class="r"><span>Lenti ${esc(od.lenti.nome)}</span><span>${euro(od.lenti.prezzo)}</span></div>
+        ${od.lenti ? `<div class="r"><span>Lenti ${esc(od.lenti.nome)}</span><span>${euro(od.lenti.prezzo)}</span></div>` : ""}
         ${(od.trattamenti || []).map(t => `<div class="r"><span>${esc(t.nome)}</span><span>${euro(t.prezzo)}</span></div>`).join("")}
         <div class="r tot"><span>Valore dell'occhiale</span><span>${euro(p.totale)}</span></div>
         <div class="r"><span>Nuovo canone dal prossimo addebito</span><span>${euro(p.rata)}</span></div>
@@ -1239,9 +1239,10 @@ function disegnaMio(){
       <div class="scheda"><b>Cosa succede adesso</b><ol class="passi-ora">
         <li>Confermi qui: non serve inserire di nuovo carta o IBAN.</li>
         <li>Dal prossimo mese paghi il nuovo canone; riparte la durata minima di ${p.mesi} mesi.</li>
-        <li>L'ottico prepara il nuovo occhiale e ti avvisiamo quando è pronto. Quando ritiri il nuovo, riconsegni quello vecchio (resta dell'ottica).</li></ol></div>
+        <li>L'ottico prepara il nuovo occhiale e ti avvisiamo quando è pronto. Quando ritiri il nuovo, riconsegni quello vecchio (resta di SocialGlass).</li></ol></div>
       <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni dell'abbonamento</button>: nuovo canone ${euro(p.rata)} al mese, durata minima ${p.mesi} mesi da oggi.</span></label>
       <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Confermo l'addebito mensile sul metodo di pagamento già registrato.</span></label>
+      <label class="consenso" for="c3"><input type="checkbox" id="c3"><span>So che le lenti sono fatte su misura per me: posso annullare solo finché il laboratorio non inizia la lavorazione.</span></label>
       <div class="esito err" id="mpErr" hidden></div>
       <button type="button" class="verde full" id="mpPaga" data-rinnovo="1">Conferma l'occhiale nuovo</button>`;
   } else if (u.stato === STATI.PAGAMENTO){
@@ -1250,13 +1251,13 @@ function disegnaMio(){
       <div class="scheda"><b>Cosa è incluso</b><ul class="servizi">${LISTINI.LISTINI.abbonamento.servizi.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
       <div class="riepilogo">
         <div class="r"><span>Montatura ${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</span><span>${euro(p.montatura)}</span></div>
-        <div class="r"><span>Lenti ${esc(od.lenti.nome)}</span><span>${euro(od.lenti.prezzo)}</span></div>
+        ${od.lenti ? `<div class="r"><span>Lenti ${esc(od.lenti.nome)}</span><span>${euro(od.lenti.prezzo)}</span></div>` : ""}
         ${(od.trattamenti || []).map(t => `<div class="r"><span>${esc(t.nome)}</span><span>${euro(t.prezzo)}</span></div>`).join("")}
         <div class="r tot"><span>Valore dell'occhiale</span><span>${euro(p.totale)}</span></div>
         <div class="r"><span>Oggi paghi: primo mese + spedizione</span><span>${euro(p.rata + p.spedizione)}</span></div>
         <div class="r"><span>Poi ogni mese, il giorno ${new Date().getDate()}</span><span>${euro(p.rata)}</span></div>
         <div class="r"><span>Impegno minimo: ${p.mesi} canoni + spedizione</span><span>${euro(p.rata * p.mesi + p.spedizione)}</span></div>
-        ${p.riscatto ? `<div class="r"><span>Dopo ${p.mesi} mesi, se vuoi tenerlo</span><span>${euro(p.riscatto)}</span></div>` : ""}
+        ${p.riscatto ? `<div class="r"><span>Dopo ${p.mesi} mesi, se vuoi comprarlo usato</span><span>${euro(p.riscatto)}</span></div>` : ""}
       </div>
       <div class="scheda"><b>Cosa succede adesso</b><ol class="passi-ora">
         <li>Premi il pulsante: si apre la pagina sicura di pagamento (Stripe).</li>
@@ -1264,8 +1265,9 @@ function disegnaMio(){
         <li>L'ottico riceve la conferma e prepara gli occhiali. Ti avvisiamo quando sono pronti.</li>
         <li>Dopo ${p.mesi} mesi scegli tu (ti avvisiamo 30 giorni prima).</li></ol>
         <details class="regole-box"><summary>Cosa succede dopo ${p.mesi} mesi</summary>${regoleFine(p, null)}</details></div>
-      <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni dell'abbonamento</button>: ${euro(p.rata)} al mese, durata minima ${p.mesi} mesi. L'occhiale resta dell'ottica finché non lo riscatto.</span></label>
+      <label class="consenso" for="c1"><input type="checkbox" id="c1"><span>Ho letto le <button type="button" class="linkbtn" id="mpCond">condizioni dell'abbonamento</button>: ${euro(p.rata)} al mese, durata minima ${p.mesi} mesi. È un noleggio: l'occhiale resta di SocialGlass.</span></label>
       <label class="consenso" for="c2"><input type="checkbox" id="c2"><span>Autorizzo l'addebito mensile automatico su carta o conto (SEPA).</span></label>
+      <label class="consenso" for="c3"><input type="checkbox" id="c3"><span>So che le lenti sono fatte su misura per me: posso annullare solo finché il laboratorio non inizia la lavorazione.</span></label>
       <div class="esito err" id="mpErr" hidden></div>
       <button type="button" class="verde full" id="mpPaga">Attiva l'abbonamento</button>
       <p class="nota-sicura">Pagamento gestito da Stripe. SocialGlass e l'ottico non vedono i dati della carta.</p>`;
@@ -1278,7 +1280,7 @@ function disegnaMio(){
     const per = od.periodo, fp = od.finePeriodo, pgx = od.pagamento || {};
     a = (pgx.chiuso || pgx.esito ? `<div class="esito ${/MANCATO/.test(pgx.esito || "") ? "err" : "ok"}">${testoEsito(pgx, od)}</div>`
       : per && per.aperto && !per.chiuso && !fp ? `<div class="esito info"><b>${per.scaduto ? "I 12 mesi minimi sono finiti" : `Tra ${per.giorni} giorni finiscono i ${per.mesi} mesi minimi`}</b>: scegli qui sotto se vuoi un occhiale nuovo, tenerlo o restituirlo.</div>`
-      : od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato && od.ritiro.rinnovo ? `<div class="esito info"><b>Ricordati di riconsegnare il vecchio occhiale</b> in ottica: resta dell'ottica e serve per chiudere il cambio.</div>`
+      : od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato && od.ritiro.rinnovo ? `<div class="esito info"><b>Ricordati di riconsegnare il vecchio occhiale</b> in ottica: resta di SocialGlass e serve per chiudere il cambio.</div>`
       : `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>`) + boxAbbonamento(od);
   }
   const pgr = od.pagamento || {};
@@ -1315,7 +1317,7 @@ function disegnaMio(){
   const cc = $("mpCond"); if (cc) cc.onclick = mostraCondizioni;
   $("mpAzione").querySelectorAll("[data-fine]").forEach(b => b.onclick = async () => {
     const T = {rinnova: "Vuoi un occhiale nuovo? Passa dal tuo ottico (puoi prenotare da questa pagina): scegli la montatura e l'abbonamento continua con il nuovo canone. Il vecchio lo riconsegni quando ritiri il nuovo.",
-      riscatta: `Vuoi tenere l'occhiale? Alla scadenza paghi ${euro((mio.ordine.prezzi || {}).riscatto)} una volta e l'abbonamento si chiude.`,
+      riscatta: `Vuoi comprare l'occhiale usato? Alla scadenza paghi ${euro((mio.ordine.prezzi || {}).riscatto)} una volta, il noleggio si chiude e l'occhiale è tuo.`,
       restituisci: "Vuoi restituire l'occhiale? Alla scadenza lo riporti in ottica entro 15 giorni e l'abbonamento si chiude a fine mese."};
     const box = $("fineConferma");
     if (box && !b.dataset.ok){
@@ -1332,11 +1334,11 @@ function disegnaMio(){
   if (u.stato === STATI.MONTATURA || (u.stato === STATI.PAGAMENTO && od.pagamento && od.pagamento.stato === "IN CORSO")) pollT = setTimeout(async () => { const prima = mio && mio.stato; await caricaMio(false); if (mio && mio.stato !== prima && $("miaPagina").hidden === false) disegnaMio(); }, 15000);
 }
 async function attivaRate(){
-  if (!$("c1").checked || !$("c2").checked){ esito($("mpErr"), "Per attivare l'abbonamento spunta entrambe le conferme.", "err"); return; }
+  if (!$("c1").checked || !$("c2").checked || ($("c3") && !$("c3").checked)){ esito($("mpErr"), "Per attivare l'abbonamento spunta tutte le conferme.", "err"); return; }
   const rinnovo = !!$("mpPaga").dataset.rinnovo;
   if (!rinnovo && (DEMO === "browser" || (DEMO && !STRIPE))){ if (!(await checkoutProva())) return; }
   $("mpPaga").disabled = true; $("mpPaga").textContent = "Apro la pagina di pagamento…";
-  const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true});
+  const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true});
   if (r.ok && r.data.url){ location.href = r.data.url; return; }
   $("mpPaga").disabled = false; $("mpPaga").textContent = rinnovo ? "Conferma l'occhiale nuovo" : "Attiva l'abbonamento";
   if (!r.ok){ esito($("mpErr"), r.data.errore || "Pagamento non riuscito. Riprova.", "err"); return; }
@@ -1355,7 +1357,7 @@ function checkoutProva(){
         <div class="ss-r"><span>Abbonamento mensile</span><span>${euro(p.rata)}</span></div>
         <div class="ss-r"><span>Spedizione (una volta)</span><span>${euro(p.spedizione)}</span></div>
         <div class="ss-r ss-t"><span>Totale dovuto oggi</span><span>${euro(p.rata + p.spedizione)}</span></div>
-        <p class="ss-n">Durata minima ${p.mesi} mesi. Poi rinnovi, riscatti o restituisci.</p>
+        <p class="ss-n">Durata minima ${p.mesi} mesi. Poi occhiale nuovo, lo compri usato o lo restituisci.</p>
       </div><div class="ss-dx">
         <label>Email<input value="cliente@esempio.it"></label>
         <div class="ss-tab"><button type="button" class="on" data-m="card">Carta</button><button type="button" data-m="sepa">Addebito SEPA</button></div>
@@ -1379,16 +1381,16 @@ function testoCondizioni(){
   const o = mio.ottico;
   const T = (window.SG_INFO && SG_INFO.titolare) || {};
   return `${T.ragione ? `<p>Contratto di abbonamento con <b>${esc(T.ragione)}</b>${T.piva ? `, P.IVA ${esc(T.piva)}` : ""}${T.indirizzo ? `, ${esc(T.indirizzo)}` : ""}.</p>` : ""}
-    <p><b>1. Cosa ricevi.</b> ${o ? esc(o.nome) : "L'ottica"} ti dà in uso un occhiale da vista con le tue lenti (valore ${euro(p.totale)}). L'occhiale resta di proprietà dell'ottica: non lo stai comprando a rate e non c'è nessun obbligo di acquisto.</p>
-    <p><b>2. Quanto paghi.</b> ${euro(p.rata)} al mese, senza interessi né altri costi, più la spedizione (${euro(p.spedizione)}) una sola volta. Il primo mese si paga alla conferma, poi ogni mese nello stesso giorno con addebito automatico su carta o conto (SEPA).</p>
+    <p><b>1. Cosa ricevi.</b> SocialGlass ti dà a noleggio un occhiale da vista con le tue lenti (valore ${euro(p.totale)}), preparato su misura e consegnato da ${o ? esc(o.nome) : "un'ottica convenzionata"}, che si occupa di misure, controlli e assistenza. L'occhiale resta di proprietà di SocialGlass: non lo stai comprando a rate e non c'è nessun obbligo di acquisto.</p>
+    <p><b>2. Quanto paghi.</b> ${euro(p.rata)} al mese a SocialGlass, IVA compresa, senza interessi né altri costi, più la spedizione (${euro(p.spedizione)}) una sola volta. Il primo mese si paga alla conferma, poi ogni mese nello stesso giorno con addebito automatico su carta o conto (SEPA).</p>
     <p><b>3. Durata e scadenza.</b> Minimo ${p.mesi} mesi. 30 giorni prima della scadenza ti avvisiamo con un messaggio e puoi scegliere:</p>${regoleFine(p, mio.ordine.periodo)}
     <p><b>Rinnovo.</b> Lo puoi fare dal tuo ottico, da un altro ottico SocialGlass o dal CAF, a partire da 30 giorni prima della scadenza. L'abbonamento continua con il nuovo canone e, quando ritiri l'occhiale nuovo, riconsegni quello vecchio. Non si possono avere due abbonamenti insieme.</p>
     <p><b>4. Servizi inclusi.</b> Controllo della vista ogni anno, una sostituzione all'anno in caso di rottura (escluso smarrimento), cambio occhiale ogni ${p.mesi} mesi.</p>
-    <p><b>5. Se un pagamento non riesce.</b> Ti avvisiamo e riproviamo in automatico per circa 2 settimane. Puoi pagare subito dal link che ricevi. Se il pagamento resta non saldato per oltre 30 giorni, l'abbonamento si chiude e l'occhiale va restituito all'ottica (o riscattato pagando la differenza).</p>
-    <p><b>6. Recesso.</b> Puoi ripensarci entro 14 giorni dall'attivazione: dillo al tuo ottico, che chiude subito l'abbonamento. Restituisci l'occhiale integro e ti rimborsiamo quanto pagato, tranne la spedizione e le lenti già fatte su misura.</p>
+    <p><b>5. Se un pagamento non riesce.</b> Ti avvisiamo e riproviamo in automatico per circa 2 settimane. Puoi pagare subito dal link che ricevi. Se il pagamento resta non saldato per oltre 30 giorni, l'abbonamento si chiude e l'occhiale va riportato in ottica (oppure lo puoi comprare usato).</p>
+    <p><b>6. Annullamento.</b> Le lenti sono fatte su misura per te. Puoi annullare senza costi finché il laboratorio non ha iniziato la lavorazione: dillo al tuo ottico, che chiude subito l'abbonamento, e ti rimborsiamo tutto quello che hai pagato. Dopo l'inizio della lavorazione il diritto di recesso non si applica, perché l'occhiale è confezionato su misura (art. 59, comma 1, lett. c, Codice del consumo).</p>
     <p><b>Montatura prenotata.</b> La montatura che scegli resta prenotata per te 30 giorni: se in quel tempo non confermi l'ordine, torna disponibile e puoi sceglierne un'altra dal tuo link.</p>
-    <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo l'ottica e SocialGlass per preparare l'occhiale. I dati di pagamento li gestisce Stripe. Leggi l'<a href="privacy.html" target="_blank" rel="noopener">informativa privacy</a>.</p>
-    <p><b>8. Detrazione.</b> Per la detrazione fiscale chiedi all'ottica il documento fiscale dei canoni pagati (da verificare con il tuo CAF).</p>`;
+    <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo SocialGlass, l'ottica e il laboratorio per preparare l'occhiale. I dati di pagamento li gestisce Stripe. Leggi l'<a href="privacy.html" target="_blank" rel="noopener">informativa privacy</a>.</p>
+    <p><b>8. Detrazione.</b> Il noleggio di occhiali da vista rientra tra le spese sanitarie detraibili: conserva le ricevute dei canoni che trovi nella tua pagina e consegnale al tuo CAF per la dichiarazione dei redditi.</p>`;
 }
 function mostraCondizioni(){
   $("condizioniTesto").innerHTML = testoCondizioni();

@@ -18,7 +18,7 @@ async function esegui(u, ord, p, ora){
     pg.chiuso = ora; pg.esito = u.f.Stato === L.STATI.CONSEGNATO ? "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE" : "CHIUSO PER MANCATO PAGAMENTO: ORDINE ANNULLATO";
     if (u.f.Stato === L.STATI.CONSEGNATO) ord.ritiro = {daRitirare: true, dal: ora};
     // messaggio di chiusura al cliente con lo stesso canale dei solleciti (resta nell'elenco Solleciti dell'amministratore)
-    const testo = `SocialGlass: ${L.nm(u.f.Nome)}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di riscattarlo." : " L'ordine non verrà completato."}`;
+    const testo = `SocialGlass: ${L.nm(u.f.Nome)}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso.${u.f.Stato === L.STATI.CONSEGNATO ? " Riporta l'occhiale in ottica entro 15 giorni, oppure chiedi all'ottico di comprarlo usato." : " L'ordine non verrà completato."}`;
     const e = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ","), "0", u.f.Stato === L.STATI.CONSEGNATO ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", pg.insoluto.link || L.CFG.site]);
     pg.insoluto.messaggi = (pg.insoluto.messaggi || []).concat([Object.assign({il: ora, passo: 0, giorni: 0, testo}, e)]).slice(-20);
     return "chiuso per insoluto";
@@ -30,7 +30,7 @@ async function esegui(u, ord, p, ora){
   }
   // 30 giorni prima
   if (p.aperto && !p.scaduto && !(ord.avvisi && ord.avvisi.preavviso)){
-    await annota(u, ord, "preavviso", `SocialGlass: ${L.nm(u.f.Nome)}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Nella tua pagina trovi le montature nuove esposte nella tua ottica. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);
+    await annota(u, ord, "preavviso", `SocialGlass: ${L.nm(u.f.Nome)}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Nella tua pagina trovi le montature nuove esposte nella tua ottica. Scegli ora: occhiale nuovo, lo compri usato${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);
     return "preavviso";
   }
   if (!p.scaduto || (fp && fp.eseguita)) return null;
@@ -45,7 +45,7 @@ async function esegui(u, ord, p, ora){
     const imp = (ord.prezzi && ord.prezzi.riscatto) || 0;
     if (stripeOk){
       if (imp > 0){
-        await L.stripeApi("POST", "invoiceitems", {customer: pg.cliente, currency: "eur", amount: Math.round(imp*100), description: "Riscatto occhiale a fine abbonamento"});
+        await L.stripeApi("POST", "invoiceitems", {customer: pg.cliente, currency: "eur", amount: Math.round(imp*100), description: "Acquisto occhiale usato a fine noleggio"});
         const inv = await L.stripeApi("POST", "invoices", {customer: pg.cliente, collection_method: "charge_automatically", pending_invoice_items_behavior: "include", auto_advance: true, metadata: {univoco: u.f.Univoco, tipo: "riscatto"}});
         await L.stripeApi("POST", `invoices/${inv.id}/finalize`, {});
         pg.riscatto = {fattura: inv.id, importo: imp};
@@ -54,7 +54,7 @@ async function esegui(u, ord, p, ora){
     }
     pg.chiuso = ora; pg.esito = "RISCATTATO: L'OCCHIALE È DEL CLIENTE";
     fp.eseguita = ora;
-    await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, il tuo abbonamento è chiuso e l'occhiale ora è tuo. ${imp ? `Abbiamo addebitato il riscatto di ${imp.toFixed(2).replace(".", ",")} €. ` : ""}Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`);
+    await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, il noleggio è chiuso e l'occhiale ora è tuo. ${imp ? `Abbiamo addebitato l'acquisto dell'usato di ${imp.toFixed(2).replace(".", ",")} €. ` : ""}Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`);
     return "riscattato";
   }
   if (scelta === "restituisci"){
@@ -68,7 +68,7 @@ async function esegui(u, ord, p, ora){
   }
   // nessuna scelta: continua mese per mese, secondo promemoria
   if (!(ord.avvisi && ord.avvisi.scadenza)){
-    await annota(u, ord, "scadenza", `SocialGlass: ${L.nm(u.f.Nome)}, la durata minima del tuo abbonamento è finita. Continua mese per mese allo stesso canone e puoi disdire quando vuoi. Se vuoi un occhiale nuovo, tenerlo o restituirlo, scegli qui: ${link}`);
+    await annota(u, ord, "scadenza", `SocialGlass: ${L.nm(u.f.Nome)}, la durata minima del tuo abbonamento è finita. Continua mese per mese allo stesso canone e puoi disdire quando vuoi. Se vuoi un occhiale nuovo, comprarlo usato o restituirlo, scegli qui: ${link}`);
     return "continua";
   }
   return null;
@@ -112,7 +112,7 @@ async function controlla(u, ora, esiti){
   // occhiale da restituire non ancora riportato dopo 15 giorni
   { const o = L.parseOrdine(u.f.Ordine);
     if (o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && new Date(ora) - new Date(o.ritiro.dal) > 15*864e5 && !(o.avvisi && o.avvisi.ritardoRitiro)){
-      await annota(u, o, "ritardoRitiro", `SocialGlass: ${L.nm(u.f.Nome)}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di riscattarlo.`);
+      await annota(u, o, "ritardoRitiro", `SocialGlass: ${L.nm(u.f.Nome)}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di comprarlo usato.`);
       await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); esiti.push({univoco: u.f.Univoco, esito: "sollecito restituzione"});
     } }
   if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) return;

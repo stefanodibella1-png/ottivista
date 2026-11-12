@@ -76,10 +76,11 @@ module.exports = L.wrap(async (req, res) => {
   // recesso entro 14 giorni dall'attivazione (diritto del consumatore): l'abbonamento si chiude subito
   if (b.azione === "recesso"){
     const pg = ord.pagamento;
-    if (!pg || !pg.attivatoIl || pg.chiuso || Date.now() - new Date(pg.attivatoIl) > 14*864e5) return L.send(res, 409, {errore: "Il recesso è possibile solo nei 14 giorni dall'attivazione."});
+    if (!pg || !pg.attivatoIl || pg.chiuso || Date.now() - new Date(pg.attivatoIl) > 14*864e5) return L.send(res, 409, {errore: "L'annullamento è possibile solo nei 14 giorni dall'attivazione."});
+    if (L.inLavorazione(ord, u.f.Stato)) return L.send(res, 409, {errore: "Il laboratorio ha già iniziato le lenti su misura: l'annullamento non è più possibile."});
     if (L.CFG.stripeKey && pg.abbonamento){ try { await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`); } catch(e){ console.error(e); return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco."}); } }
     const ora = new Date().toISOString();
-    pg.chiuso = ora; pg.esito = "RECESSO ENTRO 14 GIORNI: RIMBORSO DA FARE DA STRIPE";
+    pg.chiuso = ora; pg.esito = "RECESSO PRIMA DELLA LAVORAZIONE: RIMBORSO TOTALE DA FARE DA STRIPE";
     if (u.f.Stato === L.STATI.CONSEGNATO || u.f.Stato === L.STATI.PRONTO) ord.ritiro = {daRitirare: u.f.Stato === L.STATI.CONSEGNATO, dal: ora};
     ord.aggiornato = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});

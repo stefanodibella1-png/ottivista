@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1795900000**, prossimo 1796000000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796000000**, prossimo 1796100000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -26,6 +26,14 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Ottica: ordine cliente (lenti/ricetta dai listini), da fare oggi, agenda appuntamenti con orari, segnalazioni, esposte, conteggi, consegna, rinnovo (con conferma), ritiro occhiali restituiti/vecchi.
 - Laboratorio: montatura ritirata → occhiale pronto (avviso automatico al cliente).
 - Admin: Oggi, clienti, morosi e solleciti, conteggi e pagamenti ai partner (Stripe Connect), magazzino (QR, scorte, riordini, importazione da Excel, foto), fornitori, **Listini** (modifica, nuovi, cancellazione), **Registro** operazioni, report del mese, copia notturna dei dati (ultime 7, da Impostazioni), prova dei messaggi.
+
+## Formula fiscale scelta (12/11/2026) — documento «SocialGlass — fisco, vendite e contratti»
+- SocialGlass (ditta individuale) è l'unico venditore: noleggia l'occhiale al cliente e incassa canoni, spedizione e «acquisto dell'usato». Ottica, CAF e laboratorio le fatturano i loro compensi.
+- Compensi di base (IVA compresa, `COMPENSO_BASE` in `api/_lib.js`), usati quando nel pannello non c'è un accordo: ottica = una rata + la spedizione del cliente per ogni abbonamento attivato (tipo `rata`); CAF = 3 € per abbonamento attivato. Il laboratorio lo paga SocialGlass.
+- Riscatto → «acquisto dell'usato» nei testi (i codici interni restano `riscatta`/`riscatto`).
+- Recesso → «annullamento» solo prima che il laboratorio inizi la lavorazione (`L.inLavorazione`, `L.annullabile`); terza spunta obbligatoria all'attivazione (`consensoSuMisura`, salvata in `ord.consensi.suMisura`).
+- Codice ATECO di noleggio: Stefano lo aggiunge con ComUnica entro 30 giorni dal primo noleggio.
+- Da fare: documento fiscale automatico a ogni canone (serve scegliere il servizio di fatturazione), contratti con l'avvocato, dati del titolare in Impostazioni.
 
 ## Barra del tempo (PROVE TECNICHE — da togliere prima dell'uscita al pubblico)
 - Etichetta «⏱ PROVE» in alto a sinistra nella pagina del cliente, **solo** per i clienti di prova (CAF001, OTT07, OTT12); sparisce da sola dopo «rimuovi dati di prova».

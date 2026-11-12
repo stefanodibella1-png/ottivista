@@ -15,10 +15,10 @@ function nuoviAccordi(prima, cp){
   return l;
 }
 function compenso(b){
-  const tipo = ["fisso", "percentuale"].includes(b.CompensoTipo) ? b.CompensoTipo : "";
+  const tipo = ["fisso", "percentuale", "rata"].includes(b.CompensoTipo) ? b.CompensoTipo : "";
   const valore = numero(b.CompensoValore);
   if (tipo === "percentuale" && valore > 100) return {errore: "La percentuale non può superare 100."};
-  return {tipo, valore: tipo ? valore : 0};
+  return {tipo, valore: tipo && tipo !== "rata" ? valore : 0};
 }
 module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
@@ -149,12 +149,12 @@ module.exports = L.wrap(async (req, res) => {
       ["Condizioni e informativa privacy verificate da un consulente", !!((await L.DB.meta("config")) || {}).legale],
       ["Avvisi automatici ai clienti collegati (WhatsApp Business o SMS)", L.canaliCollegati().whatsapp || L.canaliCollegati().sms]
     ];
-    const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || ""}; };
+    const comp = (x, ruolo) => { const c = x.Compenso || {}, d = L.accordiDi(x, ruolo), u = d[d.length - 1] || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.tipo ? (c.valore || "") : "", CompensoBase: u.base ? u.tipo : ""}; };
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     const cfgS = await L.DB.meta("config");
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf"), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf")}, comp(x, "caf"))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica"), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica")}, comp(x, "ottica"))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Foto: x.Foto || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
@@ -273,7 +273,7 @@ module.exports = L.wrap(async (req, res) => {
         tipo: ins ? ins.tipo : "", importo: ins ? ins.importo : 0, dal: ins ? ins.dal : "", tentativi: ins ? ins.tentativi : 0, prossimoTentativo: ins ? ins.prossimoTentativo : "", link: ins ? ins.link : "",
         giorni, chiuso: pg.chiuso || "", esito: pg.esito || "", consegnato, canone: (o.prezzi || {}).rata || 0, ratePagate: pg.ratePagate || 0, riscatto: (o.prezzi || {}).riscatto || 0,
         messaggi: ins ? (ins.messaggi || []) : [], note: ins ? (ins.note || []) : [], ritiroDal: daRiportare ? o.ritiro.dal : "",
-        testo: ins && !pg.chiuso ? L.testoSollecito(f, ins, giorni, consegnato) : `SocialGlass: ${L.nm(f.Nome)}, l'abbonamento è stato chiuso per mancato pagamento: riporta l'occhiale in ottica o contattaci per riscattarlo.`});
+        testo: ins && !pg.chiuso ? L.testoSollecito(f, ins, giorni, consegnato) : `SocialGlass: ${L.nm(f.Nome)}, l'abbonamento è stato chiuso per mancato pagamento: riporta l'occhiale in ottica o contattaci per comprarlo usato.`});
     }
     out.sort((a, b) => (a.chiuso ? 1 : 0) - (b.chiuso ? 1 : 0) || a.giorni - b.giorni);
     return L.send(res, 200, {solleciti: out, canali: L.canaliCollegati()});

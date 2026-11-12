@@ -49,7 +49,7 @@ module.exports = L.wrap(async (req, res) => {
       periodo: L.PREZZI.periodo(o), rinnovabile: L.PREZZI.rinnovabile(o), daRitirare: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato),
       esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo,
       link: L.linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino),
-      recedibile: !!(o.pagamento && o.pagamento.attivatoIl && !o.pagamento.chiuso && !o.pagamento.rinnovato && Date.now() - new Date(o.pagamento.attivatoIl) <= 14*864e5),
+      recedibile: L.annullabile(o, f.Stato),
       ritiroInRitardo: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && Date.now() - new Date(o.ritiro.dal) > 15*864e5),
       avviso: (() => { const a = Object.entries(o.avvisi || {}).filter(([k, x]) => !x.inviato && !/^insoluto/.test(k)).map(([, x]) => x).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()}, tecnico);
   }).sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)));
@@ -73,5 +73,5 @@ module.exports = L.wrap(async (req, res) => {
   // listini aggiornati: l'ottica vede il suo, il CAF tutti (per il calcolatore del canone)
   const conv = await L.caricaListini(), mioLis = isOtt ? String((acc && acc.Listino) || "A").toUpperCase() : "";
   const listini = isOtt ? {[mioLis]: conv[mioLis] || conv.A} : conv;
-  L.send(res, 200, {clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
+  L.send(res, 200, {clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")), isOtt ? "ottica" : "caf")});
 });

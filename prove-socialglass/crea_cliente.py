@@ -13,7 +13,7 @@ def crea(base, nome, cognome, data, sesso, mont):
     uv=r["univoco"]; call("api/montatura",{"univoco":uv,"codice":mont})
     T=call("api/login",{"ruolo":"ottico","codice":"OTT07","password":"demo"})["token"]
     call("api/ordine",{"univoco":uv,"lente":"mono","trattamenti":["ar"],"ricetta":{"OD":{"sf":-1,"cil":None,"ax":None,"add":None},"OS":{"sf":-1,"cil":None,"ax":None,"add":None},"pd":63}},T)
-    call("api/pagamento",{"univoco":uv,"consensoContratto":True,"consensoAddebito":True})
+    call("api/pagamento",{"univoco":uv,"consensoContratto":True,"consensoAddebito":True,"consensoSuMisura":True})
     A=call("api/admin",{"azione":"imposta","password":"passwordlunga1"}).get("token") or call("api/admin",{"azione":"accedi","password":"passwordlunga1"})["token"]
     call("api/admin",{"azione":"salvaLab","nome":"Lab Demo","attivo":True,"password":"laboratorio1"},A)
     Lb=call("api/login",{"ruolo":"lab","password":"laboratorio1"})["token"]

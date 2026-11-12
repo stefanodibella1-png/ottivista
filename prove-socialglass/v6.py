@@ -12,7 +12,7 @@ async def main():
         await pg.screenshot(path="v13_riepilogo.png", full_page=True)
         print("RIEPILOGO:", (await pg.inner_text("#mpAzione")).replace("\n"," | ")[:1500])
         await pg.click("#mpPaga"); await pg.wait_for_timeout(600); print("senza spunte:", await pg.inner_text("#mpErr") if await pg.is_visible("#mpErr") else "(nessun errore mostrato)")
-        await pg.check("#c1"); await pg.check("#c2"); await pg.click("#mpPaga"); await pg.wait_for_timeout(800)
+        await pg.check("#c1"); await pg.check("#c2"); await pg.check("#c3"); await pg.click("#mpPaga"); await pg.wait_for_timeout(800)
         await pg.screenshot(path="v13b_checkout.png"); await pg.get_by_role("button", name="Abbonati").click(); await pg.wait_for_timeout(2500)
         await pg.screenshot(path="v14_attivato.png", full_page=True)
         print("DOPO ATTIVAZIONE:", (await pg.inner_text("#miaPagina")).replace("\n"," | ")[:900])

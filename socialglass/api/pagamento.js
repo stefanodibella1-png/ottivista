@@ -24,10 +24,10 @@ module.exports = L.wrap(async (req, res) => {
     } catch(e){ console.error(e); return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco.", dettaglio: String(e.message).slice(0, 200)}); }
   }
   if (u.f.Stato !== L.STATI.PAGAMENTO) return L.send(res, 409, {errore: "Non c'è un ordine da attivare."});
-  if (!b.consensoContratto || !b.consensoAddebito) return L.send(res, 400, {errore: "Per attivare l'abbonamento servono entrambe le conferme."});
+  if (!b.consensoContratto || !b.consensoAddebito || !b.consensoSuMisura) return L.send(res, 400, {errore: "Per attivare l'abbonamento servono tutte le conferme."});
   const ord = L.parseOrdine(u.f.Ordine), p = ord.prezzi;
   // le due conferme del cliente, con data e ora: finiscono nella copia del contratto
-  { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t}; }
+  { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t, suMisura: t}; }
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
   if (!L.CFG.stripeKey){
     // senza Stripe collegato: attivazione simulata (solo prova)

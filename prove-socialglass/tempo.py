@@ -56,7 +56,7 @@ async def main():
         await o.screenshot(path="t03_tablet_ordine.png", full_page=True)
         await o.click("#formOrdine button[type=submit]"); await o.wait_for_timeout(1500); print("3 TABLET ordine:", t((await o.inner_text("#ordinePopup"))[-300:]))
         # 4. telefono — attiva l'abbonamento
-        await c.reload(); await c.wait_for_timeout(2200); await c.check("#c1"); await c.check("#c2"); await c.click("#mpPaga"); await c.wait_for_timeout(900)
+        await c.reload(); await c.wait_for_timeout(2200); await c.check("#c1"); await c.check("#c2"); await c.check("#c3"); await c.check("#c3"); await c.click("#mpPaga"); await c.wait_for_timeout(900)
         await c.get_by_role("button", name="Abbonati").click(); await c.wait_for_timeout(2500); print("4 TEL attivato:", t(await c.inner_text("#mpTitolo")))
         # 5. laboratorio (telefono del laboratorio)
         l = await nuovo(b, "tel"); await l.goto(B + "laboratorio"); await l.wait_for_timeout(600); await l.fill("#pw", "laboratorio1"); await l.click("#fLogin button"); await l.wait_for_timeout(1200)
