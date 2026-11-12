@@ -23,7 +23,7 @@ if (r.s !== 200 && /già/i.test(r.d.errore || "")) r = await call("/api/utenti",
 const uv = r.d.univoco || (r.d.link || "").match(/Univoco=([^&]+)/)?.[1]; ok("crea cliente", !!uv, uv || JSON.stringify(r.d));
 const mt = await call("/api/montatura", {univoco: uv, codice: "SG-1042"}); ok("montatura", mt.d.ok || /già confermata/.test(mt.d.errore || ""), mt.d.errore);
 const o = await call("/api/ordine", {univoco: uv, lente: "mono", trattamenti: ["ar"], ricetta: {OD: {sf: "-1,00"}, OS: {sf: "-1,25"}, pd: 63}}, ott); ok("ordine ottico", o.d.ok, o.d.prezzi && `${o.d.prezzi.rata} €/mese`);
-const pg = await call("/api/pagamento", {univoco: uv, consensoContratto: true, consensoAddebito: true}); ok("pagamento", pg.s === 200, pg.d.url ? "Stripe Checkout " + pg.d.url.slice(0, 40) : (pg.d.errore ? pg.d.errore + " " + (pg.d.dettaglio || "") : "simulato"));
+const pg = await call("/api/pagamento", {univoco: uv, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true}); ok("pagamento", pg.s === 200, pg.d.url ? "Stripe Checkout " + pg.d.url.slice(0, 40) : (pg.d.errore ? pg.d.errore + " " + (pg.d.dettaglio || "") : "simulato"));
 ok("clienti CAF", ((await call("/api/clienti", null, caf)).d.clienti || []).length > 0);
 ok("clienti ottico", ((await call("/api/clienti", null, ott)).d.clienti || []).length > 0);
 { const r = await fetch(B + "/api/stripe-webhook", {method: "POST", headers: {"stripe-signature": "t=1,v1=x", "Content-Type": "application/json"}, body: "{}"}); ok("webhook risponde", r.status === 400, "firma falsa rifiutata"); }
