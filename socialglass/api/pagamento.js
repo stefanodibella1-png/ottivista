@@ -7,9 +7,27 @@ module.exports = L.wrap(async (req, res) => {
   const b = await L.readBody(req);
   const u = await L.DB.utente("Univoco", String(b.univoco || "").trim());
   if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+  // cambia carta e ricevute: pagina sicura di Stripe e elenco dei pagamenti fatti
+  if (b.azione === "carta" || b.azione === "ricevute"){
+    const pg = L.parseOrdine(u.f.Ordine).pagamento || {};
+    if (!L.CFG.stripeKey || !pg.cliente) return L.send(res, 200, b.azione === "ricevute" ? {ricevute: [], prova: true} : {errore: "Il metodo di pagamento si può cambiare dopo il primo pagamento con carta.", prova: true});
+    try {
+      if (b.azione === "ricevute"){
+        const l = await L.stripeApi("GET", "invoices", {customer: pg.cliente, status: "paid", limit: 36});
+        return L.send(res, 200, {ricevute: (l.data || []).map(i => ({il: new Date(i.status_transitions && i.status_transitions.paid_at ? i.status_transitions.paid_at * 1000 : i.created * 1000).toISOString(),
+          importo: (i.amount_paid || 0) / 100, numero: i.number || "", url: i.hosted_invoice_url || "", pdf: i.invoice_pdf || ""}))});
+      }
+      const conf = await L.portaleStripe();
+      const s = await L.stripeApi("POST", "billing_portal/sessions", {customer: pg.cliente, configuration: conf, locale: "it",
+        return_url: `${L.SITO(req)}/?Univoco=${encodeURIComponent(u.f.Univoco)}`});
+      return L.send(res, 200, {url: s.url});
+    } catch(e){ console.error(e); return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco.", dettaglio: String(e.message).slice(0, 200)}); }
+  }
   if (u.f.Stato !== L.STATI.PAGAMENTO) return L.send(res, 409, {errore: "Non c'è un ordine da attivare."});
   if (!b.consensoContratto || !b.consensoAddebito) return L.send(res, 400, {errore: "Per attivare l'abbonamento servono entrambe le conferme."});
   const ord = L.parseOrdine(u.f.Ordine), p = ord.prezzi;
+  // le due conferme del cliente, con data e ora: finiscono nella copia del contratto
+  { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t}; }
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
   if (!L.CFG.stripeKey){
     // senza Stripe collegato: attivazione simulata (solo prova)

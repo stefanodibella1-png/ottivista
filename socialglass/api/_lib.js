@@ -54,7 +54,7 @@ function fs(){
   fsDb = getFirestore(app);
   return fsDb;
 }
-const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta", forn: "sg_fornitori", ordForn: "sg_ordini_fornitori"};
+const COL = {caf: "sg_caf", ottLogin: "sg_ottici_login", ottici: "sg_ottici", utenti: "sg_utenti", mont: "sg_montature", meta: "sg_meta", forn: "sg_fornitori", ordForn: "sg_ordini_fornitori", segn: "sg_segnalazioni", registro: "sg_registro", copie: "sg_copie"};
 // al primo avvio carica CAF, ottici e montature di prova (poi si gestiscono dalla console Firebase)
 function seed(db){
   if (seeded) return seeded;
@@ -75,6 +75,8 @@ async function fdb(){ const db = fs(); await seed(db); return db; }
 const FS = {
   // gestione dal pannello amministratore
   async lista(k){ return (await (await fdb()).collection(COL[k]).get()).docs.map(d => Object.assign({_id: d.id}, d.data())); },
+  async ultimi(k, n){ return (await (await fdb()).collection(COL[k]).orderBy("il", "desc").limit(n).get()).docs.map(d => Object.assign({_id: d.id}, d.data())); },
+  async uno(k, id){ const d = await (await fdb()).collection(COL[k]).doc(String(id)).get(); return d.exists ? Object.assign({_id: d.id}, d.data()) : null; },
   async salva(k, id, data){ await (await fdb()).collection(COL[k]).doc(String(id)).set(data, {merge: true}); },
   async elimina(k, id){ await (await fdb()).collection(COL[k]).doc(String(id)).delete(); },
   async meta(id, data){ const d = (await fdb()).collection(COL.meta).doc(id); if (data === undefined){ const x = await d.get(); return x.exists ? x.data() : null; } await d.set(data, {merge: true}); },
@@ -140,10 +142,13 @@ async function find(base, table, formula, max = 1){
 /* ---------- archivio: stesse funzioni con Airtable o con i dati di prova ---------- */
 const parseOrdine = s => { try { return s ? JSON.parse(s) : {}; } catch(e){ return {}; } };
 // dati di prova in memoria (server senza database): stesse funzioni del pannello
-const DEMOCOL = {caf: () => demo.caf, ottLogin: () => demo.ottLogin, ottici: () => demo.ottici, mont: () => demo.montature, utenti: () => demo.utenti, forn: () => (demo.fornitori = demo.fornitori || []), ordForn: () => (demo.ordForn = demo.ordForn || [])};
-const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco", forn: "ID", ordForn: "ID"};
+const DEMOCOL = {caf: () => demo.caf, ottLogin: () => demo.ottLogin, ottici: () => demo.ottici, mont: () => demo.montature, utenti: () => demo.utenti, forn: () => (demo.fornitori = demo.fornitori || []), ordForn: () => (demo.ordForn = demo.ordForn || []),
+  segn: () => (demo.segn = demo.segn || []), registro: () => (demo.registro = demo.registro || []), copie: () => (demo.copie = demo.copie || [])};
+const DEMOKEY = {caf: "ID", ottLogin: "ID", ottici: "ID", mont: "Codice", utenti: "Univoco", forn: "ID", ordForn: "ID", segn: "ID", registro: "ID", copie: "ID"};
 const MEM = {
   async lista(k){ return DEMOCOL[k]().map(x => Object.assign({_id: x[DEMOKEY[k]]}, x)); },
+  async ultimi(k, n){ return DEMOCOL[k]().slice().sort((a, b) => String(b.il).localeCompare(String(a.il))).slice(0, n).map(x => Object.assign({_id: x[DEMOKEY[k]]}, x)); },
+  async uno(k, id){ const x = DEMOCOL[k]().find(r => r[DEMOKEY[k]] === String(id)); return x ? Object.assign({_id: x[DEMOKEY[k]]}, x) : null; },
   async salva(k, id, data){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i < 0) a.push(Object.assign({[DEMOKEY[k]]: id}, data)); else Object.assign(a[i], data); },
   async elimina(k, id){ const a = DEMOCOL[k](), i = a.findIndex(x => x[DEMOKEY[k]] === id); if (i >= 0) a.splice(i, 1); },
   async meta(id, data){ demo.meta = demo.meta || {}; if (data === undefined) return demo.meta[id] || null; demo.meta[id] = Object.assign(demo.meta[id] || {}, data); },
@@ -224,6 +229,7 @@ async function chiaviPush(){
 // testo del messaggio → notifica: senza il prefisso «SocialGlass:» e senza il link in fondo
 function corpoPush(testo){ return String(testo || "").replace(/^SocialGlass:\s*/, "").replace(/\s*https?:\/\/\S+\s*$/, "").slice(0, 220); }
 async function pushCliente(f, testo, titolo){
+  testo = bel(f, testo);
   const subs = Array.isArray(f.Push) ? f.Push : []; if (!subs.length || !WP) return false;
   const k = await chiaviPush(); if (!k) return false;
   const url = linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino);
@@ -252,6 +258,7 @@ async function premiaAmico(u, ord){
   await pushCliente(r.f, `SocialGlass: ${r.f.Nome}, ${u.f.Nome || "il tuo amico"} si è abbonato grazie a te: ${voce.stato.startsWith("accreditato") ? "il prossimo canone è gratis" : "ti spetta un mese gratis"}. Grazie!`, "Un mese gratis per te");
 }
 async function avvisa(u, testo){
+  testo = bel(u.f, testo);
   const numero = String(u.f.Prefisso || "+39") + String(u.f.Cellulare || "");
   let sms = false;
   if (CFG.smsWebhook && u.f.Cellulare){
@@ -282,6 +289,7 @@ function testoSollecito(f, ins, giorni, consegnato){
 // invia al cliente con il canale scelto nelle impostazioni; se il canale non è collegato il messaggio resta da inviare a mano
 // prima la notifica gratuita (se il cliente l'ha attivata), poi il canale scelto
 async function inviaCliente(f, testo, param, modello){
+  testo = bel(f, testo); param = (param || []).map(p => bel(f, p));
   const notifica = await pushCliente(f, testo).catch(() => false), e = await inviaCanale(f, testo, param, modello);
   if (!e.inviato && notifica) return {canale: "notifica", inviato: true, motivo: ""};
   return notifica ? Object.assign(e, {notifica: true}) : e;
@@ -330,6 +338,21 @@ async function stripeApi(method, path, params, chiave){
   for (const [k, v] of Object.entries(params || {})) add(k, v);
   const r = await fetch(`https://api.stripe.com/v1/${path}${method === "GET" && params ? "?" + body : ""}`, {method, headers: Object.assign({Authorization: `Bearer ${CFG.stripeKey}`, "Content-Type": "application/x-www-form-urlencoded"}, chiave ? {"Idempotency-Key": chiave} : {}), body: method === "GET" ? undefined : body});
   const j = await r.json(); if (!r.ok) throw new Error(`Stripe: ${j.error && j.error.message}`); return j;
+}
+
+// indirizzo del sito da cui arriva la richiesta (vercel.app o dominio), per i link di ritorno
+function SITO(req){
+  const host = String((req && (req.headers["x-forwarded-host"] || req.headers.host)) || "").split(",")[0].trim();
+  return /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${/^(localhost|127\.)/.test(host) ? "http" : "https"}://${host}` : CFG.site;
+}
+// portale clienti di Stripe (cambio carta e ricevute): la configurazione si crea una volta e si riusa
+async function portaleStripe(){
+  const modo = CFG.stripeKey.startsWith("sk_live") ? "live" : "test", m = (await DB.meta("stripePortale")) || {};
+  if (m[modo]) return m[modo];
+  const c = await stripeApi("POST", "billing_portal/configurations", {business_profile: {headline: "SocialGlass · il tuo abbonamento occhiale"},
+    features: {payment_method_update: {enabled: true}, invoice_history: {enabled: true}, customer_update: {enabled: false}, subscription_cancel: {enabled: false}}}, "portale-" + modo);
+  await DB.meta("stripePortale", Object.assign({}, m, {[modo]: c.id}));
+  return c.id;
 }
 
 /* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
@@ -416,12 +439,20 @@ function verify(req, ruolo){
 }
 function safeEq(a, b){ const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); }
 
+/* ---------- nomi delle persone: «Luca De Rosa» invece di «LUCA DE ROSA» (solo in uscita, i dati salvati non cambiano) ---------- */
+const nm = s => String(s == null ? "" : s).toLowerCase().replace(/(^|[\s'’\-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+const bel = (f, s) => typeof s === "string" && f && f.Nome && s.includes(f.Nome) ? s.split(f.Nome).join(nm(f.Nome)) : s;
+// in uscita (senza toccare gli oggetti): nome e cognome degli oggetti che rappresentano una persona
+const CHIAVI_NOME = new Set(["nome", "cognome", "Nome", "Cognome"]);
+function belli(k, v){
+  return typeof v === "string" && CHIAVI_NOME.has(k) && this && ("univoco" in this || "Univoco" in this || "cognome" in this || "Cognome" in this) ? nm(v) : v;
+}
 /* ---------- risposta ---------- */
 function send(res, code, data){
   res.statusCode = code;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(data));
+  res.end(JSON.stringify(data, belli));
 }
 async function readRaw(req){
   if (typeof req.body === "string") return req.body;
@@ -680,4 +711,75 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+
+/* ---------- listini modificabili dall'amministratore (sostituiscono quelli di listini.js) ---------- */
+const LISTINI_BASE = JSON.parse(JSON.stringify(PREZZI.LISTINI.convenzioni));
+async function caricaListini(){
+  let m = null; try { m = await DB.meta("listini"); } catch(e){ console.error(e); }
+  let c = null; try { c = m && m.json ? JSON.parse(m.json) : null; } catch(_){}
+  const conv = PREZZI.LISTINI.convenzioni;
+  for (const k of Object.keys(conv)) delete conv[k];
+  Object.assign(conv, JSON.parse(JSON.stringify(LISTINI_BASE)), c || {});
+  return conv;
+}
+async function salvaListini(conv){ await DB.meta("listini", {json: JSON.stringify(conv), il: new Date().toISOString()}); return caricaListini(); }
+
+/* ---------- appuntamenti in ottica (scelta, ritiro, controllo vista) ---------- */
+const ORARI_BASE = {giorni: [1, 2, 3, 4, 5, 6], fasce: ["09:30-12:30", "16:00-19:30"], durata: 30};
+// data e ora di Roma come testo «AAAA-MM-GGTHH:MM» (si confrontano come stringhe)
+const oraRoma = d => new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false}).format(d || new Date()).replace(" ", "T");
+const orariDi = o => { const x = (o && o.Orari) || {}; return {giorni: Array.isArray(x.giorni) && x.giorni.length ? x.giorni.map(Number) : ORARI_BASE.giorni,
+  fasce: Array.isArray(x.fasce) && x.fasce.length ? x.fasce : ORARI_BASE.fasce, durata: [15, 20, 30, 45, 60].includes(Number(x.durata)) ? Number(x.durata) : ORARI_BASE.durata}; };
+const FASCIA = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/;
+function slotLiberi(o, agenda, giorni){
+  const or = orariDi(o), presto = oraRoma(new Date(Date.now() + 2 * 3600e3)), out = [], oggi = oraRoma().slice(0, 10);
+  for (let i = 0; i < (giorni || 14); i++){
+    const g = new Date(Date.parse(oggi + "T12:00:00Z") + i * 864e5), data = g.toISOString().slice(0, 10);
+    if (!or.giorni.includes(g.getUTCDay())) continue;
+    const slot = [];
+    for (const f of or.fasce){ const m = FASCIA.exec(f); if (!m) continue;
+      for (let t = +m[1] * 60 + +m[2]; t + or.durata <= +m[3] * 60 + +m[4]; t += or.durata){
+        const s = `${data}T${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+        if (s > presto && !(agenda && agenda[s])) slot.push(s.slice(11)); } }
+    if (slot.length) out.push({data, slot});
+  }
+  return out;
+}
+const TIPI_APP = {scelta: "Scelta della montatura", ritiro: "Ritiro degli occhiali", controllo: "Controllo della vista", altro: "Assistenza"};
+
+/* ---------- registro delle operazioni: chi ha fatto cosa e quando ---------- */
+async function registra(chi, azione, rif, dettaglio){
+  const il = new Date().toISOString(), id = il.replace(/\D/g, "") + "-" + crypto.randomBytes(3).toString("hex");
+  try { await DB.salva("registro", id, {ID: id, il, chi: String(chi || "").slice(0, 60), azione: String(azione || "").slice(0, 80), rif: String(rif || "").slice(0, 60), dettaglio: String(dettaglio || "").slice(0, 300)}); }
+  catch(e){ console.error("registro", e); }
+}
+// registra l'operazione solo se è andata a buon fine, prima che la risposta parta
+function registraEsito(res, chi, azione, rif, dettaglio){
+  const fine = res.end.bind(res);
+  res.end = body => { if (res.statusCode < 300) registra(chi, azione, rif, dettaglio).finally(() => fine(body)); else fine(body); };
+}
+
+/* ---------- copia dei dati ogni notte (ultime 7), scaricabile dal pannello ---------- */
+const RACCOLTE_COPIA = ["utenti", "caf", "ottLogin", "ottici", "mont", "forn", "ordForn", "segn"];
+async function datiCompleti(){
+  const out = {creata: new Date().toISOString(), raccolte: {}};
+  for (const k of RACCOLTE_COPIA) try { out.raccolte[k] = k === "utenti" ? (await DB.tutti()).map(u => Object.assign({_id: u.id}, u.f)) : await DB.lista(k); } catch(e){ out.raccolte[k] = {errore: String(e.message).slice(0, 200)}; }
+  for (const m of ["config", "push", "stripePortale"]) try { (out.meta = out.meta || {})[m] = await DB.meta(m); } catch(_){}
+  return out;
+}
+async function copiaNotturna(){
+  const data = oraRoma().slice(0, 10), idx = (await DB.meta("copie")) || {}, elenco = (idx.elenco || []).filter(x => x.data !== data);
+  const testo = JSON.stringify(await datiCompleti()), PEZZO = 300000, n = Math.ceil(testo.length / PEZZO);
+  for (let i = 0; i < n; i++) await DB.salva("copie", `${data}-${i}`, {ID: `${data}-${i}`, data, parte: i, di: n, testo: testo.slice(i * PEZZO, (i + 1) * PEZZO)});
+  elenco.unshift({data, parti: n, byte: testo.length});
+  for (const v of elenco.slice(7)) for (let i = 0; i < v.parti; i++) try { await DB.elimina("copie", `${v.data}-${i}`); } catch(_){}
+  await DB.meta("copie", {elenco: elenco.slice(0, 7)});
+  return {data, parti: n, byte: testo.length};
+}
+async function leggiCopia(data){
+  const idx = (await DB.meta("copie")) || {}, v = (idx.elenco || []).find(x => x.data === data); if (!v) return null;
+  let t = ""; for (let i = 0; i < v.parti; i++){ const p = await DB.uno("copie", `${data}-${i}`); if (!p) return null; t += p.testo; }
+  return t;
+}
+
+module.exports = {caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

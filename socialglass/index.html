@@ -99,7 +99,7 @@ body.cliente .hero-testo,body.cliente .area{display:none}
 body.cliente .azioni-cliente,body.con-scan .azioni-cliente{position:relative;z-index:2;display:grid;gap:12px;width:min(420px,calc(100% - 36px));margin:clamp(20px,8vh,80px) auto 0}
 body.cliente .azioni-cliente button,body.con-scan .azioni-cliente button{margin:0;padding:18px 20px;font-size:18px;border-radius:18px;box-shadow:var(--ombra);animation:sale .5s both}
 /* link dell'espositore senza codice cliente: pulsante scanner fisso in basso, al posto degli accessi operatori */
-body.con-scan .area-mobile{display:none}
+body.con-scan .area-mobile,body.cliente .area-mobile{display:none}
 body.con-scan:not(.cliente) .azioni-cliente{position:fixed;left:0;right:0;bottom:0;width:auto;margin:0;z-index:7;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 12px);background:rgba(255,255,255,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--bordo)}
 @media (min-width:769px){ body.con-scan:not(.cliente) .azioni-cliente{left:auto;right:24px;bottom:24px;width:340px;border:1px solid var(--bordo);border-radius:22px;box-shadow:var(--ombra)} }
 #scan-btn{background-color:var(--verde)}#scan-btn:hover{background-color:var(--verde-scuro)}
@@ -128,6 +128,7 @@ body.cliente{padding-bottom:0}
 .popup.pagina .back-btn{top:calc(env(safe-area-inset-top,0px) + 12px);left:14px;background:#fff;border:1px solid var(--bordo);border-radius:12px;padding:8px 14px;color:var(--notte);box-shadow:var(--ombra-s)}
 .popup.pagina .back-btn:hover{background:#fff;text-decoration:none;border-color:var(--blu)}
 .popup.pagina .popup-content.con-indietro h2{margin-top:0}
+.popup.pagina .popup-content.con-indietro > .close-btn{display:none}
 .popup.pagina .scheda{background:#fff;border:1px solid var(--bordo);box-shadow:var(--ombra-s)}
 .popup.pagina .lista{max-height:none}
 @media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important} }
@@ -157,6 +158,7 @@ label.etich{display:block;margin:2px 0 2px}
 .codice-grande{font:700 26px/1.2 "Courier New",monospace;letter-spacing:.08em;text-align:center;color:#1e5e24;border:2px dashed #4CAF50;border-radius:14px;padding:10px;margin:8px 0 12px;background:#f3faf4}
 .btn-link{flex:1;display:inline-block;text-align:center;text-decoration:none;background:var(--verde);color:#fff;border-radius:12px;padding:11px 16px;margin-bottom:10px;box-shadow:var(--ombra-s);font-weight:600;line-height:1.3;transition:background-color .18s,transform .12s}
 .btn-link:hover{background:var(--verde-scuro)}
+.btn-link.grigio{background:#e9edf4;color:var(--notte)}.btn-link.grigio:hover{background:#dde3ee}
 .verde{background-color:var(--verde)} .verde:hover{background-color:var(--verde-scuro)}
 .grigio{background:#e9edf2;color:#2b3445;box-shadow:none} .grigio:hover{background:#dde2e9}
 @media (hover:hover){ .grigio:hover{box-shadow:none} }
@@ -166,6 +168,11 @@ label.etich{display:block;margin:2px 0 2px}
 .cru-nome{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.2;color:var(--notte)}.cru-top p{margin:2px 0 0;color:var(--tenue);font-size:14px}
 .cru-ruolo{display:inline-block;font-size:11.5px;font-weight:800;letter-spacing:.06em;padding:3px 10px;border-radius:999px;color:#fff;margin-bottom:6px}
 .cru-caf .cru-ruolo{background:var(--blu)}.cru-ott .cru-ruolo{background:var(--verde)}
+.cru-principale{margin:0 0 12px}
+.cru-principale button{width:100%;margin:0;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:14px;align-items:center;text-align:left;border-radius:18px;padding:18px 20px;font-size:19px;font-weight:800;background:linear-gradient(135deg,#0069D9,#0A4FB0);color:#fff;border:none;box-shadow:var(--ombra)}
+.cru-principale button svg{grid-row:span 2;width:30px;height:30px;padding:8px;border-radius:12px;background:rgba(255,255,255,.2);box-sizing:content-box}
+.cru-principale button small{font-size:13.5px;font-weight:400;color:rgba(255,255,255,.9)}
+.cru-ott .cru-principale button{background:linear-gradient(135deg,#2E7D32,#1B5E20)}
 .cru-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin:0 0 14px}
 .cru-kpi button{margin:0;text-align:left;background:#fff;color:var(--tenue);border:1px solid var(--bordo);border-radius:var(--raggio);padding:12px 14px;font-size:13px;font-weight:500;line-height:1.3;box-shadow:var(--ombra-s)}
 .cru-kpi button:hover{background:#fff;border-color:var(--blu)}
@@ -296,10 +303,6 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 .linkbtn:hover{background:none;transform:none;color:#0056b3}
 
 /* benvenuto del cliente */
-.my-popup-class{position:fixed;inset:0;z-index:15;overflow:auto;background-color:rgba(10,31,92,.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:grid;place-items:center;padding:16px;animation:velo .2s both}
-.my-popup-content{background-color:#fff;padding:24px;border-radius:22px;width:100%;max-width:520px;text-align:center;box-shadow:0 24px 64px rgba(10,31,92,.28);animation:sale .3s both}
-.continue-button{padding:13px 28px;background-color:var(--verde);color:#fff;border:none;border-radius:14px;cursor:pointer;margin-top:16px;font-size:16px}
-.continue-button:hover{background-color:var(--verde-scuro)}
 .passi{text-align:left;font-size:14.5px;line-height:1.6}
 
 /* pagina del cliente: tracciamento animato */
@@ -319,6 +322,25 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 .barra-av{height:8px;border-radius:8px;background:#e9edf4;overflow:hidden;margin:2px 0 14px}.barra-av i{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,#2E7D32,#0069D9);animation:riempi 1s cubic-bezier(.2,.8,.2,1) both}
 @keyframes riempi{from{width:0}}
 /* strumenti del cliente */
+.catalogo{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.cat{display:grid;gap:2px;background:#fff;border:1px solid var(--bordo);border-radius:14px;padding:8px;font-size:13px;line-height:1.3}
+.cat img,.cat-ph{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:var(--campo);margin-bottom:4px}
+.cat-ph{display:grid;place-items:center;color:var(--blu)}.cat-ph svg{width:40px;height:40px}
+.cat span{color:var(--tenue)}.cat small{color:var(--tenue);font-size:11px}
+.giorni{display:flex;gap:6px;overflow-x:auto;margin:12px 0 8px;padding-bottom:4px}
+.giorni button{flex:0 0 58px;margin:0;display:grid;justify-items:center;gap:1px;padding:8px 4px;background:#fff;color:var(--notte);border:1px solid var(--bordo);border-radius:12px;font-size:12px;font-weight:500;text-transform:capitalize}
+.giorni button b{font-size:20px}.giorni button.on,.orari button.on{background:var(--blu);color:#fff;border-color:var(--blu)}
+.orari{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 12px}
+.orari button{margin:0;padding:10px 0;background:#fff;color:var(--notte);border:1px solid var(--bordo);border-radius:10px;font-weight:700;font-size:14px}
+.ricevute{display:grid;gap:8px}.ric{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bordo);border-radius:12px;padding:10px 12px}
+.ric span{flex:1;display:grid}.ric small{color:var(--tenue)}.ric .btn-link{margin:0;padding:8px 12px;font-size:13px}
+.r-c{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--bordo);font-size:13.5px}.r-c:last-child{border:0}.r-c span{color:var(--tenue)}.r-c b{text-align:right}
+.btn-foto{display:flex;align-items:center;gap:8px;justify-content:center;margin:8px 0;padding:12px;border:1px dashed var(--bordo);border-radius:12px;cursor:pointer;color:var(--blu);font-weight:700}
+.btn-foto svg{width:22px;height:22px}
+.app-box{margin:0 0 10px}
+.tab-wrap{overflow-x:auto;margin:6px 0}table.rx.tab{width:100%}table.rx.tab td,table.rx.tab th{text-align:left;vertical-align:top}
+.voce-lis{margin:0 0 6px;align-items:center}.voce-lis input{min-width:0}
+.giorni-sel{display:flex;flex-wrap:wrap;gap:6px 12px;margin:8px 0 10px}.giorni-sel label{display:flex;align-items:center;gap:4px;font-size:14px}.giorni-sel input{width:auto;margin:0}
 .extra-cli{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 4px}
 .extra-cli button{margin:0;display:grid;justify-items:center;gap:4px;padding:12px 6px;background:#fff;color:var(--notte);border:1px solid var(--bordo);border-radius:16px;font-size:13px;font-weight:700;line-height:1.2;box-shadow:var(--ombra-s)}
 .extra-cli button:hover{background:#fff;border-color:var(--blu)}.extra-cli svg{width:24px;height:24px;color:var(--blu)}
@@ -362,7 +384,7 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
     <div class="hero-testo">
       <p class="occhiello">Tramite il tuo CAF e l'ottico convenzionato</p>
       <h1>Occhiali nuovi <span>ogni anno</span></h1>
-      <p class="sotto">Montatura e lenti graduate in abbonamento, con un piccolo canone mensile. Niente interessi, controllo della vista incluso.</p>
+      <p class="sotto">Montatura e lenti graduate in abbonamento, controllo della vista incluso.</p>
       <div class="prezzo"><b>Paghi un mese alla volta, senza pensieri</b></div>
       <div class="cta"><button id="come-funziona" type="button">Come funziona</button><button id="hoCodice" type="button">Ho già il mio codice</button></div>
       <ol class="tre-passi">
@@ -384,14 +406,6 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
   <!-- accesso riservato (telefono) -->
   <div class="area-mobile" id="areaMobile"><span>Operatori:</span><button type="button" id="mCaf">Area CAF</button><button type="button" id="mOtt">Area ottico</button></div>
 
-  <!-- benvenuto cliente -->
-  <div id="my-popup" class="my-popup-class" hidden>
-    <div class="my-popup-content">
-      <h2 id="welcome-message">Benvenuto</h2>
-      <button id="continue-button" class="continue-button" type="button">Continua</button>
-    </div>
-  </div>
-
   <!-- ho già il mio codice -->
   <div class="popup" id="codicePopup" hidden><div class="popup-content">
     <h2>Apri la tua pagina</h2>
@@ -411,6 +425,7 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
       <div class="esito err" data-err hidden></div>
       <button type="submit" class="full">Entra</button>
     </form>
+    <p style="margin:10px 0 0;text-align:center"><button type="button" class="linkbtn" data-recupero="caf">Password dimenticata?</button></p>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
   </div></div>
 
@@ -423,6 +438,7 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
       <div class="esito err" data-err hidden></div>
       <button type="submit" class="full">Entra</button>
     </form>
+    <p style="margin:10px 0 0;text-align:center"><button type="button" class="linkbtn" data-recupero="ottico">Password dimenticata?</button></p>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
   </div></div>
 
@@ -455,6 +471,16 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
   </div></div>
 
   <!-- cambio password -->
+  <div class="popup" id="recuperoPopup" hidden><div class="popup-content">
+    <h2>Password dimenticata</h2>
+    <form id="formRecupero"><p class="hint" style="margin:0 0 8px">Serve il <b>codice di recupero</b> creato in «Cambia password». Se non lo hai, chiedi a SocialGlass di reimpostare la password.</p>
+      <input type="text" id="recCodice" aria-label="Codice" placeholder="Codice (es. CAF001)" autocapitalize="characters" required>
+      <input type="text" id="recCod" aria-label="Codice di recupero" placeholder="Codice di recupero (es. ABCD-EFGH-JKLM)" autocapitalize="characters" autocomplete="off" required>
+      <input type="password" id="recNuova" aria-label="Nuova password" placeholder="Nuova password (almeno 8 caratteri)" autocomplete="new-password" minlength="8" required>
+      <div class="esito" id="recRis" hidden></div><button type="submit" class="full">Reimposta la password</button></form>
+    <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
+  </div></div>
+
   <div class="popup" id="passwordCambioPopup" hidden><div class="popup-content">
     <h2>Cambia password</h2>
     <form id="formCambioPw">
@@ -462,6 +488,8 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
       <label class="lbl" for="pwNuo">Nuova password (almeno 8 caratteri)</label><input type="password" id="pwNuo" autocomplete="new-password" minlength="8" required>
       <label class="lbl" for="pwNuo2">Ripeti la nuova password</label><input type="password" id="pwNuo2" autocomplete="new-password" minlength="8" required>
       <div class="esito" id="pwEsito" hidden></div><button type="submit" class="full">Cambia password</button></form>
+    <div class="scheda" style="margin-top:14px"><b>Codice di recupero</b><p class="hint" style="margin:4px 0 8px">Se dimentichi la password, con questo codice la reimposti da solo da «Password dimenticata?». Crealo, scrivilo e conservalo in un posto sicuro: lo vedi una sola volta.</p>
+      <div class="esito" id="recEsito" hidden></div><button type="button" class="grigio full" id="recCrea">Crea il codice di recupero</button></div>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
   </div></div>
 
@@ -585,9 +613,9 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 
   <!-- elenco clienti (CAF e ottico) -->
   <div class="popup pagina" id="clientiPopup" hidden><div class="popup-content alto largo">
-    <h2>I miei clienti</h2>
+    <h2 id="clientiTitolo">I miei clienti</h2>
     <details id="clientiConti" class="scheda" hidden><summary style="cursor:pointer;font-weight:700">I miei conteggi con SocialGlass</summary><div id="clientiContiCorpo"></div></details>
-    <div class="filtri"><input type="text" id="filtroClienti" aria-label="Cerca cliente" placeholder="Cerca per nome o codice" autocomplete="off"><select id="filtroStato" aria-label="Filtra per stato"><option value="">Tutti gli stati</option></select>
+    <div class="filtri" id="clientiFiltri"><input type="text" id="filtroClienti" aria-label="Cerca cliente" placeholder="Cerca per nome o codice" autocomplete="off"><select id="filtroStato" aria-label="Filtra per stato"><option value="">Tutti gli stati</option></select>
       <select id="filtroSit" aria-label="Filtra per situazione"><option value="">Ogni situazione</option><option value="bloccati">Anagrafica bloccata</option><option value="scadenza">In scadenza (30 giorni)</option><option value="ultimati">Durata minima completata</option><option value="consegnati">Occhiale consegnato</option><option value="avvisi">Avvisi da inviare</option><option value="attivi">Abbonamento attivo</option><option value="inattesa">In attesa di attivazione</option><option value="mese">Registrati questo mese</option><option value="fermi">Senza montatura da più di 3 giorni</option><option value="rinnovabili">Possono rinnovare</option><option value="ritiro">Occhiale da ritirare</option><option value="lab">Montatura da dare al laboratorio</option></select></div>
     <p class="hint" id="clientiNum" style="margin:2px 0 4px"></p>
     <div id="clientiLista" class="lista"></div>
@@ -649,12 +677,10 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
   </div></div>
 
-  <button id="mio-ordine" type="button" hidden>Il mio <br>ordine</button>
-
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1795200000"></script>
-<script src="listini.js?v=1795200000"></script>
-<script src="app.js?v=1795200000"></script>
+<script src="cf.js?v=1795300000"></script>
+<script src="listini.js?v=1795300000"></script>
+<script src="app.js?v=1795300000"></script>
 </body>
 </html>

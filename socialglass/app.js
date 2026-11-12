@@ -148,7 +148,10 @@ function open(id, daIndietro){
 function closeAll(daPop){ document.querySelectorAll(".popup").forEach(p => p.hidden = true); storia = []; if (daPop !== true) scarica(nStati); else nStati = 0; ritornaFocus(); }
 function ritornaFocus(){ if (primaDelPopup && document.contains(primaDelPopup)) try { primaDelPopup.focus(); } catch(_){} primaDelPopup = null; }
 document.addEventListener("click", e => {
-  const c = e.target.closest("[data-close]"); if (c){ c.closest(".popup").hidden = true; storia = []; scarica(nStati); ritornaFocus(); return; }
+  const c = e.target.closest("[data-close]");
+  // le finestre aperte dalla pagina del cliente (tessera, prenota…) con la X tornano all'ordine
+  if (c && c.closest("#extraPopup") && storia.length){ indietro(); return; }
+  if (c){ c.closest(".popup").hidden = true; storia = []; scarica(nStati); ritornaFocus(); return; }
   const o = e.target.closest("[data-open]");
   if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); if (o.dataset.open === "ordinePopup") resetOrdine(); return; }
   if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id","sg_listino"].forEach(k => sessionStorage.removeItem(k)); cruDati = null; closeAll(); return; }
@@ -324,6 +327,8 @@ function scaduta(r){ if (r.status === 401){ sessionStorage.removeItem("sg_tok");
 
 /* ---------- cruscotti CAF e ottico ---------- */
 const ICO = {
+  agenda: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2M8 18h2M14 14h2"/>',
+  segn: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
   nuovo: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
   cf: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h5M7 14h3M15 13l2 2 3-4"/>',
   rinnovo: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
@@ -346,6 +351,7 @@ async function apriCruscotto(r0, silenzioso){
   if (!silenzioso){ open(isOtt ? "optionsOtticoPopup" : "optionsPopup"); disegnaCruscotto(isOtt, cruDati); }
   const r = await api("api/clienti"); if (scaduta(r)) return;
   cruDati = r.ok ? r.data : {clienti: []}; clienti = cruDati.clienti || [];
+  if (cruDati.listini) Object.assign(LISTINI.LISTINI.convenzioni, cruDati.listini);
   if (ruolo() === r0) disegnaCruscotto(isOtt, cruDati);
 }
 function disegnaCruscotto(isOtt, d){
@@ -359,6 +365,9 @@ function disegnaCruscotto(isOtt, d){
   let k, tess;
   if (isOtt){
     const esp = (d.esposte || []).reduce((t, m) => t + m.qta, 0);
+    const oggiR = new Date().toLocaleDateString("sv-SE"), appOggi = (d.appuntamenti || []).filter(a => a.il.slice(0, 10) === oggiR).length;
+    f((d.segnalazioni || []).length, "Segnalazioni dei clienti", "Un problema con l'occhiale: rispondi o fissa un appuntamento", "data-segn", true);
+    f(appOggi, "Appuntamenti di oggi", "Clienti che hanno prenotato dal loro link", "data-agenda");
     f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
     f(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", "Il cliente ha scelto la montatura: inserisci lenti e ricetta", `data-vai="stato:${STATI.MONTATURA}"`);
     f(n(SIT_P.lab), "Montature da dare al laboratorio", "Mettile da parte con il codice del cliente", 'data-vai="sit:lab"');
@@ -367,10 +376,8 @@ function disegnaCruscotto(isOtt, d){
     f(n(c => c.stato === STATI.PAGAMENTO), "Clienti che devono attivare l'abbonamento", "Preventivo inviato: ricordaglielo", `data-vai="stato:${STATI.PAGAMENTO}"`);
     f(n(c => c.rinnovabile && c.stato === STATI.CONSEGNATO && !c.bloccato), "Clienti che possono rinnovare", "Proponi l'occhiale nuovo", 'data-vai="sit:rinnovabili"');
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
-    k = kpi(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", `data-vai="stato:${STATI.MONTATURA}"`) + kpi(n(c => c.stato === STATI.ATTIVO), "In laboratorio", `data-vai="stato:${STATI.ATTIVO}"`)
-      + kpi(n(c => c.stato === STATI.PRONTO), "Da consegnare", `data-vai="stato:${STATI.PRONTO}"`) + kpi(attivi, "Abbonamenti attivi", 'data-vai="sit:attivi"', "ok")
-      + kpi(esp, "Montature esposte", "data-esposte") + (e && e.accordo ? kpi(euro(e.saldoAttuale), "Compensi da ricevere", "data-conti") : "");
-    tess = tessera("ordine", "Ordine cliente", "Lenti, ricetta e preventivo", 'data-open="ordinePopup"', true) + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
+    tess = tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
+      + tessera("agenda", "Appuntamenti", `${(d.appuntamenti || []).length} in agenda · orari`, "data-agenda")
       + tessera("esposte", "Montature esposte", "Cosa hai in negozio", "data-esposte") + tessera("listino", "Listino e canoni", "Calcola il canone al cliente", "data-listino")
       + tessera("cerca", "Assistenza cliente", "Cerca per codice", 'data-open="popupAssistenza"') + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti")
       + tessera("chiave", "Cambia password", "Del tuo accesso", 'data-open="passwordCambioPopup"') + tessera("aiuto", "Contatta SocialGlass", "Telefono ed email", "data-contatti");
@@ -380,16 +387,16 @@ function disegnaCruscotto(isOtt, d){
     f(n(SIT_P.scadenza), "Abbonamenti in scadenza", "Proponi il rinnovo con un occhiale nuovo", 'data-vai="sit:scadenza"');
     f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
-    const mese = new Date().toISOString().slice(0, 7);
-    k = kpi(l.length, "Clienti registrati", "data-clienti") + kpi(n(c => String(c.creato).slice(0, 7) === mese), "Nuovi questo mese", 'data-vai="sit:mese"')
-      + kpi(n(c => !c.attivatoIl && !c.esito), "In attesa di attivazione", 'data-vai="sit:inattesa"') + kpi(attivi, "Abbonamenti attivi", 'data-vai="sit:attivi"', "ok")
-      + kpi(n(SIT_P.scadenza), "In scadenza", 'data-vai="sit:scadenza"') + (e && e.accordo ? kpi(euro(e.saldoAttuale), "Compensi da ricevere", "data-conti") : "");
-    tess = tessera("nuovo", "Nuovo cliente", "Registra e invia il link", 'data-open="popupForm" data-reset-form', true) + tessera("cf", "Verifica codice fiscale", "È già cliente?", 'data-open="codiceFiscalePopup"')
+    tess = tessera("cf", "Verifica codice fiscale", "È già cliente?", 'data-open="codiceFiscalePopup"')
       + tessera("rinnovo", "Rinnovo occhiale", "Per chi è a fine periodo", 'data-open="rinnovoPopup"') + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
       + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti") + tessera("stampa", "Volantino per il cliente", "Stampa «come funziona»", "data-volantino")
       + tessera("chiave", "Cambia password", "Del tuo accesso", 'data-open="passwordCambioPopup"') + tessera("aiuto", "Contatta SocialGlass", "Telefono ed email", "data-contatti");
   }
-  box.innerHTML = testa + `<div class="cru-kpi">${k}</div><div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: non hai niente in sospeso.</div>'}</div>
+  // solo due numeri che non compaiono altrove; un'azione principale ben visibile
+  k = kpi(attivi, "Abbonamenti attivi", 'data-vai="sit:attivi"', "ok") + (e && e.accordo ? kpi(euro(e.saldoAttuale), "Compensi da ricevere", "data-conti") : "");
+  const principale = isOtt ? tessera("ordine", "Ordine cliente", "Inserisci lenti, ricetta e preventivo", 'data-open="ordinePopup"', true)
+    : tessera("nuovo", "Nuovo cliente", "Registra il cliente e invia il suo link", 'data-open="popupForm" data-reset-form', true);
+  box.innerHTML = testa + `<div class="cru-principale">${principale}</div><div class="cru-kpi due">${k}</div><div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: non hai niente in sospeso.</div>'}</div>
     <div class="cru-box"><h3>${isOtt ? "Strumenti dell'ottica" : "Strumenti del CAF"}</h3><div class="tessere">${tess}</div></div></div>`;
 }
 // clic nei cruscotti
@@ -401,7 +408,41 @@ document.addEventListener("click", e => {
   if (b.hasAttribute("data-listino")){ apriListino(); return; }
   if (b.hasAttribute("data-contatti")){ apriContatti(); return; }
   if (b.hasAttribute("data-volantino")){ stampaVolantino(); return; }
+  if (b.hasAttribute("data-agenda")){ apriAgenda(); return; }
+  if (b.hasAttribute("data-segn")){ apriSegnOtt(); return; }
 });
+// ottica: agenda degli appuntamenti e orari prenotabili
+function apriAgenda(){
+  const d = cruDati || {}, l = d.appuntamenti || [], or = d.orari || {giorni: [1, 2, 3, 4, 5, 6], fasce: ["09:30-12:30", "16:00-19:30"], durata: 30};
+  const G = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"], perGiorno = {};
+  l.forEach(a => (perGiorno[a.il.slice(0, 10)] = perGiorno[a.il.slice(0, 10)] || []).push(a));
+  apriExtra("Appuntamenti", `${l.length ? Object.entries(perGiorno).map(([g, x]) => `<h3 style="margin:10px 0 6px;text-transform:capitalize">${esc(new Date(g + "T12:00:00").toLocaleDateString("it-IT", {weekday: "long", day: "numeric", month: "long"}))}</h3>
+      ${x.map(a => `<div class="ric"><span><b>${esc(a.il.slice(11))} · ${esc(a.nome)}</b><small>${esc(a.tipo)} · ${esc(a.univoco)}</small></span></div>`).join("")}`).join("")
+      : '<div class="vuoto">Nessun appuntamento in agenda. I clienti prenotano dal loro link («Prenota in ottica»).</div>'}
+    <form id="fOrari" class="scheda" style="margin-top:14px"><b>Orari prenotabili</b>
+      <div class="giorni-sel">${[1, 2, 3, 4, 5, 6, 0].map(g => `<label><input type="checkbox" name="g" value="${g}" ${or.giorni.includes(g) ? "checked" : ""}> ${G[g]}</label>`).join("")}</div>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="orM">Mattina</label><input id="orM" placeholder="09:30-12:30" value="${esc(or.fasce[0] || "")}"></div><div style="flex:1"><label class="lbl" for="orP">Pomeriggio</label><input id="orP" placeholder="16:00-19:30" value="${esc(or.fasce[1] || "")}"></div></div>
+      <label class="lbl" for="orD">Durata di ogni appuntamento</label><select id="orD">${[15, 20, 30, 45, 60].map(x => `<option value="${x}" ${x === or.durata ? "selected" : ""}>${x} minuti</option>`).join("")}</select>
+      <div class="esito" id="orEsito" hidden></div><button type="submit" class="verde full">Salva gli orari</button></form>`);
+  $("fOrari").onsubmit = async e => { e.preventDefault();
+    const giorni = [...$("fOrari").querySelectorAll("[name=g]:checked")].map(x => +x.value), fasce = [$("orM").value.trim(), $("orP").value.trim()].filter(Boolean);
+    const r = await api("api/ordine", {method: "POST", body: JSON.stringify({azione: "orari", giorni, fasce, durata: +$("orD").value})});
+    esito($("orEsito"), r.ok ? "Orari salvati: i clienti vedono subito i nuovi orari." : (r.data.errore || "Errore"), r.ok ? "ok" : "err");
+    if (r.ok && cruDati) cruDati.orari = {giorni, fasce, durata: +$("orD").value}; };
+}
+// ottica: segnalazioni dei clienti da gestire
+function apriSegnOtt(){
+  const l = (cruDati || {}).segnalazioni || [];
+  apriExtra("Segnalazioni dei clienti", l.length ? l.map(x => `<div class="scheda" style="margin:0 0 10px" data-sg="${esc(x.id)}"><small>${dt(x.il)} · <b>${esc(x.univoco)}</b> ${esc(x.nome)}</small>
+      <p style="margin:6px 0">${esc(x.testo)}</p>${x.foto ? `<img src="${esc(x.foto)}" alt="Foto del cliente" style="max-width:100%;border-radius:10px">` : ""}
+      <div class="riga" style="margin-top:6px">${x.cellulare ? `<a class="btn-link" href="https://wa.me/39${esc(String(x.cellulare).replace(/\D/g, ""))}" target="_blank" rel="noopener">WhatsApp</a><a class="btn-link grigio" href="tel:+39${esc(String(x.cellulare).replace(/\D/g, ""))}">Chiama</a>` : ""}</div>
+      <input placeholder="Risposta al cliente (facoltativa, gli arriva come notifica)" data-risp maxlength="300" style="margin-top:8px"><button type="button" class="verde full" data-risolta="${esc(x.id)}">Segna come risolta</button></div>`).join("")
+    : '<div class="vuoto">Nessuna segnalazione aperta.</div>');
+  $("extraCorpo").querySelectorAll("[data-risolta]").forEach(b => b.onclick = async () => { b.disabled = true;
+    const box = b.closest("[data-sg]"), r = await api("api/ordine", {method: "POST", body: JSON.stringify({azione: "segnalazioneRisolta", id: b.dataset.risolta, risposta: box.querySelector("[data-risp]").value})});
+    if (!r.ok){ b.disabled = false; return alert(r.data.errore || "Errore"); }
+    box.innerHTML = '<div class="esito ok">Segnalazione risolta.</div>'; cruDati.segnalazioni = (cruDati.segnalazioni || []).filter(x => x.id !== b.dataset.risolta); });
+}
 function apriContatti(){
   const t = (window.SG_INFO && SG_INFO.titolare) || {}, tel = String(t.telefono || "").replace(/[^\d+]/g, "");
   $("contattiCorpo").innerHTML = (t.telefono || t.email) ? `<p style="margin:0 0 10px;color:var(--tenue)">Per anagrafiche bloccate, compensi, problemi con un ordine o con l'accesso.</p>
@@ -437,6 +478,21 @@ function apriListino(){
     $("lisTot").innerHTML = `Canone <b>${euro(p.rata)}</b> al mese · valore occhiale ${euro(p.totale)}<br>Primo pagamento ${euro(p.rata + p.spedizione)} (canone + spedizione) · riscatto ${euro(p.riscatto)}`; };
   $("listinoCorpo").onchange = calc; calc(); open("listinoPopup");
 }
+// recupero della password con il codice personale (senza passare dall'amministratore)
+let recRuolo = "caf";
+document.addEventListener("click", e => { const b = e.target.closest("[data-recupero]"); if (!b) return; recRuolo = b.dataset.recupero;
+  $("recCodice").value = $(recRuolo === "caf" ? "codice" : "codiceOttico").value; $("recRis").hidden = true; open("recuperoPopup"); });
+$("formRecupero").addEventListener("submit", async e => { e.preventDefault();
+  const r = await post("api/login", {azione: "recupera", ruolo: recRuolo, codice: $("recCodice").value, recupero: $("recCod").value, nuova: $("recNuova").value});
+  if (!r.ok) return esito($("recRis"), r.data.errore || "Errore", "err");
+  $("recRis").hidden = false; $("recRis").className = "esito ok";
+  $("recRis").innerHTML = `Password cambiata: ora entra con la nuova. Il codice di recupero usato non vale più: quello <b>nuovo</b> è<div class="codice-grande" style="font-size:20px;margin:8px 0">${esc(r.data.codice)}</div>Scrivilo e conservalo.`;
+  $("recCod").value = $("recNuova").value = ""; });
+$("recCrea").addEventListener("click", async () => { const b = $("recCrea");
+  if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Il codice precedente non varrà più: tocca di nuovo per confermare"; return; }
+  b.disabled = true; const r = await api("api/login", {method: "POST", body: JSON.stringify({azione: "codiceRecupero"})}); b.disabled = false; b.dataset.ok = ""; b.textContent = "Crea un nuovo codice di recupero";
+  if (!r.ok) return esito($("recEsito"), r.data.errore || "Errore", "err");
+  $("recEsito").hidden = false; $("recEsito").className = "esito ok"; $("recEsito").innerHTML = `Il tuo codice di recupero:<div class="codice-grande" style="font-size:20px;margin:8px 0">${esc(r.data.codice)}</div>Scrivilo e conservalo: non lo vedrai più.`; });
 $("formCambioPw").addEventListener("submit", async e => {
   e.preventDefault(); const es = $("pwEsito");
   if ($("pwNuo").value !== $("pwNuo2").value) return esito(es, "Le due nuove password non coincidono.", "err");
@@ -470,17 +526,23 @@ function avvioApp(){
 const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 function bannerApp(u){
   if (DEMO === "browser") return "";
-  if (!installata() && (promptInstalla || iOS)) return `<div class="banner-app">${svgI('<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/>').replace("<svg", '<svg style="width:30px;height:30px;flex:0 0 auto"')}<div><b>Metti SocialGlass sul telefono</b><span>Un'icona per aprire subito la tua pagina e ricevere gli avvisi gratis.</span></div><button type="button" id="mpInstalla">Installa</button></div>`;
-  if (pushPossibile() && u.vapid && !u.notifiche && Notification.permission !== "denied") return `<div class="banner-app">${svgI('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>').replace("<svg", '<svg style="width:30px;height:30px;flex:0 0 auto"')}<div><b>Attiva le notifiche</b><span>Ti avvisiamo quando gli occhiali sono pronti e prima delle scadenze.</span></div><button type="button" id="mpNotifiche">Attiva</button></div>`;
-  return "";
+  // un solo invito: installa l'app e attiva gli avvisi con lo stesso tocco
+  const inst = !installata() && (promptInstalla || iOS), notif = pushPossibile() && u.vapid && !u.notifiche && Notification.permission !== "denied";
+  if (!inst && !notif) return "";
+  return `<div class="banner-app">${svgI('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>').replace("<svg", '<svg style="width:30px;height:30px;flex:0 0 auto"')}<div><b>${inst ? "Installa e ricevi gli avvisi" : "Ricevi gli avvisi sul telefono"}</b><span>${inst ? "Un'icona per aprire subito il tuo ordine e una notifica gratis quando gli occhiali sono pronti." : "Una notifica gratis quando gli occhiali sono pronti e prima delle scadenze."}</span></div><button type="button" id="mpApp">Attiva</button></div>`;
+}
+async function attivaApp(){
+  // prima le notifiche (sul browser funzionano già), poi l'installazione; su iPhone servono prima l'icona sulla Home
+  if (pushPossibile() && mio.vapid && !mio.notifiche && Notification.permission !== "denied") await attivaNotifiche();
+  if (!installata() && (promptInstalla || iOS)) await installa();
 }
 async function installa(){
   if (promptInstalla){ promptInstalla.prompt(); const r = await promptInstalla.userChoice.catch(() => ({})); promptInstalla = null; if (r.outcome === "accepted") notaDemo("App installata: la trovi tra le icone del telefono."); disegnaMio(); return; }
-  apriExtra("Metti SocialGlass sul telefono", `<ol class="passi-ora"><li>Tocca il pulsante <b>Condividi</b> di Safari (il quadrato con la freccia in su).</li><li>Scegli <b>«Aggiungi alla schermata Home»</b> e poi <b>Aggiungi</b>.</li><li>Apri SocialGlass dalla nuova icona e tocca <b>«Attiva le notifiche»</b>.</li></ol><p class="hint">Su iPhone le notifiche funzionano solo dall'icona sulla schermata Home (iOS 16.4 o successivo).</p>`);
+  apriExtra("Metti SocialGlass sul telefono", `<ol class="passi-ora"><li>Tocca il pulsante <b>Condividi</b> di Safari (il quadrato con la freccia in su).</li><li>Scegli <b>«Aggiungi alla schermata Home»</b> e poi <b>Aggiungi</b>.</li><li>Apri SocialGlass dalla nuova icona e tocca <b>«Attiva»</b> per ricevere gli avvisi.</li></ol><p class="hint">Su iPhone le notifiche funzionano solo dall'icona sulla schermata Home (iOS 16.4 o successivo).</p>`);
 }
 const b64 = s => { const p = "=".repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
 async function attivaNotifiche(){
-  const btn = $("mpNotifiche"); if (btn){ btn.disabled = true; btn.textContent = "Attendi…"; }
+  const btn = $("mpApp"); if (btn){ btn.disabled = true; btn.textContent = "Attendi…"; }
   try {
     if (await Notification.requestPermission() !== "granted") throw new Error("Hai negato il permesso: puoi riattivarlo dalle impostazioni del browser.");
     const reg = await navigator.serviceWorker.ready;
@@ -529,10 +591,129 @@ function boxDona(u){
   return `<label class="dona" for="mpDona"><input type="checkbox" id="mpDona" ${d.si ? "checked" : ""} style="width:22px;height:22px;margin:2px 0 0;box-shadow:none;flex:0 0 auto"><div><b>Dono il mio occhiale</b><br>Quando lo riconsegni, lo doniamo a chi non può permettersi un paio di occhiali.</div></label>`;
 }
 function strumentiCli(u){
-  const anno = u.primaAttivazione && u.consegnatoIl;
-  return `<div class="extra-cli"><button type="button" id="mpTessera">${svgI('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}La mia tessera</button>
-    <button type="button" id="mpAmico">${svgI('<path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>')}Porta un amico</button>
-    ${anno ? `<button type="button" id="mpAnno">${svgI('<path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/>')}Il mio anno</button>` : `<button type="button" id="mpChiama">${svgI('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>')}La mia ottica</button>`}</div>`;
+  const anno = u.primaAttivazione && u.consegnatoIl, od = u.ordine || {}, pg = od.pagamento || {}, st = u.stato;
+  const B = (id, ic, t) => `<button type="button" id="${id}">${svgI(ic)}${t}</button>`;
+  const I = {tes: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>', amico: '<path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+    anno: '<path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/>', tel: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+    cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', occ: '<circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M10 15h4M2 15l2-8h3M22 15l-2-8h-3"/>',
+    carta: '<rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22M5 15h4"/>', ric: '<path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 .7V2l-1 .7-3-2-3 2-3-2-3 2-3-2z"/><path d="M8 7h8M8 11h8M8 15h5"/>',
+    doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>', aiuto: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>'};
+  const scegli = [STATI.REGISTRATO, STATI.MONTATURA].includes(st) || (od.periodo && od.periodo.aperto && !od.periodo.chiuso);
+  return `<div class="extra-cli">${B("mpTessera", I.tes, "La mia tessera")}${B("mpPrenota", I.cal, u.appuntamento ? "Il mio appuntamento" : "Prenota in ottica")}
+    ${scegli ? B("mpCatalogo", I.occ, "Montature in ottica") : ""}${B("mpAmico", I.amico, "Porta un amico")}
+    ${anno ? B("mpAnno", I.anno, "Il mio anno") : B("mpChiama", I.tel, "La mia ottica")}
+    ${[STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(st) ? B("mpSegnala", I.aiuto, "Segnala un problema") : ""}
+    ${u.haCarta ? B("mpCarta", I.carta, "Cambia carta") : ""}${pg.attivatoIl ? B("mpRicevute", I.ric, "Ricevute") : ""}${u.contratto ? B("mpContratto", I.doc, "Il mio contratto") : ""}</div>`;
+}
+const fData = d => new Date(d + (d.length <= 10 ? "T12:00:00" : "")).toLocaleDateString("it-IT", {weekday: "long", day: "numeric", month: "long"});
+// appuntamento in vista, in cima alla pagina
+function boxAppuntamento(u){
+  const a = u.appuntamento; if (!a) return "";
+  return `<div class="esito ok app-box"><b>${esc(a.descrizione || "Appuntamento")}</b><br>${esc(fData(a.il))} alle <b>${esc(a.il.slice(11))}</b>${u.ottico ? ` · ${esc(u.ottico.nome)}` : ""}</div>`;
+}
+// montature esposte nella sua ottica (con foto se caricate)
+async function apriCatalogo(){
+  apriExtra("Montature nella tua ottica", '<div class="vuoto">Caricamento…</div>');
+  const r = await api(`api/benvenuto?catalogo=1&univoco=${encodeURIComponent(UNIVOCO)}`);
+  const l = r.ok ? r.data.montature || [] : [];
+  $("extraCorpo").innerHTML = l.length ? `<p class="hint" style="margin:0 0 10px">${l.length} montature esposte${r.data.ottica ? " da " + esc(r.data.ottica) : ""}. Provale in negozio e scansiona il cartellino di quella che scegli.</p>
+    <div class="catalogo">${l.map(m => `<div class="cat">${m.foto ? `<img src="${esc(m.foto)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="cat-ph">${svgI('<circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M10 15h4M2 15l2-8h3M22 15l-2-8h-3"/>')}</div>`}
+      <b>${esc(m.modello)}</b><span>${esc(m.colore)}${m.calibro ? ` · ${esc(m.calibro)}${m.asse ? "-" + esc(m.asse) : ""}` : ""}</span><small>${esc(m.codice)}</small></div>`).join("")}</div>`
+    : `<div class="vuoto">${r.ok ? "La tua ottica non ha ancora caricato le montature esposte: le vedi direttamente in negozio." : esc(r.data.errore || "Non disponibile ora.")}</div>`;
+}
+// prenotazione: tipo, giorno e ora tra quelli liberi
+async function apriPrenota(){
+  const u = mio, a = u.appuntamento;
+  const tipoBase = [STATI.REGISTRATO, STATI.MONTATURA].includes(u.stato) ? "scelta" : u.stato === STATI.PRONTO ? "ritiro" : u.stato === STATI.CONSEGNATO ? "controllo" : "altro";
+  const tipi = {scelta: "Scelta della montatura", ritiro: "Ritiro degli occhiali", controllo: "Controllo della vista", altro: "Assistenza"};
+  apriExtra(a ? "Il mio appuntamento" : "Prenota in ottica", '<div class="vuoto">Caricamento degli orari…</div>');
+  const r = await api(`api/benvenuto?slot=1&univoco=${encodeURIComponent(UNIVOCO)}`), g = r.ok ? r.data.giorni || [] : [];
+  let giorno = g.length ? g[0].data : "", ora = "";
+  const disegna = () => {
+    $("extraCorpo").innerHTML = `${a ? `<div class="esito ok" style="margin:0 0 12px"><b>${esc(a.descrizione || "")}</b><br>${esc(fData(a.il))} alle <b>${esc(a.il.slice(11))}</b>
+        <div style="margin-top:8px"><button type="button" class="grigio" id="apAnnulla" style="margin:0">Annulla l'appuntamento</button></div></div><p class="hint" style="margin:0 0 8px">Oppure scegli un altro orario:</p>` : ""}
+      ${g.length ? `<label class="lbl" for="apTipo">Per cosa?</label><select id="apTipo">${Object.entries(tipi).map(([k, t]) => `<option value="${k}" ${k === ((a && a.tipo) || tipoBase) ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <div class="giorni">${g.map(x => `<button type="button" data-g="${x.data}" class="${x.data === giorno ? "on" : ""}">${esc(new Date(x.data + "T12:00:00").toLocaleDateString("it-IT", {weekday: "short"}))}<b>${+x.data.slice(8)}</b>${esc(new Date(x.data + "T12:00:00").toLocaleDateString("it-IT", {month: "short"}))}</button>`).join("")}</div>
+      <div class="orari">${(g.find(x => x.data === giorno) || {slot: []}).slot.map(h => `<button type="button" data-h="${h}" class="${h === ora ? "on" : ""}">${h}</button>`).join("")}</div>
+      <div class="esito err" id="apErr" hidden></div><button type="button" class="verde full" id="apOk" ${ora ? "" : "disabled"}>${ora ? `Prenota ${esc(fData(giorno))} alle ${ora}` : "Scegli un orario"}</button>`
+      : `<div class="vuoto">${r.ok ? "Nessun orario libero nei prossimi 14 giorni: chiama la tua ottica." : esc(r.data.errore || "Non disponibile ora.")}</div>`}`;
+    const c = $("extraCorpo");
+    c.querySelectorAll("[data-g]").forEach(x => x.onclick = () => { giorno = x.dataset.g; ora = ""; disegna(); });
+    c.querySelectorAll("[data-h]").forEach(x => x.onclick = () => { ora = x.dataset.h; disegna(); });
+    const ok = $("apOk"); if (ok) ok.onclick = async () => { ok.disabled = true; ok.textContent = "Attendi…";
+      const q = await post("api/benvenuto", {azione: "appuntamento", univoco: UNIVOCO, quando: `${giorno}T${ora}`, tipo: $("apTipo").value});
+      if (!q.ok){ $("apErr").hidden = false; $("apErr").textContent = q.data.errore || "Riprova."; ok.disabled = false; ok.textContent = "Riprova"; return; }
+      await caricaMio(false); apriExtra("Appuntamento confermato", `<div class="esito ok"><b>${esc(tipi[q.data.appuntamento.tipo] || "")}</b><br>${esc(fData(giorno))} alle <b>${ora}</b>${mio.ottico ? `<br>${esc(mio.ottico.nome)}, ${esc(mio.ottico.indirizzo)}${esc(mio.ottico.citta)}` : ""}</div><p class="hint">L'ottica lo vede subito. Se non puoi venire, annullalo da qui.</p>`); };
+    const an = $("apAnnulla"); if (an) an.onclick = async () => { an.disabled = true; const q = await post("api/benvenuto", {azione: "annullaAppuntamento", univoco: UNIVOCO});
+      if (!q.ok) return notaDemo(q.data.errore || "Riprova."); await caricaMio(false); apriExtra("Appuntamento annullato", '<div class="esito ok">Fatto: l\'orario è di nuovo libero per altri.</div>'); };
+  };
+  disegna();
+}
+// carta e ricevute: pagina sicura di Stripe
+async function apriCarta(){
+  const b = $("mpCarta"); if (b){ b.disabled = true; }
+  const r = await post("api/pagamento", {azione: "carta", univoco: UNIVOCO});
+  if (b) b.disabled = false;
+  if (r.ok && r.data.url){ location.href = r.data.url; return; }
+  apriExtra("Cambia carta", `<div class="esito ${r.ok ? "info" : "err"}">${esc((r.data && r.data.errore) || "Non disponibile ora: riprova tra poco.")}</div>`);
+}
+async function apriRicevute(){
+  apriExtra("Ricevute dei pagamenti", '<div class="vuoto">Caricamento…</div>');
+  const r = await post("api/pagamento", {azione: "ricevute", univoco: UNIVOCO}), l = r.ok ? r.data.ricevute || [] : [];
+  $("extraCorpo").innerHTML = l.length ? `<div class="ricevute">${l.map(x => `<div class="ric"><span><b>${euro(x.importo)}</b><small>${dt(x.il)}${x.numero ? " · n. " + esc(x.numero) : ""}</small></span>
+      ${x.pdf ? `<a class="btn-link" href="${esc(x.pdf)}" target="_blank" rel="noopener">PDF</a>` : ""}${x.url ? `<a class="btn-link grigio" href="${esc(x.url)}" target="_blank" rel="noopener">Apri</a>` : ""}</div>`).join("")}</div>
+      <p class="hint" style="margin-top:10px">Le ricevute le emette Stripe, che gestisce i pagamenti. Per la detrazione chiedi all'ottica il documento fiscale dei canoni.</p>`
+    : `<div class="vuoto">${r.ok ? (r.data.prova ? "Le ricevute compaiono qui dopo il primo pagamento con carta." : "Nessun pagamento ancora registrato.") : esc(r.data.errore || "Non disponibile ora.")}</div>`;
+}
+// copia del contratto in PDF: condizioni con i dati del cliente e la data delle conferme
+const caricaPdf = () => window.jspdf ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+async function apriContratto(){
+  const u = mio, od = u.ordine || {}, c = u.contratto || {}, p = od.prezzi || {}, T = (window.SG_INFO && SG_INFO.titolare) || {};
+  const quando = d => d ? new Date(d).toLocaleString("it-IT", {dateStyle: "long", timeStyle: "short"}) : "—";
+  const righe = [["Cliente", `${u.nome} ${u.cognome || ""}`.trim()], ["Codice cliente", UNIVOCO], ["Ottica", u.ottico ? `${u.ottico.nome}, ${u.ottico.indirizzo}${u.ottico.citta}` : ""],
+    ["Occhiale", od.montatura ? `${od.montatura.modello} ${od.montatura.colore} con lenti ${od.lenti ? od.lenti.nome : ""}` : ""], ["Valore dell'occhiale", euro(p.totale)],
+    ["Canone mensile", euro(p.rata)], ["Durata minima", `${p.mesi || 12} mesi`], ["Abbonamento attivato il", quando(c.attivatoIl)],
+    ["Condizioni accettate", c.consensi ? quando(c.consensi.contratto) : "all'attivazione (obbligatorie per attivare)"], ["Addebito automatico autorizzato", c.consensi ? quando(c.consensi.addebito) : "all'attivazione (obbligatorio per attivare)"]];
+  apriExtra("Il mio contratto", `<div class="scheda">${righe.map(([k, v]) => `<div class="r-c"><span>${esc(k)}</span><b>${esc(v || "—")}</b></div>`).join("")}</div>
+    <button type="button" class="verde full" id="ctPdf">Scarica il PDF</button><p class="hint">Il PDF contiene questi dati e le condizioni complete dell'abbonamento.</p>`);
+  $("ctPdf").onclick = async () => {
+    const b = $("ctPdf"); b.disabled = true; b.textContent = "Preparo il PDF…";
+    try {
+      await caricaPdf(); const doc = new window.jspdf.jsPDF({unit: "mm", format: "a4"}), W = 180; let y = 18;
+      const riga = (t, sz, bold) => { doc.setFont("helvetica", bold ? "bold" : "normal"); doc.setFontSize(sz); for (const l of doc.splitTextToSize(t, W)){ if (y > 282){ doc.addPage(); y = 18; } doc.text(l, 15, y); y += sz * 0.45; } };
+      riga("SocialGlass · Contratto di abbonamento occhiale", 16, true); y += 2;
+      if (T.ragione) riga(`${T.ragione}${T.piva ? " · P.IVA " + T.piva : ""}${T.indirizzo ? " · " + T.indirizzo : ""}`, 9);
+      y += 3; for (const [k, v] of righe) riga(`${k}: ${v || "—"}`, 10.5); y += 4;
+      riga("Condizioni dell'abbonamento", 13, true); y += 1;
+      const tmp = document.createElement("div"); tmp.innerHTML = testoCondizioni();
+      for (const el of tmp.querySelectorAll("p, li")) { riga((el.tagName === "LI" ? "• " : "") + el.textContent.replace(/\s+/g, " ").trim(), 9.5); y += 1.5; }
+      y += 4; riga(`Copia generata il ${new Date().toLocaleString("it-IT")} dal link personale del cliente.`, 8);
+      await salvaFile(doc.output("blob"), `contratto-socialglass-${UNIVOCO}.pdf`);
+    } catch(e){ notaDemo("Non è stato possibile creare il PDF: riprova con la connessione attiva."); }
+    b.disabled = false; b.textContent = "Scarica il PDF";
+  };
+}
+// segnalo un problema: testo e foto (rimpicciolita sul telefono prima dell'invio)
+function fotoPiccola(file){
+  return new Promise((ok, ko) => { const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, 1000 / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); let q = 0.8, d = c.toDataURL("image/jpeg", q); while (d.length > 550000 && q > 0.3){ q -= 0.15; d = c.toDataURL("image/jpeg", q); } ok(d); };
+    img.onerror = () => ko(new Error("Foto non leggibile")); img.src = url; });
+}
+function apriSegnala(){
+  const l = mio.segnalazioni || [];
+  apriExtra("Segnala un problema", `<p class="hint" style="margin:0 0 8px">Aste che stringono, una vite allentata, una lente graffiata, un occhiale rotto: scrivici e, se vuoi, aggiungi una foto. La ricevono la tua ottica e SocialGlass.</p>
+    <textarea id="sgTesto" rows="4" maxlength="600" placeholder="Cosa è successo?"></textarea>
+    <label class="btn-foto"><input type="file" id="sgFoto" accept="image/*" capture="environment" hidden>${svgI('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>')}<span id="sgFotoT">Aggiungi una foto</span></label>
+    <img id="sgAnteprima" alt="" hidden style="max-width:100%;border-radius:12px;margin:8px 0">
+    <div class="esito err" id="sgErr" hidden></div><button type="button" class="verde full" id="sgInvia">Invia la segnalazione</button>
+    ${l.length ? `<h3 style="margin:16px 0 6px">Le tue segnalazioni</h3>${l.map(x => `<div class="scheda" style="margin:0 0 8px"><small>${dt(x.il)} · ${x.stato === "risolta" ? "✓ risolta" : "in attesa di risposta"}</small><br>${esc(x.testo)}${x.risposta ? `<br><b>Risposta:</b> ${esc(x.risposta)}` : ""}</div>`).join("")}` : ""}`);
+  let foto = "";
+  $("sgFoto").onchange = async e => { const f = e.target.files[0]; if (!f) return; try { foto = await fotoPiccola(f); $("sgAnteprima").src = foto; $("sgAnteprima").hidden = false; $("sgFotoT").textContent = "Cambia foto"; } catch(err){ notaDemo(err.message); } };
+  $("sgInvia").onclick = async () => { const b = $("sgInvia"); b.disabled = true; b.textContent = "Invio…";
+    const r = await post("api/benvenuto", {azione: "segnala", univoco: UNIVOCO, testo: $("sgTesto").value, foto});
+    if (!r.ok){ $("sgErr").hidden = false; $("sgErr").textContent = r.data.errore || "Riprova."; b.disabled = false; b.textContent = "Invia la segnalazione"; return; }
+    await caricaMio(false); apriExtra("Segnalazione inviata", '<div class="esito ok"><b>Grazie, l\'abbiamo ricevuta.</b><br>La tua ottica ti contatta al più presto. Se serve, prenota un appuntamento dalla tua pagina.</div>'); };
 }
 const caricaQr = () => window.QRCode ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
 async function apriTessera(){
@@ -550,6 +731,12 @@ async function apriTessera(){
     const q = $("tesQr").querySelector("canvas"); if (q){ x.fillStyle = "#fff"; x.fillRect(W - 336, 150, 280, 280); x.drawImage(q, W - 316, 170, 240, 240); }
     salvaImmagine(c, `tessera-socialglass-${UNIVOCO}.png`);
   };
+}
+// scarica (o condivide sul telefono) un file già pronto
+async function salvaFile(b, nome){
+  const f = new File([b], nome, {type: b.type || "application/octet-stream"});
+  if (navigator.canShare && navigator.canShare({files: [f]})){ try { await navigator.share({files: [f], title: "SocialGlass"}); return; } catch(e){ if (e.name === "AbortError") return; } }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function salvaImmagine(c, nome){
   c.toBlob(async b => {
@@ -688,13 +875,18 @@ async function apriClienti(pre){
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
   const [da, a] = periodoDa(perCli.p, perCli.da, perCli.a);
   const r = await api(`api/clienti${da || a ? `?da=${da}&a=${a}` : ""}`); if (scaduta(r)) return;
-  clienti = r.ok ? r.data.clienti : []; disegnaConti(r.ok ? r.data.estratto : null);
+  clienti = r.ok ? r.data.clienti : [];
+  // i conteggi hanno la loro pagina («I miei conteggi»): nell'elenco clienti non si ripetono
+  const conti = !!pre.conti; $("clientiTitolo").textContent = conti ? "I miei conteggi" : "I miei clienti";
+  ["clientiFiltri", "clientiNum", "clientiLista"].forEach(id => { $(id).hidden = conti; });
+  disegnaConti(conti && r.ok ? r.data.estratto : null);
   const sel = $("filtroStato"); sel.length = 1;
   ORDINE_STATI.forEach(s => { if (clienti.some(c => c.stato === s)){ const o = document.createElement("option"); o.value = s; o.textContent = s; sel.appendChild(o); } });
   sel.value = pre.stato && [...sel.options].some(o => o.value === pre.stato) ? pre.stato : "";
   cruDati = r.ok ? r.data : cruDati;
   disegnaClienti();
-  if (pre.conti && !$("clientiConti").hidden){ $("clientiConti").open = true; $("clientiConti").scrollIntoView({block: "start"}); } else $("clientiConti").open = false;
+  $("clientiConti").open = conti;
+  if (conti && !(r.ok && r.data.estratto)){ $("clientiLista").hidden = false; $("clientiLista").innerHTML = '<div class="vuoto">Non c\'è ancora un accordo economico registrato: contatta SocialGlass.</div>'; }
 }
 function rinnovoBtn(c, attr){
   if (c.stato !== STATI.CONSEGNATO) return "";
@@ -737,7 +929,7 @@ $("clientiConti").addEventListener("change", e => {
   if (e.target.id === "pcP"){ perCli.p = e.target.value; if (perCli.p === "libero"){ $("pcDa").hidden = $("pcA").hidden = false; return; } }
   else if (e.target.id === "pcDa") perCli.da = e.target.value; else if (e.target.id === "pcA") perCli.a = e.target.value; else return;
   if (perCli.p === "libero" && !(perCli.da || perCli.a)) return;
-  apriClienti().then(() => { $("clientiConti").open = true; });
+  apriClienti({conti: true});
 });
 let clientiVisti = [];
 function stampaElencoClienti(){
@@ -860,6 +1052,8 @@ async function caricaOrdine(cod){
   }
   $("ordineCliente").innerHTML = `<b>${esc(d.nome)} ${esc(d.cognome)}</b> · ${chip(d.stato)}<br>Montatura: <b>${esc(m.modello)} ${esc(m.colore)}</b> · calibro ${esc(m.calibro)}-${esc(m.asse)} · cod. ${esc(m.codice)}`;
   const L = d.listino;
+  // i prezzi arrivano dal server (listini aggiornati dall'amministratore): il calcolo qui usa gli stessi
+  if (L && L.lenti) LISTINI.LISTINI.convenzioni[String(L.id || "A").toUpperCase()] = {montatura: L.montatura, lenti: L.lenti, trattamenti: L.trattamenti};
   $("ordineLenti").innerHTML = Object.entries(L.lenti).map(([id, l], i) => `<label class="scelta"><input type="radio" name="lente" value="${id}" ${(o.lenti ? o.lenti.id === id : i === 0) ? "checked" : ""}><span class="t">${esc(l.nome)}<small>${esc(l.desc || "")}</small></span><span class="p">${euro(l.prezzo)}</span></label>`).join("");
   $("ordineTratt").innerHTML = Object.entries(L.trattamenti).map(([id, t]) => `<label class="scelta"><input type="checkbox" name="tratt" value="${id}" ${(o.trattamenti || []).some(x => x.id === id) ? "checked" : ""}><span class="t">${esc(t.nome)}</span><span class="p">+${euro(t.prezzo)}</span></label>`).join("");
   const f = $("formOrdine"), rc = o.ricetta;
@@ -880,7 +1074,7 @@ function calcolaOrdine(){
   const pv = LISTINI.preventivo(L.id || "A", s.lente, s.trattamenti, m && m.prezzo);
   if (!pv) return;
   $("ordineTotale").innerHTML = `Valore occhiale <b>${euro(pv.totale)}</b> (montatura ${euro(pv.montatura)} + lenti ${euro(pv.lenti.prezzo)}${s.trattamenti.length ? " + trattamenti" : ""})<br>Abbonamento <b>${euro(pv.rata)}/mese</b> · durata minima ${pv.mesi} mesi · spedizione ${euro(pv.spedizione)} · riscatto a fine periodo ${euro(pv.riscatto)}`;
-  $("formOrdine").querySelectorAll("[name$=_add]").forEach(x => { x.disabled = s.lente !== "prog"; if (x.disabled) x.value = ""; });
+  $("formOrdine").querySelectorAll("[name$=_add]").forEach(x => { x.disabled = !(s.lente === "prog" || /progressiv|multifocal/i.test(((L.lenti || {})[s.lente] || {}).nome || "")); if (x.disabled) x.value = ""; });
 }
 $("formOrdine").addEventListener("change", calcolaOrdine);
 $("formOrdine").addEventListener("input", () => { $("ordineErr").hidden = true; });
@@ -905,7 +1099,7 @@ const UNIVOCO = par("Univoco"), ESPOSITORE = par("espositore");
 avvioApp();
 if (UNIVOCO) document.body.classList.add("cliente");
 let mio = null, pollT = 0;
-if (UNIVOCO || ESPOSITORE){ $("scan-btn").hidden = false; document.body.classList.add("con-scan"); }
+if (!UNIVOCO && ESPOSITORE){ $("scan-btn").hidden = false; document.body.classList.add("con-scan"); }
 // [testo quando la tappa è fatta, testo quando è la prossima da fare]
 const TAPPE = [
   ["Registrazione", "Registrazione"],
@@ -919,7 +1113,6 @@ async function caricaMio(apri){
   const r = await api(`api/benvenuto?univoco=${encodeURIComponent(UNIVOCO)}&espositore=${encodeURIComponent(ESPOSITORE)}`);
   if (!r.ok){ if (apri){ $("mpTitolo").textContent = "Link non valido"; $("mpTappe").innerHTML = ""; $("mpAzione").innerHTML = `<div class="esito err">${esc(r.data.errore || "Link non valido o scaduto.")} Contatta il tuo CAF.</div>`; open("miaPagina"); } return null; }
   mio = r.data; $("mio-ordine").hidden = false;
-  $("scan-btn").hidden = ![STATI.REGISTRATO, STATI.MONTATURA].includes(mio.stato);
   disegnaMio(); return mio;
 }
 const dt = d => new Date(d).toLocaleDateString("it-IT");
@@ -949,13 +1142,14 @@ function boxAbbonamento(od){
       <div class="date"><span>Inizio <b>${dt(per.inizio)}</b></span><span>Durata minima fino al <b>${dt(per.scadenza)}</b></span><span>Canone <b>${euro(p.rata)}/mese</b></span></div>
       <p style="margin:8px 0 4px">${stato}</p>
       ${fp ? `<div class="esito ok" style="margin-top:8px">Hai scelto: <b>${esc(fp.descrizione)}</b>.${fp.eseguita ? "" : per.scaduto ? " La eseguiamo a breve." : ` Vale dal ${dt(per.scadenza)}: puoi cambiare idea fino ad allora.`}</div>` : ""}
+      ${per.aperto && !per.chiuso && !(fp && fp.eseguita) ? `<button type="button" class="grigio full" id="mpRinnovaCat" style="margin:6px 0">Guarda le montature nuove nella tua ottica</button>` : ""}
       ${aperte ? regoleFine(p, per) + bottoni
         : `<details class="regole-box"><summary>Cosa succede alla scadenza</summary>${regoleFine(p, per)}${bottoni}</details>`}
     </div>`;
 }
 function disegnaMio(){
   const u = mio, o = u.ottico, od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato);
-  $("mpTitolo").textContent = `Ciao ${u.nome}`;
+  $("mpTitolo").textContent = u.stato === STATI.REGISTRATO ? `Benvenuto in SocialGlass, ${u.nome}` : `Ciao ${u.nome}`;
   // tracciamento: tappe fatte in verde, quella in corso in blu che pulsa
   $("mpTappe").outerHTML = `<div id="mpTappe">${traccia(u)}</div>`;
   let a = "";
@@ -1021,6 +1215,7 @@ function disegnaMio(){
     a = `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>${boxAbbonamento(od)}`;
   }
   if (u.stato === STATI.CONSEGNATO || u.stato === STATI.PRONTO) a = boxRecensione(u) + a;
+  a = boxAppuntamento(u) + a;
   a += boxDona(u);
   if (u.stato === STATI.PAGAMENTO && par("pagamento") === "annullato") a = `<div class="esito info">Pagamento annullato: non ti è stato addebitato nulla. Quando vuoi, riprova da qui.</div>` + a;
   const ins = od.pagamento && od.pagamento.insoluto;
@@ -1036,7 +1231,8 @@ function disegnaMio(){
   $("mpAzione").innerHTML = a;
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
   const on = (id, f) => { const el = $(id); if (el) el.onclick = f; };
-  on("mpInstalla", installa); on("mpNotifiche", attivaNotifiche); on("mpTessera", apriTessera); on("mpAmico", amico); on("mpAnno", mioAnno);
+  on("mpApp", attivaApp); on("mpTessera", apriTessera); on("mpAmico", amico); on("mpAnno", mioAnno);
+  on("mpPrenota", apriPrenota); on("mpCatalogo", apriCatalogo); on("mpCarta", apriCarta); on("mpRicevute", apriRicevute); on("mpContratto", apriContratto); on("mpSegnala", apriSegnala); on("mpRinnovaCat", apriCatalogo);
   on("mpChiama", () => apriExtra("La mia ottica", o ? `<div class="scheda"><b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}</div><div class="riga">${o.telefono ? `<a class="btn-link" href="tel:+${esc(String(o.telefono).replace(/\D/g, ""))}">Chiama</a>` : ""}<a class="btn-link" style="background:var(--blu)" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.nome + " " + o.indirizzo + " " + o.citta)}">Indicazioni</a></div>` : "<p>Ottica non ancora assegnata.</p>"));
   const dn = $("mpDona"); if (dn) dn.onchange = async () => { const r = await post("api/benvenuto", {azione: "dona", univoco: UNIVOCO, si: dn.checked}); if (!r.ok){ dn.checked = !dn.checked; notaDemo(r.data.errore || "Riprova."); } else { mio.dona = Object.assign({}, mio.dona, {si: dn.checked}); if (dn.checked) notaDemo("Grazie! Lo doneremo a chi ne ha bisogno."); } };
   const rec = $("mpRec"); if (rec){ let voto = 0;
@@ -1108,11 +1304,11 @@ function checkoutProva(){
     d.querySelector(".ss-pay").onclick = e => { e.target.disabled = true; e.target.textContent = "Elaborazione…"; setTimeout(() => { e.target.textContent = "✓ Pagamento riuscito"; setTimeout(() => { d.remove(); res(true); }, 900); }, 1300); };
   });
 }
-function mostraCondizioni(){
+function testoCondizioni(){
   const p = mio.ordine.prezzi;
   const o = mio.ottico;
   const T = (window.SG_INFO && SG_INFO.titolare) || {};
-  $("condizioniTesto").innerHTML = `${T.ragione ? `<p>Contratto di abbonamento con <b>${esc(T.ragione)}</b>${T.piva ? `, P.IVA ${esc(T.piva)}` : ""}${T.indirizzo ? `, ${esc(T.indirizzo)}` : ""}.</p>` : ""}
+  return `${T.ragione ? `<p>Contratto di abbonamento con <b>${esc(T.ragione)}</b>${T.piva ? `, P.IVA ${esc(T.piva)}` : ""}${T.indirizzo ? `, ${esc(T.indirizzo)}` : ""}.</p>` : ""}
     <p><b>1. Cosa ricevi.</b> ${o ? esc(o.nome) : "L'ottica"} ti dà in uso un occhiale da vista con le tue lenti (valore ${euro(p.totale)}). L'occhiale resta di proprietà dell'ottica: non lo stai comprando a rate e non c'è nessun obbligo di acquisto.</p>
     <p><b>2. Quanto paghi.</b> ${euro(p.rata)} al mese, senza interessi né altri costi, più la spedizione (${euro(p.spedizione)}) una sola volta. Il primo mese si paga alla conferma, poi ogni mese nello stesso giorno con addebito automatico su carta o conto (SEPA).</p>
     <p><b>3. Durata e scadenza.</b> Minimo ${p.mesi} mesi. 30 giorni prima della scadenza ti avvisiamo con un messaggio e puoi scegliere:</p>${regoleFine(p, mio.ordine.periodo)}
@@ -1123,24 +1319,16 @@ function mostraCondizioni(){
     <p><b>Montatura prenotata.</b> La montatura che scegli resta prenotata per te 30 giorni: se in quel tempo non confermi l'ordine, torna disponibile e puoi sceglierne un'altra dal tuo link.</p>
     <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo l'ottica e SocialGlass per preparare l'occhiale. I dati di pagamento li gestisce Stripe. Leggi l'<a href="privacy.html" target="_blank" rel="noopener">informativa privacy</a>.</p>
     <p><b>8. Detrazione.</b> Per la detrazione fiscale chiedi all'ottica il documento fiscale dei canoni pagati (da verificare con il tuo CAF).</p>`;
+}
+function mostraCondizioni(){
+  $("condizioniTesto").innerHTML = testoCondizioni();
   open("condizioniPopup");
 }
 $("mio-ordine").addEventListener("click", async () => { await caricaMio(true); open("miaPagina"); });
 if (UNIVOCO){
-  caricaMio(true).then(u => {
-    if (!u) return;
-    if (par("pagamento") === "ok"){ open("miaPagina"); return; }
-    if (u.stato === STATI.REGISTRATO){
-      const o = u.ottico;
-      $("welcome-message").innerHTML = `Benvenuto da SocialGlass<br><span style="font-size:16px;color:darkgreen">${esc(u.nome)} ${esc(u.cognome)}</span><br><br>
-        <div class="passi">1) Vai dall'ottico:<br><br><span style="color:darkgreen">${o ? esc(o.nome) + "<br>" + esc(o.indirizzo) + esc(o.citta) : ""}</span><br><br>2) All'ottico mostra questo codice, così trova il tuo ordine:</div>
-        <div class="codice-grande">${esc(UNIVOCO)}</div>
-        <div class="passi">3) Scegli la montatura e le lenti<br>4) Attiva l'abbonamento mensile dal telefono<br>5) Paga solo il primo mese e la spedizione<br>6) Dopo 12 mesi puoi cambiarlo con uno nuovo</div>`;
-      setTimeout(() => { $("my-popup").hidden = false; }, 1200);
-    } else setTimeout(() => open("miaPagina"), 600);
-  });
+  // il link personale apre subito la pagina dell'ordine, con il saluto dentro
+  caricaMio(true).then(u => { if (u) open("miaPagina"); });
 }
-$("continue-button").addEventListener("click", () => { $("my-popup").hidden = true; open("miaPagina"); });
 
 /* ---------- scanner QR ---------- */
 let stream = null, scanning = false, detector = null;

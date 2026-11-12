@@ -61,5 +61,17 @@ module.exports = L.wrap(async (req, res) => {
   let esposte; if (isOtt) try { esposte = (await L.DB.lista("mont")).filter(m => !m.Eliminata).map(m => { const {g, r} = L.scorte(m);
     return {codice: m.Codice || m._id, modello: m.Modello || "", colore: m.Colore || "", calibro: m.Calibro || "", asse: m.Asse || "", qta: g[s.id] || 0, prenotate: r.filter(x => x.ottica === s.id).length}; })
     .filter(m => m.qta || m.prenotate).sort((a, b) => a.codice.localeCompare(b.codice)); } catch(e){ console.error(e); }
-  L.send(res, 200, {clienti: list, esposte, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
+  // ottica: appuntamenti dei clienti, orari prenotabili e segnalazioni ancora aperte
+  let appuntamenti, orari, segnalazioni;
+  if (isOtt) try {
+    const ag = (await L.DB.meta("agenda-" + s.id)) || {}, oggi = L.oraRoma().slice(0, 10);
+    appuntamenti = Object.entries(ag).filter(([k, v]) => v && k >= oggi).map(([k, v]) => ({il: k, univoco: v.u, nome: v.n, tipo: L.TIPI_APP[v.t] || ""})).sort((a, b) => a.il.localeCompare(b.il));
+    orari = L.orariDi(acc);
+    segnalazioni = (await L.DB.lista("segn")).filter(x => x.ottica === s.id && x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, testo: x.testo, foto: x.foto || ""}))
+      .sort((a, b) => String(b.il).localeCompare(String(a.il)));
+  } catch(e){ console.error(e); }
+  // listini aggiornati: l'ottica vede il suo, il CAF tutti (per il calcolatore del canone)
+  const conv = await L.caricaListini(), mioLis = isOtt ? String((acc && acc.Listino) || "A").toUpperCase() : "";
+  const listini = isOtt ? {[mioLis]: conv[mioLis] || conv.A} : conv;
+  L.send(res, 200, {clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")))});
 });

@@ -3,6 +3,7 @@ const L = require("./_lib");
 const num = v => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) ? x : null; };
 module.exports = L.wrap(async (req, res) => {
   const s = L.verify(req); if (!s || !["ottico", "lab"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
+  await L.caricaListini();   // prezzi aggiornati dall'amministratore
   const url = new URL(req.url, "http://x");
   // laboratorio: avanzamento della lavorazione (ritiro montatura, inizio, pronto)
   if (s.ruolo === "lab"){
@@ -10,6 +11,7 @@ module.exports = L.wrap(async (req, res) => {
     const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
+    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: "occhiale pronto", inizia: "lavorazione iniziata"}[b.azione] || b.azione, u.f.Univoco);
     const ora = new Date().toISOString(), lab = ord.lab;
     if (b.azione === "ritirata"){ if (lab.fonte === "LAB") return L.send(res, 409, {errore: "La montatura è già in laboratorio."}); lab.ritirata = ora; }
     else if (b.azione === "inizia"){ if (lab.stato === "PRONTO") return L.send(res, 409, {errore: "Già pronto."}); lab.stato = "IN LAVORAZIONE"; lab.iniziato = lab.iniziato || ora; }
@@ -29,7 +31,7 @@ module.exports = L.wrap(async (req, res) => {
       }
       const av = await L.avvisaPronto(u); lab.avvisoCliente = {il: ora, canale: av.canale, inviato: av.inviato, motivo: av.motivo};
       ord.avvisi["labpronto" + ora.slice(0, 10)] = av.inviato
-        ? {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente è già stato avvisato (${av.canale === "sms" ? "SMS" : "WhatsApp"}). Quando lo ritira, segna «consegnato».`}
+        ? {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente è già stato avvisato (${({sms: "SMS", notifica: "notifica sul telefono"})[av.canale] || "WhatsApp"}). Quando lo ritira, segna «consegnato».`}
         : {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente NON è stato avvisato in automatico: mandagli tu il messaggio. ${av.testo}`, whatsapp: av.whatsapp};
       ord.aggiornato = ora;
       await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
@@ -44,12 +46,32 @@ module.exports = L.wrap(async (req, res) => {
     const o = await L.DB.ottico(s.id);
     const conv = L.PREZZI.conv(u.f.Listino || (o && o.Listino));
     return L.send(res, 200, {nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato, bloccato: L.situazione(u.f).bloccato, ordine: L.parseOrdine(u.f.Ordine),
-      listino: {id: u.f.Listino || "", lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: L.PREZZI.LISTINI.mesi, spedizione: L.PREZZI.LISTINI.spedizione}});
+      listino: {id: u.f.Listino || (o && o.Listino) || "A", lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: L.PREZZI.LISTINI.mesi, spedizione: L.PREZZI.LISTINI.spedizione}});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   const b = await L.readBody(req);
+  // orari in cui i clienti possono prenotare un appuntamento
+  if (b.azione === "orari"){
+    const giorni = (Array.isArray(b.giorni) ? b.giorni : []).map(Number).filter(g => g >= 0 && g <= 6), fasce = (Array.isArray(b.fasce) ? b.fasce : []).map(String).filter(f => L.FASCIA.test(f)).slice(0, 4);
+    if (!giorni.length || !fasce.length) return L.send(res, 400, {errore: "Scegli almeno un giorno e una fascia oraria (es. 09:30-12:30)."});
+    await L.DB.salva("ottici", s.id, {Orari: {giorni, fasce, durata: [15, 20, 30, 45, 60].includes(Number(b.durata)) ? Number(b.durata) : 30}});
+    await L.registra("ottica " + s.id, "orari appuntamenti", s.id, `${giorni.join(",")} · ${fasce.join(" ")}`);
+    return L.send(res, 200, {ok: true});
+  }
+  // segnalazione del cliente risolta dall'ottica
+  if (b.azione === "segnalazioneRisolta"){
+    const x = await L.DB.uno("segn", String(b.id || "")); if (!x || x.ottica !== s.id) return L.send(res, 404, {errore: "Segnalazione non trovata."});
+    const ora = new Date().toISOString(), risposta = String(b.risposta || "").trim().slice(0, 300);
+    await L.DB.salva("segn", x.ID || x._id, {stato: "risolta", risolta: ora, da: "ottica " + s.id, risposta});
+    const c = await L.DB.utente("Univoco", x.univoco);
+    if (c){ const o = L.parseOrdine(c.f.Ordine); (o.segnalazioni || []).forEach(y => { if (y.id === (x.ID || x._id)){ y.stato = "risolta"; y.risposta = risposta; y.risolta = ora; } }); await L.DB.aggiorna(c, {Ordine: JSON.stringify(o)});
+      if (risposta) try { await L.pushCliente(c.f, `SocialGlass: ${c.f.Nome}, l'ottica ha risposto alla tua segnalazione: ${risposta}`, "Risposta dall'ottica"); } catch(_){} }
+    await L.registra("ottica " + s.id, "segnalazione risolta", x.univoco, risposta);
+    return L.send(res, 200, {ok: true});
+  }
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
+  L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", preventivo: "preventivo inserito", riscatto: "riscatto"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco);
   const ord = L.parseOrdine(u.f.Ordine);
   // recesso entro 14 giorni dall'attivazione (diritto del consumatore): l'abbonamento si chiude subito
   if (b.azione === "recesso"){
@@ -96,13 +118,16 @@ module.exports = L.wrap(async (req, res) => {
     if (e.cil !== null && e.cil !== 0 && e.ax === null) return L.send(res, 400, {errore: "Con il cilindro serve anche l'asse."});
   }
   if (!ricetta.pd || ricetta.pd < 45 || ricetta.pd > 80) return L.send(res, 400, {errore: "Inserisci la distanza pupillare (45-80 mm)."});
-  if (b.lente === "prog" && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
+  const lenteScelta = (L.PREZZI.conv(u.f.Listino || ((await L.DB.ottico(s.id)) || {}).Listino).lenti || {})[b.lente] || {};
+  if ((b.lente === "prog" || /progressiv|multifocal/i.test(lenteScelta.nome || "")) && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
   // se il cliente aveva già aperto il pagamento con il vecchio prezzo, quella pagina Stripe viene chiusa
   if (ord.pagamento && ord.pagamento.stato === "IN CORSO" && ord.pagamento.sessione && L.CFG.stripeKey){
     try { await L.stripeApi("POST", `checkout/sessions/${ord.pagamento.sessione}/expire`, {}); } catch(e){ console.error(e); }
     delete ord.pagamento;
   }
-  const prev = L.PREZZI.preventivo(u.f.Listino, b.lente, b.trattamenti, ord.montatura.prezzo);
+  // stesso listino mostrato all'ottico: quello del cliente, altrimenti quello dell'ottica
+  const lisOtt = u.f.Listino || ((await L.DB.ottico(s.id)) || {}).Listino || "A";
+  const prev = L.PREZZI.preventivo(lisOtt, b.lente, b.trattamenti, ord.montatura.prezzo);
   if (!prev) return L.send(res, 400, {errore: "Scegli il tipo di lenti."});
   Object.assign(ord, {lenti: prev.lenti, trattamenti: prev.trattamenti, ricetta, prezzi: {montatura: prev.montatura, totale: prev.totale, mesi: prev.mesi, rata: prev.rata, spedizione: prev.spedizione, riscatto: prev.riscatto, modello: prev.modello},
     ottico: s.id, aggiornato: new Date().toISOString()});

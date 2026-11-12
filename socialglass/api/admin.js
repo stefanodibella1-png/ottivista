@@ -38,7 +38,79 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {token: L.sign({ruolo: "admin", id: "admin"})});
   }
   if (!L.verify(req, "admin")) return L.send(res, 401, L.NOAUTH);
+  // registro delle operazioni: le azioni che cambiano qualcosa (con il riferimento dell'oggetto)
+  const REG = {blocco: "blocco anagrafica", elimina: "eliminazione", liquidazione: "pagamento a CAF/ottica", stripePartner: "pagamento Stripe a partner", salvaCaf: "dati CAF", salvaOttico: "dati ottica",
+    salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
+    salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", sollecito: "sollecito inviato", legale: "pratica legale",
+    segnalazioneRisolta: "segnalazione risolta"};
+  if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
+    [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
 
+  // registro, copie dei dati, report del mese, prova dei messaggi, segnalazioni
+  if (az === "registro"){
+    const l = await L.DB.ultimi("registro", 500), q = String(b.q || "").toUpperCase();
+    return L.send(res, 200, {voci: l.filter(x => !q || `${x.chi} ${x.azione} ${x.rif} ${x.dettaglio}`.toUpperCase().includes(q)).slice(0, 300).map(({il, chi, azione, rif, dettaglio}) => ({il, chi, azione, rif, dettaglio}))});
+  }
+  if (az === "copie") return L.send(res, 200, {elenco: (((await L.DB.meta("copie")) || {}).elenco) || []});
+  if (az === "scaricaCopia"){
+    const t = b.data ? await L.leggiCopia(String(b.data)) : JSON.stringify(await L.datiCompleti());
+    if (!t) return L.send(res, 404, {errore: "Copia non trovata."});
+    await L.registra("amministratore", "copia dei dati scaricata", b.data || "adesso", "");
+    res.statusCode = 200; res.setHeader("Content-Type", "application/json; charset=utf-8"); res.setHeader("Cache-Control", "no-store");
+    return res.end(t);
+  }
+  if (az === "report"){
+    const mese = /^\d{4}-\d{2}$/.test(b.mese || "") ? b.mese : new Date(Date.now() - 15*864e5).toISOString().slice(0, 7), nel = d => String(d || "").slice(0, 7) === mese;
+    const utenti = await L.DB.tutti(), r = {mese, nuovi: 0, attivati: 0, consegnati: 0, chiusi: 0, incassi: 0, canoni: 0, spedizioni: 0, riscatti: 0, morosi: 0, voti: [], amici: 0, donati: 0, perCaf: {}, perOttica: {}};
+    for (const u of utenti){ const f = u.f, o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, ott = String(f.Ottica1 || "").split(" - ")[0];
+      if (nel(f.Creato)){ r.nuovi++; r.perCaf[f.CAF || "—"] = (r.perCaf[f.CAF || "—"] || 0) + 1; }
+      if (nel(pg.attivatoIl)){ r.attivati++; r.perOttica[ott || "—"] = (r.perOttica[ott || "—"] || 0) + 1; }
+      if (nel(o.consegnatoIl)) r.consegnati++; if (nel(pg.chiuso)) r.chiusi++;
+      if (L.situazione(f).bloccato || pg.insoluto) r.morosi++;
+      for (const x of L.incassi(o)) if (nel(x.il)){ r.canoni += x.canone || 0; r.spedizioni += x.spedizione || 0; r.riscatti += x.riscatto || 0; }
+      if (o.recensione && nel(o.recensione.il)) r.voti.push(o.recensione.voto);
+      if (nel(f.AmicoPremiato)) r.amici++; if (o.dona && nel(o.dona.donato)) r.donati++; }
+    r.incassi = Math.round((r.canoni + r.spedizioni + r.riscatti) * 100) / 100;
+    r.media = r.voti.length ? Math.round(r.voti.reduce((t, v) => t + v, 0) / r.voti.length * 10) / 10 : 0; r.recensioni = r.voti.length; delete r.voti;
+    r.segnalazioni = (await L.DB.lista("segn")).filter(x => nel(x.il)).length;
+    return L.send(res, 200, r);
+  }
+  if (az === "provaMessaggio"){
+    const num = String(b.numero || "").replace(/[^\d+]/g, ""); if (num.replace(/\D/g, "").length < 9) return L.send(res, 400, {errore: "Scrivi il numero di cellulare."});
+    const f = {Nome: "Prova", Cellulare: num.replace(/^\+39/, "").replace(/^0039/, ""), Prefisso: "+39", Univoco: "PROVA"};
+    const e = await L.inviaCanale(f, "SocialGlass: messaggio di prova. Se lo leggi, gli avvisi automatici ai clienti funzionano.", ["Prova", "0,00", "0", "prova", L.SITO(req)]);
+    return L.send(res, 200, e);
+  }
+  if (az === "segnalazioneRisolta"){
+    const x = await L.DB.uno("segn", String(b.id || "")); if (!x) return L.send(res, 404, {errore: "Segnalazione non trovata."});
+    const ora = new Date().toISOString(), risposta = String(b.risposta || "").trim().slice(0, 300);
+    await L.DB.salva("segn", x.ID || x._id, {stato: "risolta", risolta: ora, da: "SocialGlass", risposta});
+    const c = await L.DB.utente("Univoco", x.univoco);
+    if (c){ const o = L.parseOrdine(c.f.Ordine); (o.segnalazioni || []).forEach(y => { if (y.id === (x.ID || x._id)){ y.stato = "risolta"; y.risposta = risposta; y.risolta = ora; } }); await L.DB.aggiorna(c, {Ordine: JSON.stringify(o)});
+      if (risposta) try { await L.pushCliente(c.f, `SocialGlass: ${c.f.Nome}, abbiamo risposto alla tua segnalazione: ${risposta}`, "Risposta da SocialGlass"); } catch(_){} }
+    return L.send(res, 200, {ok: true});
+  }
+
+  // listini: prezzi di montatura base, lenti e trattamenti per ogni convenzione; prodotti nuovi o tolti
+  if (az === "salvaListino"){
+    const conv = await L.caricaListini(), id = pulito(b.id, 4).toUpperCase();
+    if (!/^[A-Z][A-Z0-9]{0,3}$/.test(id)) return L.send(res, 400, {errore: "Nome del listino: una lettera (es. C)."});
+    const slug = (t, usati) => { let k = String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "").slice(0, 12) || "voce"; let x = k, i = 2; while (usati.has(x)) x = k + i++; usati.add(x); return x; };
+    const voci = (l, conDesc) => { const out = {}, usati = new Set((l || []).map(x => String(x.id || "")).filter(Boolean));
+      for (const x of (Array.isArray(l) ? l : []).slice(0, 40)){ const nome = pulito(x.nome, 60), prezzo = numero(x.prezzo); if (!nome) continue;
+        if (!(prezzo > 0)) return {errore: `Prezzo mancante per «${nome}».`};
+        const k = /^[a-z0-9]{1,16}$/.test(String(x.id || "")) ? String(x.id) : slug(nome, usati);
+        out[k] = conDesc ? {nome, desc: pulito(x.desc, 80), prezzo} : {nome, prezzo}; }
+      return out; };
+    const lenti = voci(b.lenti, true), tratt = voci(b.trattamenti, false), mont = numero(b.montatura);
+    if (lenti.errore || tratt.errore) return L.send(res, 400, {errore: lenti.errore || tratt.errore});
+    if (!Object.keys(lenti).length) return L.send(res, 400, {errore: "Serve almeno un tipo di lenti."});
+    if (!(mont > 0)) return L.send(res, 400, {errore: "Indica il prezzo base della montatura."});
+    conv[id] = {montatura: mont, lenti, trattamenti: tratt};
+    await L.salvaListini(conv);
+    await L.registra("amministratore", b.nuovo ? "listino creato" : "listino modificato", "listino " + id, `${Object.keys(lenti).length} lenti, ${Object.keys(tratt).length} trattamenti, montatura ${mont}`);
+    return L.send(res, 200, {ok: true, listini: conv});
+  }
   if (az === "dati"){
     const [caf, ottLogin, ottici, mont, forn, ordForn, utenti] = await Promise.all(["caf", "ottLogin", "ottici", "mont", "forn", "ordForn"].map(k => L.DB.lista(k)).concat([L.DB.tutti()]));
     const perStato = {}; let attivi = 0, canoni = 0;
@@ -69,7 +141,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {
       caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
       ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
-      montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "",
+      montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Foto: x.Foto || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
       fornitori: forn.map(x => ({ID: x.ID || x._id, Nome: x.Nome || "", Referente: x.Referente || "", Email: x.Email || "", Telefono: x.Telefono || "", Sito: x.Sito || "", Consegna: x.Consegna || "", Note: x.Note || "",
@@ -92,8 +164,11 @@ module.exports = L.wrap(async (req, res) => {
       laboratorio: await (async () => { const l = (await L.DB.meta("laboratorio")) || {}; const lav = utenti.map(u => L.parseOrdine(u.f.Ordine).lab).filter(Boolean);
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
+      segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))
+        .sort((a, b) => String(b.il).localeCompare(String(a.il))),
+      copie: (((await L.DB.meta("copie")) || {}).elenco) || [],
       prova, titolare: tit, pronto: lista, canali: L.canaliCollegati(), canaleSolleciti: (((await L.DB.meta("config")) || {}).canaleSolleciti) || "whatsapp",
-      listini: Object.keys(L.PREZZI.LISTINI.convenzioni || {A: 1})
+      listini: Object.keys(await L.caricaListini()), convenzioni: L.PREZZI.LISTINI.convenzioni
     });
   }
   // pagamenti di SocialGlass al CAF o all'ottica (acconti, saldi): entrano nel loro estratto conto
@@ -229,13 +304,35 @@ module.exports = L.wrap(async (req, res) => {
     if (b.Password){ if (String(b.Password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); await L.DB.salva("ottLogin", id, {ID: id, Password: L.hashPw(b.Password)}); }
     return L.send(res, 200, {ok: true});
   }
+  // importazione delle montature da Excel/CSV: nuovi articoli con carico iniziale, quelli esistenti aggiornano solo i dati
+  if (az === "importaMontature"){
+    const righe = Array.isArray(b.righe) ? b.righe.slice(0, 2000) : [], esito = {nuove: 0, aggiornate: 0, scartate: []};
+    const sedi = new Set([L.MAG, L.LAB].concat((await L.DB.lista("ottici")).map(o => o.ID || o._id))), forn = new Set((await L.DB.lista("forn")).map(f => f.ID || f._id));
+    for (const [i, x] of righe.entries()){
+      const cod = pulito(x.Codice, 20).toUpperCase().replace(/\s+/g, "-");
+      if (!/^[A-Z0-9_-]{3,20}$/.test(cod)){ esito.scartate.push(`riga ${i + 2}: codice «${pulito(x.Codice, 30)}» non valido`); continue; }
+      const prima = await L.DB.montatura(cod), d = {Codice: cod};
+      for (const [k, n] of [["Modello", 60], ["Colore", 40], ["Calibro", 10], ["Asse", 10], ["CodiceFornitore", 40], ["Note", 300]]) if (pulito(x[k])) d[k] = pulito(x[k], n);
+      for (const k of ["Prezzo", "Costo"]) if (pulito(x[k])) d[k] = numero(x[k]) || null;
+      if (pulito(x.Fornitore)){ const fo = pulito(x.Fornitore, 20).toUpperCase(); if (forn.has(fo)) d.Fornitore = fo; }
+      if (/^https:\/\/\S+$/i.test(pulito(x.Foto, 500))) d.Foto = pulito(x.Foto, 500);
+      if (prima && prima.f.Eliminata){ esito.scartate.push(`riga ${i + 2}: ${cod} è archiviato (ripristinalo dal magazzino)`); continue; }
+      if (prima){ await L.DB.salva("mont", cod, d); esito.aggiornate++; continue; }
+      const q = Math.max(0, Math.floor(Number(x.Quantita) || 0)), dove = sedi.has(pulito(x.Dove, 20).toUpperCase()) ? pulito(x.Dove, 20).toUpperCase() : L.MAG;
+      Object.assign(d, {Modello: d.Modello || "", Colore: d.Colore || ""}, L.campiScorte(d, q ? {[dove]: q} : {}, [], {tipo: "carico iniziale (importazione)", qta: q, dove}));
+      await L.DB.salva("mont", cod, d); esito.nuove++;
+    }
+    await L.registra("amministratore", "importazione montature", "", `${esito.nuove} nuove, ${esito.aggiornate} aggiornate, ${esito.scartate.length} scartate`);
+    return L.send(res, 200, esito);
+  }
   if (az === "salvaMontatura"){
     const cod = pulito(b.Codice, 20).toUpperCase(); if (!/^[A-Z0-9_-]{3,20}$/.test(cod)) return L.send(res, 400, {errore: "Codice montatura: 3-20 lettere o cifre."});
     const prima = await L.DB.montatura(cod), intero = v => Math.max(0, Math.floor(Number(v) || 0));
     if (prima && b.nuova) return L.send(res, 409, {errore: `Il codice ${cod} esiste già${prima.f.Eliminata ? " (archiviato: ripristinalo dall'archivio)" : ""}.`});
     const d = {Codice: cod, Modello: pulito(b.Modello, 60), Colore: pulito(b.Colore, 40), Calibro: pulito(b.Calibro, 10), Asse: pulito(b.Asse, 10),
       Prezzo: numero(b.Prezzo) || null, Costo: numero(b.Costo) || null, Fornitore: pulito(b.Fornitore, 20), CodiceFornitore: pulito(b.CodiceFornitore, 40),
-      ScortaMinima: intero(b.ScortaMinima), RiordinoQta: intero(b.RiordinoQta), AvvisoScorta: !!b.AvvisoScorta, Note: pulito(b.Note, 300)};
+      ScortaMinima: intero(b.ScortaMinima), RiordinoQta: intero(b.RiordinoQta), AvvisoScorta: !!b.AvvisoScorta, Note: pulito(b.Note, 300),
+      Foto: /^https:\/\/\S+$/i.test(String(b.Foto || "").trim()) ? String(b.Foto).trim().slice(0, 500) : ""};
     if (!prima){
       // nuovo articolo: carico iniziale nella sede indicata
       const q = intero(b.Quantita), dove = pulito(b.Dove, 20) || L.MAG, g = q ? {[dove]: q} : {};

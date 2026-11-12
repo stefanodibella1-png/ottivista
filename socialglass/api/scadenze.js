@@ -30,7 +30,7 @@ async function esegui(u, ord, p, ora){
   }
   // 30 giorni prima
   if (p.aperto && !p.scaduto && !(ord.avvisi && ord.avvisi.preavviso)){
-    await annota(u, ord, "preavviso", `SocialGlass: ${u.f.Nome}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);
+    await annota(u, ord, "preavviso", `SocialGlass: ${u.f.Nome}, il ${gg(p.scadenza)} finiscono i ${p.mesi} mesi del tuo abbonamento occhiale. Nella tua pagina trovi le montature nuove esposte nella tua ottica. Scegli ora: occhiale nuovo, lo tieni${ord.prezzi && ord.prezzi.riscatto ? ` (${ord.prezzi.riscatto.toFixed(2).replace(".", ",")} €)` : ""} o lo restituisci. Se non scegli, continua mese per mese e puoi disdire quando vuoi: ${link}`);
     return "preavviso";
   }
   if (!p.scaduto || (fp && fp.eseguita)) return null;
@@ -84,6 +84,13 @@ async function attesa(u, ora){
     await L.DB.aggiorna(u, {Stato: L.STATI.REGISTRATO, Ordine: JSON.stringify(o)});
     return "prenotazione scaduta";
   }
+  // preventivo pronto ma abbonamento non attivato dopo 3 giorni: un promemoria automatico
+  if (u.f.Stato === L.STATI.PAGAMENTO && da > 3*864e5 && !(o.avvisi && (o.avvisi.attivazione || o.avvisi.attesa))){
+    const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
+    await annota(u, o, "attivazione", `SocialGlass: ${u.f.Nome}, il preventivo del tuo occhiale è pronto: attiva l'abbonamento dal tuo link e l'ottica lo prepara subito. ${link}`);
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+    return "promemoria attivazione";
+  }
   if (da > 14*864e5 && !(o.avvisi && o.avvisi.attesa)){
     const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
     await annota(u, o, "attesa", u.f.Stato === L.STATI.PAGAMENTO
@@ -120,6 +127,15 @@ const handler = L.wrap(async (req, res) => {
       try { await L.pushCliente(u.f, `SocialGlass: ${u.f.Nome}, come ti trovi con i tuoi occhiali nuovi? Dicci la tua con un tocco.`, "Come ti trovi?"); } catch(e){}
       esiti.push({univoco: u.f.Univoco, esito: "richiesta recensione"});
     }
+    // ogni anno dalla consegna: controllo della vista incluso, da prenotare dal link
+    if (ord.consegnatoIl && !(ord.pagamento && ord.pagamento.chiuso)){
+      const anni = Math.floor((new Date(ora) - new Date(ord.consegnatoIl)) / (365*864e5));
+      if (anni >= 1 && (ord.controlloAvvisato || 0) < anni){
+        ord.controlloAvvisato = anni;
+        await annota(u, ord, "controllo" + anni, `SocialGlass: ${u.f.Nome}, è il momento del controllo della vista, incluso nel tuo abbonamento. Prenota giorno e ora dal tuo link: ${L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino)}`);
+        await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); esiti.push({univoco: u.f.Univoco, esito: "promemoria controllo vista"});
+      }
+    }
     if (!p || p.chiuso) continue;
     try {
       const r = await esegui(u, ord, p, ora);
@@ -128,6 +144,8 @@ const handler = L.wrap(async (req, res) => {
   }
   // riordino automatico per i fornitori che lo hanno attivo
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
+  // copia di tutti i dati (si tengono le ultime 7), scaricabile dal pannello
+  if (!url.searchParams.get("data")) try { esiti.push({copia: await L.copiaNotturna()}); } catch(e){ esiti.push({errore: "copia dei dati: " + String(e.message).slice(0, 200)}); }
   L.send(res, 200, {ok: true, data: ora, esiti});
 });
 module.exports = handler;

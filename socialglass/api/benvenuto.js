@@ -32,7 +32,48 @@ module.exports = L.wrap(async (req, res) => {
       ord.dona = Object.assign({}, ord.dona, {si: !!b.si, il: ora}); ord.aggiornato = ora;
       await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return L.send(res, 200, {ok: true});
     }
+    // appuntamento in ottica: il cliente sceglie giorno e ora tra quelli liberi
+    if (b.azione === "appuntamento" || b.azione === "annullaAppuntamento"){
+      const ott = String(u.f.Ottica1 || "").split(" - ")[0], o = await L.DB.ottico(ott);
+      if (!o) return L.send(res, 409, {errore: "Non c'è un'ottica collegata al tuo codice: contatta il CAF."});
+      const ag = (await L.DB.meta("agenda-" + ott)) || {}, prima = ord.appuntamento && ord.appuntamento.il;
+      if (b.azione === "annullaAppuntamento"){
+        if (prima && ag[prima] && ag[prima].u === u.f.Univoco) await L.DB.meta("agenda-" + ott, {[prima]: null});
+        delete ord.appuntamento; ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return L.send(res, 200, {ok: true});
+      }
+      const quando = String(b.quando || ""), tipo = L.TIPI_APP[b.tipo] ? b.tipo : "altro";
+      const libero = L.slotLiberi(o, ag).some(g => g.data === quando.slice(0, 10) && g.slot.includes(quando.slice(11)));
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(quando) || !libero) return L.send(res, 409, {errore: "Questo orario non è più libero: scegline un altro."});
+      await L.DB.meta("agenda-" + ott, Object.assign({[quando]: {u: u.f.Univoco, t: tipo, n: `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}`.trim(), il: ora}},
+        prima && prima !== quando && ag[prima] && ag[prima].u === u.f.Univoco ? {[prima]: null} : {}));
+      ord.appuntamento = {il: quando, tipo, creato: ora}; ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      return L.send(res, 200, {ok: true, appuntamento: ord.appuntamento});
+    }
+    // segnalo un problema (con foto facoltativa): la vedono l'ottica e SocialGlass
+    if (b.azione === "segnala"){
+      const testo = String(b.testo || "").trim().slice(0, 600), foto = String(b.foto || "");
+      if (testo.length < 5) return L.send(res, 400, {errore: "Scrivi in breve qual è il problema."});
+      if (foto && (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(foto) || foto.length > 600000)) return L.send(res, 400, {errore: "Foto non valida o troppo grande."});
+      const aperte = (ord.segnalazioni || []).filter(x => x.stato === "aperta");
+      if (aperte.length >= 3) return L.send(res, 429, {errore: "Hai già 3 segnalazioni aperte: l'ottica ti contatta a breve."});
+      const id = "SEG" + ora.replace(/\D/g, "").slice(2, 14) + u.f.Univoco.slice(-4), ott = String(u.f.Ottica1 || "").split(" - ")[0];
+      await L.DB.salva("segn", id, {ID: id, il: ora, univoco: u.f.Univoco, nome: `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}`.trim(), cellulare: u.f.Cellulare || "", ottica: ott, testo, foto, stato: "aperta"});
+      ord.segnalazioni = (ord.segnalazioni || []).concat([{id, il: ora, testo: testo.slice(0, 120), stato: "aperta"}]).slice(-10); ord.aggiornato = ora;
+      await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      return L.send(res, 200, {ok: true, id});
+    }
     return L.send(res, 400, {errore: "Operazione non valida."});
+  }
+  // orari liberi per l'appuntamento e montature esposte nella sua ottica
+  if (url.searchParams.get("slot") || url.searchParams.get("catalogo")){
+    const u = await L.DB.utente("Univoco", String(url.searchParams.get("univoco") || "").trim().toUpperCase());
+    if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+    const ott = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore") || "", o = await L.DB.ottico(ott);
+    if (url.searchParams.get("slot")) return L.send(res, 200, {giorni: o ? L.slotLiberi(o, (await L.DB.meta("agenda-" + ott)) || {}) : [], ottica: o ? o.Intestatario : ""});
+    const esposte = (await L.DB.lista("mont")).filter(m => !m.Eliminata).map(m => { const {g} = L.scorte(m);
+      return {codice: m.Codice || m._id, modello: m.Modello || "", colore: m.Colore || "", calibro: m.Calibro || "", asse: m.Asse || "", foto: /^https:\/\//.test(m.Foto || "") ? m.Foto : "", qta: g[ott] || 0}; })
+      .filter(m => m.qta > 0).sort((a, b) => (a.modello + a.colore).localeCompare(b.modello + b.colore));
+    return L.send(res, 200, {montature: esposte, ottica: o ? o.Intestatario : ""});
   }
   // chi ti ha consigliato SocialGlass (link «porta un amico»): solo il nome
   if (url.searchParams.get("amico")){
@@ -62,8 +103,11 @@ module.exports = L.wrap(async (req, res) => {
     consegnatoIl: ord.consegnatoIl || "", prontoIl: ord.prontoIl || "", recensione: ord.recensione ? {voto: ord.recensione.voto} : null,
     chiediRecensione: !!(ord.consegnatoIl && !ord.recensione && Date.now() - new Date(ord.consegnatoIl) >= 7*864e5), linkRecensioni: cfg.linkRecensioni || "",
     dona: ord.dona ? {si: !!ord.dona.si, donato: ord.dona.donato || "", daDonare: ord.dona.daDonare || ""} : null,
-    amici: (ord.amici || []).map(x => ({nome: x.nome, il: x.il, stato: x.stato})), linkAmico: `${SITO()}/?amico=${u.f.Univoco}`,
-    primaAttivazione: ((ord.storico || [])[0] || {}).inizio || (ord.pagamento && ord.pagamento.attivatoIl) || "", creato: u.f.Creato || ""};
+    amici: (ord.amici || []).map(x => ({nome: L.nm(x.nome), il: x.il, stato: x.stato})), linkAmico: `${SITO()}/?amico=${u.f.Univoco}`,
+    primaAttivazione: ((ord.storico || [])[0] || {}).inizio || (ord.pagamento && ord.pagamento.attivatoIl) || "", creato: u.f.Creato || "",
+    appuntamento: ord.appuntamento && ord.appuntamento.il >= L.oraRoma().slice(0, 10) ? Object.assign({descrizione: L.TIPI_APP[ord.appuntamento.tipo] || ""}, ord.appuntamento) : null,
+    segnalazioni: (ord.segnalazioni || []).slice(-5).reverse(), haCarta: !!(ord.pagamento && ord.pagamento.cliente && !ord.pagamento.chiuso),
+    contratto: ord.pagamento && ord.pagamento.attivatoIl ? {attivatoIl: ord.pagamento.attivatoIl, consensi: ord.consensi || null, caf: u.f.CAF || ""} : null};
   L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
     ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo || "", citta: o.Citta || "", telefono: o.Telefono || ""} : null,
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,

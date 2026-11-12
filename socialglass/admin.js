@@ -39,7 +39,7 @@ async function carica(){
   const r = await call("dati", {da, a}); if (!r.ok){ if (r.status === 401) return apri(); $("admCorpo").innerHTML = `<div class="esito err">${esc(r.data.errore || "Errore")}</div>`; return; }
   dati = r.data; disegna();
 }
-const TAB = [["numeri", "Oggi"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["conteggi", "Conteggi"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["impostazioni", "Impostazioni"]];
+const TAB = [["numeri", "Oggi"], ["clienti", "Clienti"], ["solleciti", "Solleciti"], ["conteggi", "Conteggi"], ["caf", "CAF"], ["ottici", "Ottici"], ["magazzino", "Magazzino"], ["fornitori", "Fornitori"], ["listini", "Listini"], ["registro", "Registro"], ["impostazioni", "Impostazioni"]];
 let clientiAdm = null, schedaCli = null, filtriAdm = {q: "", caf: "", ottica: "", stato: "", sit: ""};
 const SIT = {
   morosi: ["Morosi", c => c.moroso], bloccati: ["Anagrafica bloccata", c => c.bloccato], attivi: ["Abbonamento attivo", c => c.abbonamentoAttivo],
@@ -182,7 +182,7 @@ function disegnaScheda(c){
 function disegna(){
   const d = dati, opt = l => d.listini.map(x => `<option ${x === l ? "selected" : ""}>${esc(x)}</option>`).join("");
   let h = `<div class="riga schede-adm" role="tablist">${TAB.map(([k, t]) => `<button type="button" role="tab" aria-selected="${k === scheda}" class="${k === scheda ? "" : "grigio"}" data-tab="${k}" style="margin:0 0 6px">${t}</button>`).join("")}</div><div class="esito" id="admMsg" hidden></div>`;
-  if (d.prova) h += `<div class="esito info">Sono ancora attivi gli accessi di prova (CAF001, OTT07, OTT12 con password «demo»). Prima di aprire il servizio al pubblico rimuovili da <b>Impostazioni</b>.</div>`;
+  if (d.prova && scheda === "numeri") h += `<div class="esito info">Sono ancora attivi gli accessi di prova (CAF001, OTT07, OTT12 con password «demo»). Prima di aprire il servizio al pubblico rimuovili da <b>Impostazioni</b>.</div>`;
   $("adminPopup").classList.add("pagina");
   if (scheda === "numeri"){
     const n = d.numeri, lb = d.laboratorio || {}, ord = d.ordiniFornitori || [], partner = d.caf.concat(d.ottici);
@@ -199,15 +199,21 @@ function disegna(){
     f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
     f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
     f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
+    f((d.segnalazioni || []).length, "Segnalazioni dei clienti aperte", "Problemi con l'occhiale: le vede anche l'ottica", "numeri", true);
     const sv = d.servizio || {daDonare: [], recensioni: []};
     if (sv.daLeggere) fare.push(`<button type="button" data-vai-servizio class="urg"><span class="n">${sv.daLeggere}</span><span>Recensioni da 1 a 3 stelle da leggere<small>Contatta il cliente prima che lo scriva altrove</small></span><span class="va">Apri ›</span></button>`);
     if (sv.daDonare.length) fare.push(`<button type="button" data-vai-servizio><span class="n">${sv.daDonare.length}</span><span>Occhiali restituiti da donare<small>I clienti hanno scelto di donarli</small></span><span class="va">Apri ›</span></button>`);
     const max = Math.max(1, ...Object.values(n.perStato));
+    // solo i numeri che non compaiono già nella lista «Da fare oggi»
     h += `<div class="cru-kpi"><button type="button" data-tab="clienti"><b>${n.clienti}</b>Clienti</button><button type="button" data-tab="clienti" class="ok"><b>${n.abbonamentiAttivi}</b>Abbonamenti attivi</button>
-        <button type="button" data-tab="conteggi"><b>${euro(n.canoniMensili)}</b>Canoni al mese</button><button type="button" data-tab="solleciti" class="${n.morosi ? "att" : ""}"><b>${n.morosi || 0}</b>Morosi</button>
-        <button type="button" data-tab="conteggi"><b>${euro(totLiq)}</b>Da liquidare</button>${lb.attivo ? `<button type="button" data-tab="clienti"><b>${lb.daFare + lb.inLavorazione}</b>In laboratorio</button>` : ""}</div>
+        <button type="button" data-tab="conteggi"><b>${euro(n.canoniMensili)}</b>Canoni al mese</button></div>
       <div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: niente in sospeso.</div>'}</div>
         <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
+      ${(d.segnalazioni || []).length ? `<div class="cru-box" id="admSegn" style="margin-top:14px"><h3>Segnalazioni dei clienti</h3>${d.segnalazioni.map(x => `<div class="scheda" data-sg="${esc(x.id)}"><small>${dt(x.il)} · <b>${esc(x.univoco)}</b> ${esc(x.nome)} · ottica ${esc(x.ottica)}${x.cellulare ? ` · <a href="tel:+39${esc(String(x.cellulare).replace(/\D/g, ""))}">${esc(x.cellulare)}</a>` : ""}</small>
+        <p style="margin:6px 0">${esc(x.testo)}</p>${x.foto ? `<img src="${esc(x.foto)}" alt="Foto del cliente" style="max-width:260px;width:100%;border-radius:10px">` : ""}
+        <div class="riga" style="margin-top:6px"><input data-risp placeholder="Risposta al cliente (facoltativa: gli arriva come notifica)" maxlength="300" style="flex:1;margin:0"><button type="button" class="verde" data-segn-ok="${esc(x.id)}" style="margin:0">Risolta</button></div></div>`).join("")}</div>` : ""}
+      <div class="cru-box" style="margin-top:14px"><h3>Report del mese</h3><p class="hint" style="margin:0 0 8px">Incassi, nuovi clienti, attivazioni, morosi e recensioni del mese, pronto da stampare.</p>
+        <div class="riga"><input type="month" id="repMese" value="${new Date(Date.now() - 15*864e5).toISOString().slice(0, 7)}" style="margin:0;max-width:200px"><button type="button" data-report style="margin:0">Apri il report</button></div></div>
       <div class="cru-box" id="admServizio" style="margin-top:14px"><h3>Clienti contenti</h3>
         <div class="cru-kpi" style="margin-bottom:8px"><div class="kpi-f"><b>${sv.totRecensioni ? "★ " + String(sv.media).replace(".", ",") : "—"}</b>${sv.totRecensioni} ${sv.totRecensioni === 1 ? "recensione" : "recensioni"}</div><div class="kpi-f"><b>${sv.amici || 0}</b>clienti portati da amici</div><div class="kpi-f"><b>${sv.donati || 0}</b>occhiali donati</div><div class="kpi-f"><b>${sv.notifiche || 0}</b>clienti con le notifiche attive</div></div>
         ${sv.recensioni.length ? `<div class="lista" style="max-height:300px">${sv.recensioni.slice(0, 20).map(r => `<div class="riga-cli" style="cursor:default;align-items:flex-start"><span><span class="nome" style="color:#F5B301">${"★".repeat(r.voto)}<span style="color:#cfd6e2">${"★".repeat(5 - r.voto)}</span></span> ${esc(r.nome)} · ${esc(r.ottica)} · ${dt(r.il)}${r.testo ? `<span class="cod" style="font-family:inherit;white-space:normal">«${esc(r.testo)}»</span>` : ""}</span>
@@ -264,6 +270,8 @@ function disegna(){
         <div class="az"><button type="button" class="grigio" data-mod-ott="${esc(o.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="ottico" data-id="${esc(o.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "magazzino") h += vistaMagazzino();
+  if (scheda === "listini") h += vistaListini();
+  if (scheda === "registro") h += vistaRegistro();
   if (scheda === "fornitori") h += vistaFornitori();
   if (scheda === "impostazioni"){
     const t = d.titolare || {}, cn = d.canali || {}, cs = d.canaleSolleciti;
@@ -286,6 +294,11 @@ function disegna(){
         <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="sms" ${cs === "sms" ? "checked" : ""}> SMS ${stato("sms")}</label>
         <label style="display:flex;align-items:center;gap:8px;text-align:left;font-size:15px;cursor:pointer"><input type="radio" style="width:auto;margin:0;box-shadow:none" name="canaleSoll" value="spento" ${cs === "spento" ? "checked" : ""}> Nessun invio automatico (li mandi tu dall'elenco Solleciti)</label></div>
       ${cs !== "spento" && !cn[cs] ? `<p class="hint" style="margin:4px 0">Il canale scelto non è ancora collegato: finché non lo è, i solleciti restano pronti nell'elenco <b>Solleciti</b> e l'avviso «occhiali pronti» lo manda l'ottica con un tocco su WhatsApp.</p>` : ""}</div>`;
+    h += `<form data-f="provaMessaggio" class="scheda"><b>Prova dei messaggi automatici</b><p class="hint" style="margin:4px 0">Manda un messaggio di prova al tuo cellulare con il canale scelto sopra. WhatsApp: ${cn.whatsapp ? "collegato" : "non collegato"} · SMS: ${cn.sms ? "collegato" : "non collegato"}.</p>
+      <div class="riga"><input name="numero" type="tel" placeholder="Il tuo cellulare" style="flex:1;margin:0" required><button type="submit" style="margin:0">Invia prova</button></div></form>
+      <div class="scheda"><b>Copia dei dati</b><p class="hint" style="margin:4px 0">Ogni notte si salva una copia completa (clienti, CAF, ottiche, magazzino, fornitori, segnalazioni). Si tengono le ultime 7. Scaricala e conservala anche fuori dal sito.</p>
+      ${(d.copie || []).length ? `<div class="ricevute" style="margin:6px 0">${d.copie.map(c => `<div class="ric"><span><b>${dt(c.data)}</b><small>${Math.round(c.byte / 1024)} KB</small></span><button type="button" class="grigio" data-copia="${esc(c.data)}" style="margin:0">Scarica</button></div>`).join("")}</div>` : '<p class="hint">La prima copia automatica si crea stanotte.</p>'}
+      <button type="button" class="full" data-copia="">Scarica una copia adesso</button></div>`;
     h += `<form data-f="salvaTitolare" class="scheda"><b>Titolare del servizio</b><p style="margin:4px 0">Compare nell'informativa privacy e nelle condizioni dell'abbonamento.</p>
       <label class="lbl" for="tRag">Ragione sociale o nome e cognome</label><input id="tRag" name="ragione" value="${esc(t.ragione)}">
       <label class="lbl" for="tPiva">Partita IVA</label><input id="tPiva" name="piva" inputmode="numeric" value="${esc(t.piva)}">
@@ -325,6 +338,21 @@ async function clic(e){
   if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
+  if (b.dataset.segnOk){ const box = b.closest("[data-sg]"), r = await call("segnalazioneRisolta", {id: b.dataset.segnOk, risposta: box.querySelector("[data-risp]").value}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); return msg("Segnalazione risolta."); }
+  if (b.hasAttribute("data-report")) return apriReport($("repMese").value);
+  if (b.dataset.copia !== undefined){ b.disabled = true; const t0 = b.textContent; b.textContent = "Preparo la copia…";
+    try { const r = await fetch("api/admin", {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + tok}, body: JSON.stringify({azione: "scaricaCopia", data: b.dataset.copia || ""})});
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).errore || "Copia non disponibile.");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `copia-socialglass-${b.dataset.copia || new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove();
+    } catch(err){ msg(err.message, "err"); } b.disabled = false; b.textContent = t0; return; }
+  if (b.hasAttribute("data-reg-cerca")){ registroAdm = null; regQ = $("regQ").value; disegna(); return; }
+  if (b.dataset.lisVai){ lisSel = b.dataset.lisVai; lisBozza = null; disegna(); return; }
+  if (b.hasAttribute("data-lis-nuovo")){ const usati = Object.keys(dati.convenzioni || {}), id = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find(x => !usati.includes(x));
+    lisSel = id; lisBozza = JSON.parse(JSON.stringify((dati.convenzioni || {})[usati[0] || "A"] || {montatura: 60, lenti: {}, trattamenti: {}})); lisBozza.nuovo = true; disegna(); return; }
+  if (b.dataset.lisAgg){ leggiListino(); lisBozza[b.dataset.lisAgg]["nuovo" + Date.now()] = b.dataset.lisAgg === "lenti" ? {nome: "", desc: "", prezzo: ""} : {nome: "", prezzo: ""}; disegna(); return; }
+  if (b.dataset.lisTogli){ leggiListino(); const [g, k] = b.dataset.lisTogli.split(":"); delete lisBozza[g][k]; disegna(); return; }
+  if (b.hasAttribute("data-imp-modello")) return csv("modello-importazione-montature", ["Codice", "Modello", "Colore", "Calibro", "Asta", "Prezzo", "Costo", "Fornitore", "Codice fornitore", "Foto", "Quantita", "Dove"], [["SG-2001", "Aurora", "Nero", "52-18", "145", "60", "22", "", "", "", "3", "MAG"]]);
+  if (b.hasAttribute("data-imp-vai")) return importaVai(b);
   if (b.hasAttribute("data-vai-servizio")){ const el = $("admServizio"); if (el) el.scrollIntoView({behavior: "smooth", block: "start"}); return; }
   if (b.dataset.recLetta){ const r = await call("recensioneLetta", {id: b.dataset.recLetta}); if (!r.ok) return msg(r.data.errore, "err"); await carica(); return msg("Segnata come gestita."); }
   if (b.hasAttribute("data-donati")){
@@ -438,6 +466,11 @@ async function invio(e){
     if (!r.ok){ btn.disabled = false; btn.dataset.ok = ""; btn.textContent = "Paga con Stripe"; return msg(r.data.errore || "Errore", "err"); }
     await carica(); return msg(`Pagamento inviato con Stripe (${r.data.trasferimento}) e registrato nell'estratto conto.`);
   }
+  if (k === "provaMessaggio"){ const r = await call("provaMessaggio", v); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    return msg(r.data.inviato ? `Messaggio di prova inviato via ${r.data.canale === "sms" ? "SMS" : "WhatsApp"}: controlla il telefono.` : `Non partito: ${r.data.motivo || "canale non collegato"}.`, r.data.inviato ? "ok" : "err"); }
+  if (k === "salvaListino"){ leggiListino(); const c = lisBozza, lista = g => Object.entries(c[g] || {}).map(([id, x]) => Object.assign({id: /^nuovo\d+$/.test(id) ? "" : id}, x));
+    const r = await call("salvaListino", {id: lisSel, nuovo: !!c.nuovo, montatura: c.montatura, lenti: lista("lenti"), trattamenti: lista("trattamenti")});
+    if (!r.ok) return msg(r.data.errore || "Errore", "err"); lisBozza = null; await carica(); return msg(`Listino ${lisSel} salvato: l'ottico vede subito i nuovi prezzi nei preventivi. I preventivi già fatti non cambiano.`); }
   if (k === "linkRecensioni"){ const r = await call("linkRecensioni", v); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); return msg("Link salvato."); }
   if (k === "liquidazione"){
     const r = await call("liquidazione", Object.assign({tipo: f.dataset.tipo, id: f.dataset.id}, v)); if (!r.ok) return msg(r.data.errore || "Errore", "err");
@@ -568,6 +601,10 @@ function vistaMagazzino(){
     <div class="riga"><button type="button" class="verde" data-art-nuovo style="margin:0">+ Nuova montatura</button>
       <button type="button" data-qr-sel style="margin:0" ${magSel.size ? "" : "disabled"}>Stampa QR selezionati (${magSel.size})</button>${selFormatoQr()}
       <button type="button" data-stampa-mag style="margin:0">Stampa report</button><button type="button" class="grigio" data-csv="magazzino" style="margin:0">Esporta per Excel</button></div>
+    <details class="scheda" style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">Importa montature da Excel</summary>
+      <p class="hint" style="margin:6px 0">Prima riga con le intestazioni: Codice, Modello, Colore, Calibro, Asta, Prezzo, Costo, Fornitore, Codice fornitore, Foto, Quantita, Dove (MAG, LAB o codice ottica). I codici già presenti aggiornano solo i dati (non le quantità).</p>
+      <div class="riga"><input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="flex:1;margin:0"><button type="button" class="grigio" data-imp-modello style="margin:0">Scarica il modello</button></div>
+      <div id="impAnteprima"></div></details>
     <div class="filtri"><input id="magCerca" value="${esc(magF.q)}" placeholder="Codice, modello, colore, calibro" aria-label="Cerca montatura" autocomplete="off">
       ${sel("forn", [["", "Tutti i fornitori"]].concat(d.fornitori.map(f => [f.ID, f.Nome])))}${sel("dove", [["", "Ogni sede"]].concat(sedi().map(([k, t]) => [k, k === "MAG" ? "In magazzino" : "Esposte da " + t])))}
       ${sel("stato", Object.entries(MAG_STATI).map(([k, v]) => [k, v[0]]))}</div>
@@ -598,6 +635,7 @@ function schedaArticolo(m){
     <form data-f="salvaMontatura" class="scheda"><b>${nuovo ? "Nuova montatura" : "Dati dell'articolo"}</b>${nuovo ? '<input type="hidden" name="nuova" value="1">' : ""}
       <label class="lbl" for="aMCod">Codice (sul cartellino QR, es. SG-2001)</label><input id="aMCod" name="Codice" required style="text-transform:uppercase" value="${esc(m.Codice)}" ${nuovo ? "" : "readonly"}>
       <div class="riga"><div style="flex:1"><label class="lbl" for="aMMod">Modello</label><input id="aMMod" name="Modello" value="${esc(m.Modello)}"></div><div style="flex:1"><label class="lbl" for="aMCol">Colore</label><input id="aMCol" name="Colore" value="${esc(m.Colore)}"></div></div>
+      <label class="lbl" for="aMFoto">Foto (link https, facoltativo: compare nel catalogo del cliente)</label><input id="aMFoto" name="Foto" type="url" placeholder="https://…" value="${esc(m.Foto || "")}">
       <div class="riga"><div style="flex:1"><label class="lbl" for="aMCal">Calibro (es. 52-18)</label><input id="aMCal" name="Calibro" value="${esc(m.Calibro)}"></div><div style="flex:1"><label class="lbl" for="aMAs">Asta</label><input id="aMAs" name="Asse" value="${esc(m.Asse)}"></div></div>
       <div class="riga"><div style="flex:1"><label class="lbl" for="aMPr">Prezzo al cliente (vuoto = listino)</label><input id="aMPr" name="Prezzo" inputmode="decimal" value="${esc(m.Prezzo)}"></div><div style="flex:1"><label class="lbl" for="aMCo">Costo d'acquisto</label><input id="aMCo" name="Costo" inputmode="decimal" value="${esc(m.Costo)}"></div></div>
       <div class="riga"><div style="flex:1"><label class="lbl" for="aMFo">Fornitore</label><select id="aMFo" name="Fornitore">${optForn(m.Fornitore)}</select></div><div style="flex:1"><label class="lbl" for="aMCF">Codice articolo del fornitore</label><input id="aMCF" name="CodiceFornitore" value="${esc(m.CodiceFornitore)}"></div></div>
@@ -689,4 +727,85 @@ async function stampa(elenco){
   w.document.close();
 }
 window.SG_ADMIN = {apri};
+/* ---------- listini: prezzi di lenti, trattamenti e montatura base ---------- */
+let lisSel = "A", lisBozza = null;
+function leggiListino(){
+  const f = document.querySelector('[data-f="salvaListino"]'); if (!f || !lisBozza) return;
+  lisBozza.montatura = f.elements.montatura.value;
+  for (const g of ["lenti", "trattamenti"]) f.querySelectorAll(`[data-voce^="${g}:"]`).forEach(r => { const k = r.dataset.voce.split(":")[1], x = lisBozza[g][k]; if (!x) return;
+    x.nome = r.querySelector("[data-n]").value; x.prezzo = r.querySelector("[data-p]").value; const de = r.querySelector("[data-d]"); if (de) x.desc = de.value; });
+}
+function vistaListini(){
+  const conv = dati.convenzioni || {}, ids = Object.keys(conv);
+  if (!conv[lisSel] && !(lisBozza && lisBozza.nuovo)) lisSel = ids[0] || "A";
+  if (!lisBozza) lisBozza = JSON.parse(JSON.stringify(conv[lisSel] || {montatura: 60, lenti: {}, trattamenti: {}}));
+  const c = lisBozza, usato = dati.ottici.filter(o => (o.Listino || "A") === lisSel).map(o => o.ID);
+  const voce = (g, k, x) => `<div class="riga voce-lis" data-voce="${g}:${k}"><input data-n placeholder="Nome" value="${esc(x.nome)}" style="flex:2;margin:0">${g === "lenti" ? `<input data-d placeholder="Descrizione breve" value="${esc(x.desc || "")}" style="flex:2;margin:0">` : ""}
+    <input data-p type="number" min="0" step="0.01" placeholder="€" value="${esc(x.prezzo)}" style="width:96px;margin:0"><button type="button" class="grigio" data-lis-togli="${g}:${k}" title="Togli" style="margin:0">✕</button></div>`;
+  return `<div class="riga">${ids.map(id => `<button type="button" class="${id === lisSel ? "" : "grigio"}" data-lis-vai="${id}" style="margin:0">Listino ${esc(id)}</button>`).join("")}
+      ${c.nuovo ? `<button type="button" style="margin:0">Listino ${esc(lisSel)} (nuovo)</button>` : ""}<button type="button" class="grigio" data-lis-nuovo style="margin:0">+ Nuovo listino</button></div>
+    <form data-f="salvaListino" class="scheda" style="margin-top:10px"><b>Listino ${esc(lisSel)}</b> <span class="hint">${usato.length ? "usato da " + usato.map(esc).join(", ") : "non ancora assegnato a nessuna ottica (lo scegli nella scheda dell'ottica)"}</span>
+      <p class="hint" style="margin:4px 0 10px">Prezzi IVA inclusa. L'ottico vede solo queste voci quando prepara il preventivo. I preventivi già fatti restano con il prezzo di allora.</p>
+      <label class="lbl" for="lisM">Montatura base (se la montatura non ha un prezzo suo)</label><input id="lisM" name="montatura" type="number" min="0" step="0.01" value="${esc(c.montatura)}" style="max-width:160px">
+      <h3>Lenti</h3>${Object.entries(c.lenti || {}).map(([k, x]) => voce("lenti", k, x)).join("") || '<p class="hint">Nessuna lente.</p>'}
+      <button type="button" class="grigio" data-lis-agg="lenti" style="margin:4px 0 0">+ Aggiungi lente</button>
+      <h3>Trattamenti</h3>${Object.entries(c.trattamenti || {}).map(([k, x]) => voce("trattamenti", k, x)).join("") || '<p class="hint">Nessun trattamento.</p>'}
+      <button type="button" class="grigio" data-lis-agg="trattamenti" style="margin:4px 0 0">+ Aggiungi trattamento</button>
+      <button type="submit" class="verde full" style="margin-top:14px">Salva listino ${esc(lisSel)}</button></form>
+    <p class="hint">Le lenti con «progressiv» o «multifocal» nel nome chiedono l'addizione nella ricetta.</p>`;
+}
+/* ---------- registro delle operazioni ---------- */
+let registroAdm = null, regQ = "";
+function vistaRegistro(){
+  if (!registroAdm){ call("registro", {q: regQ}).then(r => { registroAdm = r.ok ? r.data.voci : []; if (scheda === "registro") disegna(); }); return '<div class="vuoto">Caricamento…</div>'; }
+  return `<div class="riga"><input id="regQ" placeholder="Cerca per codice cliente, CAF, ottica o operazione" value="${esc(regQ)}" style="flex:1;margin:0"><button type="button" data-reg-cerca style="margin:0">Cerca</button></div>
+    <p class="hint">Chi ha bloccato, eliminato, pagato o modificato cosa, e quando. Le voci non si possono cancellare.</p>
+    ${registroAdm.length ? `<div class="tab-wrap"><table class="rx tab"><tr><th>Quando</th><th>Chi</th><th>Operazione</th><th>Su</th><th>Dettagli</th></tr>${registroAdm.map(x => `<tr><td>${esc(new Date(x.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"}))}</td><td>${esc(x.chi)}</td><td>${esc(x.azione)}</td><td>${esc(x.rif)}</td><td>${esc(x.dettaglio)}</td></tr>`).join("")}</table></div>`
+      : '<div class="vuoto">Nessuna operazione registrata.</div>'}`;
+}
+/* ---------- report del mese, stampabile ---------- */
+async function apriReport(mese){
+  const r = await call("report", {mese}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+  const x = r.data, nomeMese = new Date(x.mese + "-15").toLocaleDateString("it-IT", {month: "long", year: "numeric"});
+  const tab = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${esc(k)}</td><td style="text-align:right">${n}</td></tr>`).join("") || '<tr><td colspan="2">—</td></tr>';
+  const w = window.open("", "_blank"); if (!w) return msg("Il browser ha bloccato la finestra: consenti i popup.", "err");
+  w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>Report SocialGlass · ${esc(nomeMese)}</title><style>body{font-family:system-ui,Arial,sans-serif;margin:28px;color:#111}h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 8px}
+    .k{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.k div{border:1px solid #ddd;border-radius:10px;padding:10px;font-size:12px;color:#555}.k b{display:block;font-size:20px;color:#111}
+    table{border-collapse:collapse;width:100%;font-size:13px}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}@media print{button{display:none}}</style></head><body>
+    <h1>Report di ${esc(nomeMese)}</h1><p style="color:#666;margin:0">SocialGlass · creato il ${new Date().toLocaleString("it-IT")}</p><button onclick="print()" style="margin:12px 0;padding:8px 16px">Stampa o salva PDF</button>
+    <h2>Incassi</h2><div class="k"><div>Totale<b>${euro(x.incassi)}</b></div><div>Canoni<b>${euro(x.canoni)}</b></div><div>Spedizioni<b>${euro(x.spedizioni)}</b></div><div>Riscatti<b>${euro(x.riscatti)}</b></div></div>
+    <h2>Clienti</h2><div class="k"><div>Nuovi registrati<b>${x.nuovi}</b></div><div>Abbonamenti attivati<b>${x.attivati}</b></div><div>Occhiali consegnati<b>${x.consegnati}</b></div><div>Abbonamenti chiusi<b>${x.chiusi}</b></div>
+      <div>Morosi (oggi)<b>${x.morosi}</b></div><div>Recensioni<b>${x.recensioni}${x.recensioni ? " · ★ " + String(x.media).replace(".", ",") : ""}</b></div><div>Segnalazioni<b>${x.segnalazioni}</b></div><div>Portati da amici<b>${x.amici}</b></div></div>
+    <h2>Nuovi clienti per CAF</h2><table>${tab(x.perCaf)}</table><h2>Attivazioni per ottica</h2><table>${tab(x.perOttica)}</table>
+    <p style="color:#666;font-size:12px;margin-top:20px">Gli incassi includono i canoni stimati per i mesi registrati prima dello storico dei pagamenti. Occhiali donati nel mese: ${x.donati}.</p></body></html>`);
+  w.document.close();
+}
+/* ---------- importazione montature da Excel o CSV ---------- */
+let impRighe = [];
+const caricaXlsx = () => window.XLSX ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+const COL_IMP = {codice: "Codice", modello: "Modello", colore: "Colore", calibro: "Calibro", asta: "Asse", asse: "Asse", prezzo: "Prezzo", costo: "Costo", fornitore: "Fornitore",
+  codicefornitore: "CodiceFornitore", articolofornitore: "CodiceFornitore", foto: "Foto", immagine: "Foto", quantita: "Quantita", qta: "Quantita", pezzi: "Quantita", dove: "Dove", sede: "Dove", note: "Note"};
+async function leggiFileImp(file){
+  await caricaXlsx();
+  const wb = XLSX.read(await file.arrayBuffer(), {type: "array"}), ws = wb.Sheets[wb.SheetNames[0]];
+  const righe = XLSX.utils.sheet_to_json(ws, {defval: "", raw: false});
+  return righe.map(r => { const o = {}; for (const [k, v] of Object.entries(r)){ const c = COL_IMP[String(k).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "")]; if (c) o[c] = String(v).trim(); } return o; })
+    .filter(o => o.Codice);
+}
+document.addEventListener("change", async e => {
+  if (!e.target.matches || !e.target.matches("#impFile")) return;
+  const f = e.target.files[0], box = $("impAnteprima"); if (!f) return;
+  box.innerHTML = '<p class="hint">Lettura del file…</p>';
+  try { impRighe = await leggiFileImp(f); } catch(err){ impRighe = []; box.innerHTML = `<div class="esito err" style="display:block">File non leggibile: usa un file Excel (.xlsx) o CSV con la prima riga di intestazione.</div>`; return; }
+  box.innerHTML = impRighe.length ? `<p style="margin:6px 0"><b>${impRighe.length}</b> righe con un codice. Le prime:</p><div class="tab-wrap"><table class="rx tab"><tr><th>Codice</th><th>Modello</th><th>Colore</th><th>Calibro</th><th>Prezzo</th><th>Quantità</th><th>Dove</th></tr>
+      ${impRighe.slice(0, 6).map(r => `<tr><td>${esc(r.Codice)}</td><td>${esc(r.Modello || "")}</td><td>${esc(r.Colore || "")}</td><td>${esc(r.Calibro || "")}</td><td>${esc(r.Prezzo || "")}</td><td>${esc(r.Quantita || "")}</td><td>${esc(r.Dove || "MAG")}</td></tr>`).join("")}</table></div>
+      <button type="button" class="verde full" data-imp-vai>Importa ${impRighe.length} montature</button>`
+    : '<div class="esito err" style="display:block">Nessuna riga con la colonna «Codice». Scarica il modello e usa le stesse intestazioni.</div>';
+});
+async function importaVai(b){
+  b.disabled = true; b.textContent = "Importazione in corso…";
+  const r = await call("importaMontature", {righe: impRighe}); if (!r.ok){ b.disabled = false; b.textContent = "Riprova"; return msg(r.data.errore || "Errore", "err"); }
+  impRighe = []; await carica();
+  msg(`Importazione fatta: ${r.data.nuove} nuove, ${r.data.aggiornate} aggiornate${r.data.scartate.length ? `, ${r.data.scartate.length} scartate (${r.data.scartate.slice(0, 3).join("; ")}${r.data.scartate.length > 3 ? "…" : ""})` : ""}.`, r.data.scartate.length ? "err" : "ok");
+}
 })();

@@ -39,11 +39,10 @@
 
   const daRitirare = b => b.lab.fonte !== "LAB" && !b.lab.ritirata && b.lab.stato !== "PRONTO";
   const FILTRI = {
-    dafare: ["Da fare", b => b.lab.stato === "DA FARE" && !b.chiuso],
-    lav: ["In lavorazione", b => b.lab.stato === "IN LAVORAZIONE" && !b.chiuso],
+    dafare: ["Da fare", b => b.lab.stato !== "PRONTO" && !b.chiuso],
     ritiro: ["Montature da ritirare", b => daRitirare(b) && !b.chiuso],
     pronti: ["Pronti (30 giorni)", b => b.lab.stato === "PRONTO" && Date.now() - new Date(b.lab.pronto) < 30 * 864e5],
-    tutti: ["Tutti", () => true]
+    tutti: ["Tutte le buste", () => true]
   };
   // montature da ritirare raggruppate per ottica: il giro da fare
   function gruppiRitiro(l){ const g = {}; l.forEach(b => { const k = b.lab.fonte === "MAG" ? "MAG" : b.ottica.id; (g[k] = g[k] || {ottica: b.ottica, mag: b.lab.fonte === "MAG", buste: []}).buste.push(b); }); return Object.values(g); }
@@ -89,14 +88,13 @@
       ${dove(b)}
       <div class="box"><h4>Ricetta</h4>${ricetta(b.ricetta)}</div>
       ${b.lab.note ? `<div class="box"><h4>Note del laboratorio</h4>${esc(b.lab.note)}</div>` : ""}
-      ${b.lab.avvisoCliente ? `<div class="box">Avviso «occhiali pronti» al cliente: ${b.lab.avvisoCliente.inviato ? `inviato in automatico (${b.lab.avvisoCliente.canale === "sms" ? "SMS" : "WhatsApp"}) il ${dt(b.lab.avvisoCliente.il)}` : "non partito in automatico: lo manda l'ottica"}.</div>` : ""}`;
+      ${b.lab.avvisoCliente ? `<div class="box">Avviso «occhiali pronti» al cliente: ${b.lab.avvisoCliente.inviato ? `inviato in automatico (${({sms: "SMS", notifica: "notifica sul telefono"})[b.lab.avvisoCliente.canale] || "WhatsApp"}) il ${dt(b.lab.avvisoCliente.il)}` : "non partito in automatico: lo manda l'ottica"}.</div>` : ""}`;
   }
 
   // il passo successivo, sempre visibile sulla riga della busta
   function prossimo(b){
     if (b.chiuso || b.lab.stato === "PRONTO" || !b.inLavorazione) return "";
     if (daRitirare(b)) return `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>`;
-    if (b.lab.stato === "DA FARE") return `<button type="button" data-az="inizia" data-u="${esc(b.univoco)}">Inizia lavorazione</button>`;
     return `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}">Occhiale pronto · avvisa il cliente</button>`;
   }
   function disegna(){
@@ -104,11 +102,9 @@
     const conta = k => buste.filter(FILTRI[k][1]).length;
     const l = buste.filter(FILTRI[filtro][1]).filter(b => !q || `${b.univoco} ${b.nome} ${b.cognome} ${b.ottica.id} ${b.ottica.nome} ${b.montatura && b.montatura.codice}`.toUpperCase().includes(q));
     const aperti = new Set([...document.querySelectorAll("details.busta[open]")].map(d => d.dataset.u));
-    const oggi = new Date().toISOString().slice(0, 10), prontiOggi = buste.filter(b => b.lab.stato === "PRONTO" && String(b.lab.pronto).slice(0, 10) === oggi).length;
     const kp = (k, v, t, cl) => `<button type="button" data-f="${k}" class="${filtro === k ? "on " : ""}${cl || ""}"><b>${v}</b>${t}</button>`;
     app.innerHTML = `${messaggio ? `<div class="msg ${messaggio[1]}" role="status">${esc(messaggio[0])}</div>` : ""}
-      <div class="kpi">${kp("dafare", conta("dafare"), "Da fare")}${kp("lav", conta("lav"), "In lavorazione")}${kp("ritiro", conta("ritiro"), "Montature da ritirare", conta("ritiro") ? "att" : "")}${kp("pronti", prontiOggi, "Pronti oggi", "ok")}</div>
-      <div class="tabs" role="tablist">${Object.entries(FILTRI).map(([k, v]) => `<button type="button" role="tab" data-f="${k}" class="${filtro === k ? "on" : ""}" aria-selected="${filtro === k}">${v[0]} (${conta(k)})</button>`).join("")}</div>
+      <div class="kpi">${kp("dafare", conta("dafare"), "Da fare")}${kp("ritiro", conta("ritiro"), "Montature da ritirare", conta("ritiro") ? "att" : "")}${kp("pronti", conta("pronti"), "Pronti (30 giorni)", "ok")}${kp("tutti", conta("tutti"), "Tutte le buste")}</div>
       <div class="barra"><input id="cerca" placeholder="Cerca per codice, cliente, ottica o montatura" value="${esc(cerca)}" aria-label="Cerca">
         <div class="az"><button type="button" class="grigio" id="aggiorna">Aggiorna</button><button type="button" id="stampaSel" ${sel.size ? "" : "disabled"}>Stampa buste selezionate (${sel.size})</button></div></div>
       ${l.length ? `<p style="margin:4px 0;color:#666;font-size:13px">${l.length} buste · <button type="button" class="link" id="selTutte">${l.every(b => sel.has(b.univoco)) ? "deseleziona" : "seleziona"} tutte</button></p>` : ""}
@@ -120,7 +116,6 @@
         <div class="corpo">${corpoBusta(b)}
           ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Occhiale pronto» il cliente riceve in automatico il messaggio (WhatsApp o SMS, come impostato da SocialGlass) e l'ottica viene avvisata.</p>` : ""}
           <div class="az">${!b.chiuso && daRitirare(b) ? `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>` : ""}
-            ${!b.chiuso && b.lab.stato === "DA FARE" ? `<button type="button" data-az="inizia" data-u="${esc(b.univoco)}">Inizia lavorazione</button>` : ""}
             ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione ? `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}" ${daRitirare(b) ? "disabled" : ""}>Occhiale pronto · avvisa il cliente</button>` : ""}
             <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button></div></div></details>`).join("")
         || `<div class="vuoto">Nessuna busta in «${FILTRI[filtro][0]}».</div>`}`;
@@ -149,7 +144,7 @@
       if (r.status === 401) return esci();
       const av = r.ok && r.data.avviso;
       messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata.",
-        pronto: av && /moroso/.test(av.motivo || "") ? "Occhiale pronto: l'ottica è avvisata. Il cliente ha un pagamento in sospeso, quindi non viene invitato al ritiro finché non paga." : av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${av.canale === "sms" ? "SMS" : "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
+        pronto: av && /moroso/.test(av.motivo || "") ? "Occhiale pronto: l'ottica è avvisata. Il cliente ha un pagamento in sospeso, quindi non viene invitato al ritiro finché non paga." : av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${({sms: "SMS", notifica: "notifica sul telefono"})[av.canale] || "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
       return carica();
     }
   });

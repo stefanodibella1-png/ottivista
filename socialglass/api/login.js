@@ -15,6 +15,25 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.salva(se.ruolo === "caf" ? "caf" : "ottLogin", se.id, {Password: L.hashPw(nuova)});
     return L.send(res, 200, {ok: true});
   }
+  // codice di recupero personale: si crea da dentro (dopo l'accesso) e serve se si dimentica la password
+  const nuovoCodice = () => { const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", b = require("crypto").randomBytes(12); let c = ""; for (const x of b) c += A[x % A.length]; return c.replace(/(.{4})(?=.)/g, "$1-"); };
+  const pulisci = c => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (corpo.azione === "codiceRecupero"){
+    const se = L.verify(req); if (!se || !["caf", "ottico"].includes(se.ruolo)) return L.send(res, 401, L.NOAUTH);
+    const c = nuovoCodice(); await L.DB.salva(se.ruolo === "caf" ? "caf" : "ottLogin", se.id, {Recupero: L.hashPw(pulisci(c)), RecuperoIl: new Date().toISOString()});
+    await L.registra(`${se.ruolo === "caf" ? "CAF" : "ottica"} ${se.id}`, "codice di recupero creato", se.id, "");
+    return L.send(res, 200, {codice: c});
+  }
+  if (corpo.azione === "recupera"){
+    if (L.tooMany(`recupero:${L.ipDi(req)}`, 5)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
+    const r = ["caf", "ottico"].includes(corpo.ruolo) ? corpo.ruolo : "", id = String(corpo.codice || "").trim().toUpperCase(), rec = r && id ? await L.DB.login(r, id) : null;
+    if (!rec || !rec.Recupero || !L.checkPw(rec.Recupero, pulisci(corpo.recupero))) return L.send(res, 401, {errore: "Codice o codice di recupero non validi. Se non hai un codice di recupero, contatta SocialGlass."});
+    const nuova = String(corpo.nuova || ""); if (nuova.length < 8) return L.send(res, 400, {errore: "La nuova password deve avere almeno 8 caratteri."});
+    const c = nuovoCodice();   // il codice usato non vale più: se ne crea uno nuovo
+    await L.DB.salva(r === "caf" ? "caf" : "ottLogin", id, {Password: L.hashPw(nuova), Recupero: L.hashPw(pulisci(c)), RecuperoIl: new Date().toISOString()});
+    await L.registra(`${r === "caf" ? "CAF" : "ottica"} ${id}`, "password reimpostata con il codice di recupero", id, "");
+    return L.send(res, 200, {ok: true, codice: c});
+  }
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0] || "ip";
   if (L.tooMany(`login:${ip}`)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
   // laboratorio: un solo accesso, password impostata dall'amministratore
