@@ -12,7 +12,7 @@
 #sgTempo .corpo button:disabled{opacity:.5}
 #sgTempo .es{margin-top:8px;font-size:13px;color:#ffe0b2}
 #sgTempo.chiusa .corpo{display:none}`;
-  function giorni(n){ return n >= 365 ? `${Math.floor(n / 365)} anno${n >= 730 ? "i" : ""}${n % 365 ? " e " + n % 365 + " g" : ""}` : n + " giorni"; }
+  function giorni(n){ return n >= 365 ? `${Math.floor(n / 365)} anno${n >= 730 ? "i" : ""}${n % 365 ? " e " + n % 365 + " g" : ""}` : n + (n === 1 ? " giorno" : " giorni"); }
   function disegna(){
     const P = window.SG_PROVE, mio = P && P.mio(), t = mio && mio.barraTempo;
     let el = document.getElementById("sgTempo");
