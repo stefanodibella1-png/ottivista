@@ -102,47 +102,50 @@ async function attesa(u, ora){
   }
   return null;
 }
+// controllo di un cliente (usato dal controllo giornaliero e dalla barra del tempo delle prove)
+async function controlla(u, ora, esiti){
+  // montatura prenotata ma ordine mai confermato: promemoria a 14 giorni, a 30 la montatura torna disponibile
+  if ([L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){
+    try { const r = await attesa(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
+    return;
+  }
+  // occhiale da restituire non ancora riportato dopo 15 giorni
+  { const o = L.parseOrdine(u.f.Ordine);
+    if (o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && new Date(ora) - new Date(o.ritiro.dal) > 15*864e5 && !(o.avvisi && o.avvisi.ritardoRitiro)){
+      await annota(u, o, "ritardoRitiro", `SocialGlass: ${L.nm(u.f.Nome)}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di riscattarlo.`);
+      await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); esiti.push({univoco: u.f.Univoco, esito: "sollecito restituzione"});
+    } }
+  if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) return;
+  const ord = L.parseOrdine(u.f.Ordine), p = L.PREZZI.periodo(ord, ora);
+  // 7 giorni dopo la consegna: «come ti trovi?» (notifica gratuita; la domanda compare anche nella sua pagina)
+  if (ord.consegnatoIl && !ord.recensione && !ord.recensioneChiesta && new Date(ora) - new Date(ord.consegnatoIl) >= 7*864e5){
+    ord.recensioneChiesta = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    try { await L.pushCliente(u.f, `SocialGlass: ${L.nm(u.f.Nome)}, come ti trovi con i tuoi occhiali nuovi? Dicci la tua con un tocco.`, "Come ti trovi?"); } catch(e){}
+    esiti.push({univoco: u.f.Univoco, esito: "richiesta recensione"});
+  }
+  // ogni anno dalla consegna: controllo della vista incluso, da prenotare dal link
+  if (ord.consegnatoIl && !(ord.pagamento && ord.pagamento.chiuso)){
+    const anni = Math.floor((new Date(ora) - new Date(ord.consegnatoIl)) / (365*864e5));
+    if (anni >= 1 && (ord.controlloAvvisato || 0) < anni){
+      ord.controlloAvvisato = anni;
+      await annota(u, ord, "controllo" + anni, `SocialGlass: ${L.nm(u.f.Nome)}, è il momento del controllo della vista, incluso nel tuo abbonamento. Prenota giorno e ora dal tuo link: ${L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino)}`);
+      await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); esiti.push({univoco: u.f.Univoco, esito: "promemoria controllo vista"});
+    }
+  }
+  if (!p || p.chiuso) return;
+  try {
+    const r = await esegui(u, ord, p, ora);
+    if (r){ if (r !== "rinnovato"){ ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); } esiti.push({univoco: u.f.Univoco, esito: r}); }
+  } catch(e){ console.error(u.f.Univoco, e); esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
+
+}
 const handler = L.wrap(async (req, res) => {
   const auth = req.headers.authorization || "";
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) return L.send(res, 401, {errore: "Non autorizzato"});
   const url = new URL(req.url, "http://x"), ora = url.searchParams.get("data") ? new Date(url.searchParams.get("data")).toISOString() : new Date().toISOString();
   const tutti = await L.DB.tutti();
   const esiti = [];
-  for (const u of tutti){
-    // montatura prenotata ma ordine mai confermato: promemoria a 14 giorni, a 30 la montatura torna disponibile
-    if ([L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){
-      try { const r = await attesa(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
-      continue;
-    }
-    // occhiale da restituire non ancora riportato dopo 15 giorni
-    { const o = L.parseOrdine(u.f.Ordine);
-      if (o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && new Date(ora) - new Date(o.ritiro.dal) > 15*864e5 && !(o.avvisi && o.avvisi.ritardoRitiro)){
-        await annota(u, o, "ritardoRitiro", `SocialGlass: ${L.nm(u.f.Nome)}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di riscattarlo.`);
-        await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); esiti.push({univoco: u.f.Univoco, esito: "sollecito restituzione"});
-      } }
-    if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) continue;
-    const ord = L.parseOrdine(u.f.Ordine), p = L.PREZZI.periodo(ord, ora);
-    // 7 giorni dopo la consegna: «come ti trovi?» (notifica gratuita; la domanda compare anche nella sua pagina)
-    if (ord.consegnatoIl && !ord.recensione && !ord.recensioneChiesta && new Date(ora) - new Date(ord.consegnatoIl) >= 7*864e5){
-      ord.recensioneChiesta = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-      try { await L.pushCliente(u.f, `SocialGlass: ${L.nm(u.f.Nome)}, come ti trovi con i tuoi occhiali nuovi? Dicci la tua con un tocco.`, "Come ti trovi?"); } catch(e){}
-      esiti.push({univoco: u.f.Univoco, esito: "richiesta recensione"});
-    }
-    // ogni anno dalla consegna: controllo della vista incluso, da prenotare dal link
-    if (ord.consegnatoIl && !(ord.pagamento && ord.pagamento.chiuso)){
-      const anni = Math.floor((new Date(ora) - new Date(ord.consegnatoIl)) / (365*864e5));
-      if (anni >= 1 && (ord.controlloAvvisato || 0) < anni){
-        ord.controlloAvvisato = anni;
-        await annota(u, ord, "controllo" + anni, `SocialGlass: ${L.nm(u.f.Nome)}, è il momento del controllo della vista, incluso nel tuo abbonamento. Prenota giorno e ora dal tuo link: ${L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino)}`);
-        await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); esiti.push({univoco: u.f.Univoco, esito: "promemoria controllo vista"});
-      }
-    }
-    if (!p || p.chiuso) continue;
-    try {
-      const r = await esegui(u, ord, p, ora);
-      if (r){ if (r !== "rinnovato"){ ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); } esiti.push({univoco: u.f.Univoco, esito: r}); }
-    } catch(e){ console.error(u.f.Univoco, e); esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
-  }
+  for (const u of tutti) await controlla(u, ora, esiti);
   // riordino automatico per i fornitori che lo hanno attivo
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
   // copia di tutti i dati (si tengono le ultime 7), scaricabile dal pannello
@@ -151,3 +154,4 @@ const handler = L.wrap(async (req, res) => {
 });
 module.exports = handler;
 module.exports.esegui = esegui;
+module.exports.controlla = controlla;

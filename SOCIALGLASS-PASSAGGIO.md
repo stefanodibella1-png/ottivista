@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1795600000**, prossimo 1795700000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1795700000**, prossimo 1795800000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -26,6 +26,13 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Ottica: ordine cliente (lenti/ricetta dai listini), da fare oggi, agenda appuntamenti con orari, segnalazioni, esposte, conteggi, consegna, rinnovo (con conferma), ritiro occhiali restituiti/vecchi.
 - Laboratorio: montatura ritirata → occhiale pronto (avviso automatico al cliente).
 - Admin: Oggi, clienti, morosi e solleciti, conteggi e pagamenti ai partner (Stripe Connect), magazzino (QR, scorte, riordini, importazione da Excel, foto), fornitori, **Listini** (modifica, nuovi, cancellazione), **Registro** operazioni, report del mese, copia notturna dei dati (ultime 7, da Impostazioni), prova dei messaggi.
+
+## Barra del tempo (PROVE TECNICHE — da togliere prima dell'uscita al pubblico)
+- Etichetta «⏱ PROVE» in alto a sinistra nella pagina del cliente, **solo** per i clienti di prova (CAF001, OTT07, OTT12); sparisce da sola dopo «rimuovi dati di prova».
+- Pulsanti: +1 g, +7 g, +30 g, +6 mesi, «A 20 giorni dalla scadenza», canone non pagato, paga il canone, controllo di oggi. Ogni salto sposta indietro le date del cliente (tranne l'appuntamento) a tappe di 29 giorni ed esegue il controllo del mattino (`controlla` in `api/scadenze.js`); ogni uso finisce nel Registro.
+- Limite: Stripe non si sposta nel tempo (i canoni veri non vengono addebitati dai salti; «canone non pagato» e «paga» sono simulati). La restituzione con Stripe chiude a fine del mese reale.
+- Per toglierla: file `socialglass/prove-tempo.js` + il suo `<script>` in `index.html`; in `api/benvenuto.js` il blocco «PROVE TECNICHE» (funzione `tempo`, azione `tempo`, campo `barraTempo`); in `app.js` la riga `window.SG_PROVE`. Il campo `ProveGiorni` dei clienti di prova sparisce con loro.
+- Prova locale: `prove-socialglass/tempo.py [riscatta|restituisci|rinnova]` (PC, tablet, telefono e laboratorio).
 
 ## In sospeso (decide Stefano)
 - Idee rimandate: 4 mappa delle ottiche, 8 prova virtuale dal vivo; punti UX 4, 5, 7 della lista del 12/11 (ordine consegnato compatto, icone in fondo, home con soli 3 passi).

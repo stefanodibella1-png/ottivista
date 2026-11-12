@@ -1165,6 +1165,7 @@ async function caricaMio(apri){
   mio = r.data; $("mio-ordine").hidden = false;
   disegnaMio(); return mio;
 }
+window.SG_PROVE = {mio: () => mio, ricarica: () => caricaMio(false)};   // PROVE TECNICHE: aggancio della barra del tempo (prove-tempo.js), da togliere con lei
 const dt = d => new Date(d).toLocaleDateString("it-IT");
 // regole di fine periodo spiegate al cliente, con le sue date
 function regoleFine(p, per){
