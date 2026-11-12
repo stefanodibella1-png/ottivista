@@ -17,7 +17,9 @@ const tag = (t, v) => v === "" || v == null ? "" : `<${t}>${v}</${t}>`;
 async function impostazioni(){
   const c = (await L.DB.meta("fatturazione")) || {}, t = (await L.DB.meta("titolare")) || {};
   return {
-    regime: c.regime === "RF19" ? "RF19" : "RF01",          // RF01 ordinario, RF19 forfettario
+    regime: c.regime === "RF01" ? "RF01" : "RF19",          // RF19 forfettario (predefinito), RF01 ordinario
+    altriRicavi: Number(c.altriRicavi) || 0,                 // ricavi dell'anno incassati fuori dall'app (per le soglie del forfettario)
+    passaggio: c.passaggio || null,
     aliquota: c.aliquota != null && c.aliquota !== "" ? Number(c.aliquota) : 4,
     nome: c.nome || "", cognome: c.cognome || "", denominazione: t.ragione || "", piva: String(t.piva || "").replace(/\D/g, ""), cf: String(c.cf || "").toUpperCase(),
     indirizzo: c.indirizzo || "", cap: c.cap || "", comune: c.comune || "", provincia: String(c.provincia || "").toUpperCase(),
@@ -71,6 +73,12 @@ ${riep}</DatiBeniServizi>
 </p:FatturaElettronica>`;
 }
 
+// soglie del forfettario (criterio di cassa): 85.000 € = ordinario dall'anno dopo; oltre 100.000 € = ordinario subito
+const SOGLIE = {attenzione: 70000, uscitaAnnoDopo: 85000, uscitaSubito: 100000};
+async function ricaviAnno(anno, s){
+  const app = r2((await L.DB.lista("fatt")).filter(x => x.anno === anno).reduce((t, x) => t + (Number(x.totale) || 0), 0));
+  return {anno, app, altri: r2(s.altriRicavi), totale: r2(app + s.altriRicavi)};
+}
 // crea la fattura di un incasso (una sola volta per incasso: l'id è quello del pagamento Stripe)
 async function emetti(u, inc){
   const s = await impostazioni();
@@ -81,6 +89,16 @@ async function emetti(u, inc){
   const ord = L.parseOrdine(u.f.Ordine), quando = inc.il || new Date().toISOString(), data = L.oraRoma(new Date(quando)).slice(0, 10), anno = data.slice(0, 4);
   const mese = new Date(quando).toLocaleDateString("it-IT", {month: "long", year: "numeric", timeZone: "Europe/Rome"});
   const righe = righeDa(inc, ord, mese); if (!righe.length) return {saltata: "importo zero"};
+  // forfettario: se questo incasso porta i ricavi dell'anno oltre 100.000 €, da qui in poi si fattura in regime ordinario (con IVA)
+  if (s.regime === "RF19"){
+    const ra = await ricaviAnno(anno, s), lordo = r2(righe.reduce((t, x) => t + x.lordo, 0));
+    if (ra.totale + lordo > SOGLIE.uscitaSubito){
+      const passaggio = {il: new Date().toISOString(), motivo: `ricavi ${anno} oltre ${SOGLIE.uscitaSubito} € (${f2(ra.totale + lordo)} € con questo incasso)`};
+      await L.DB.meta("fatturazione", {regime: "RF01", passaggio});
+      await L.registra("fatturazione", "passaggio automatico al regime ordinario", u.f.Univoco, passaggio.motivo);
+      s.regime = "RF01"; s.passaggio = passaggio;
+    }
+  }
   const conti = calcola(righe, s), id = String(inc.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60); if (!id) return {errore: "Incasso senza identificativo"};
   const f = await L.DB.nuovaFattura(id, anno, n => {
     const numero = `${n}/SG`, prog = (anno.slice(2) + String(n).padStart(8, "0")).slice(-10);
@@ -137,4 +155,4 @@ function cortesia(f){
   const { numero, data, totale, imponibile, imposta, aliquota, righe, bollo, regime } = f;
   return {numero, data, totale, imponibile, imposta, aliquota, bollo, regime, righe: (righe || []).map(x => ({descrizione: x.descrizione, importo: x.lordo})), stato: f.stato};
 }
-module.exports = {impostazioni, mancaPerEmettere, emetti, invia, inviaInSospeso, cortesia, calcola, xml, ARUBA_CF, credenziali: () => !!(E.ARUBA_USER && E.ARUBA_PASSWORD)};
+module.exports = {SOGLIE, ricaviAnno, impostazioni, mancaPerEmettere, emetti, invia, inviaInSospeso, cortesia, calcola, xml, ARUBA_CF, credenziali: () => !!(E.ARUBA_USER && E.ARUBA_PASSWORD)};

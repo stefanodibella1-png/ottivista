@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796200000**, prossimo 1796300000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796300000**, prossimo 1796400000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -34,6 +34,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Recesso → «annullamento» solo prima che il laboratorio inizi la lavorazione (`L.inLavorazione`, `L.annullabile`); terza spunta obbligatoria all'attivazione (`consensoSuMisura`, salvata in `ord.consensi.suMisura`).
 - Codice ATECO di noleggio: Stefano lo aggiunge con ComUnica entro 30 giorni dal primo noleggio.
 - Fatturazione (`api/_fattura.js`, non conta tra le 12 funzioni): una fattura FatturaPA FPR12 per ogni incasso Stripe (`invoice.paid` nel webhook), numero `n/SG` per anno senza buchi né doppioni (transazione `DB.nuovaFattura`, id = pagamento Stripe), archivio `sg_fatture`. Regime ordinario (IVA scorporata, 4% di base) o forfettario (N2.2, bollo virtuale oltre 77,47 €). Si attiva da Impostazioni › Fatturazione elettronica; il cliente vede la copia di cortesia in «Ricevute».
+- Regime: SocialGlass è **forfettario** (predefinito RF19), ma può passare all'ordinario: si cambia da Impostazioni e vale solo per le fatture create dopo (ognuna conserva il suo regime; numerazione continua). Contatore ricavi dell'anno (fatture app + «altri ricavi» fuori app, criterio di cassa) con avvisi da 70.000 € e oltre 85.000 € (ordinario dal 1° gennaio successivo); oltre 100.000 € l'app passa da sola all'ordinario sulla fattura che supera la soglia (`passaggio` in meta `fatturazione`, voce nel Registro). Prezzi al cliente = prezzo finale in entrambi i regimi.
 - Invio Aruba: serve il piano Premium (API). Secrets del repo `ARUBA_USER` e `ARUBA_PASSWORD` (da passare a Vercel come le altre chiavi), ambiente demo/reale dal pannello. Senza credenziali le fatture restano «da inviare»; il controllo del mattino rimanda quelle in sospeso. Validate in locale con lo schema FatturaPA (codici natura attuali).
 - Residenza del cliente obbligatoria (campo `Residenza`): la chiede il CAF alla registrazione; chi è registrato prima la scrive all'attivazione.
 - Da fare: attivare Aruba Premium e inserire le credenziali, contratti con l'avvocato, dati del titolare in Impostazioni.

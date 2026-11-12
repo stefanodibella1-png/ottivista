@@ -191,7 +191,7 @@ module.exports = L.wrap(async (req, res) => {
       fatturazione: await (async () => { const s = await F.impostazioni();
         const l = (await L.DB.lista("fatt")).sort((a, b) => String(b.creata).localeCompare(String(a.creata))).slice(0, 60)
           .map(x => ({id: x.ID || x._id, numero: x.numero, data: x.data, cliente: `${L.nm(x.cliente.nome)} ${L.nm(x.cliente.cognome)}`, univoco: x.univoco, totale: x.totale, stato: x.stato, errore: x.errore || "", file: x.file || ""}));
-        return {impostazioni: s, manca: F.mancaPerEmettere(s), credenziali: F.credenziali(), fatture: l}; })()
+        return {impostazioni: s, manca: F.mancaPerEmettere(s), credenziali: F.credenziali(), fatture: l, ricavi: await F.ricaviAnno(L.oraRoma().slice(0, 4), s), soglie: F.SOGLIE}; })()
     });
   }
   // pagamenti di SocialGlass al CAF o all'ottica (acconti, saldi): entrano nel loro estratto conto
@@ -305,7 +305,7 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "legale"){ await L.DB.meta("config", {legale: b.valore ? new Date().toISOString() : ""}); return L.send(res, 200, {ok: true}); }
   // fatturazione elettronica al cliente (una fattura per ogni incasso), invio tramite Aruba
   if (az === "salvaFatturazione"){
-    const c = {attiva: b.attiva === "on" || b.attiva === true, regime: b.regime === "RF19" ? "RF19" : "RF01", aliquota: numero(b.aliquota),
+    const c = {attiva: b.attiva === "on" || b.attiva === true, regime: b.regime === "RF01" ? "RF01" : "RF19", aliquota: numero(b.aliquota), altriRicavi: numero(b.altriRicavi),
       nome: pulito(b.nome, 60).toUpperCase(), cognome: pulito(b.cognome, 60).toUpperCase(), cf: pulito(b.cf, 16).toUpperCase().replace(/\s/g, ""),
       indirizzo: pulito(b.indirizzo, 60), cap: pulito(b.cap, 5).replace(/\D/g, ""), comune: pulito(b.comune, 60).toUpperCase(), provincia: pulito(b.provincia, 2).toUpperCase(),
       invio: b.invio === "aruba" ? "aruba" : "spento", ambiente: b.ambiente === "produzione" ? "produzione" : "demo"};
@@ -314,6 +314,7 @@ module.exports = L.wrap(async (req, res) => {
     if (c.cap && !/^\d{5}$/.test(c.cap)) return L.send(res, 400, {errore: "CAP: 5 cifre."});
     if (c.provincia && !/^[A-Z]{2}$/.test(c.provincia)) return L.send(res, 400, {errore: "Provincia: sigla di 2 lettere."});
     if (c.attiva){ const m = F.mancaPerEmettere(Object.assign(await F.impostazioni(), c)); if (m.length) return L.send(res, 400, {errore: "Per attivare la fatturazione mancano: " + m.join(", ") + " (partita IVA nei dati del titolare)."}); }
+    if (c.regime === "RF19") c.passaggio = null;   // tornato al forfettario a mano (es. anno nuovo): l'avviso del passaggio non serve più
     await L.DB.meta("fatturazione", c); return L.send(res, 200, {ok: true});
   }
   if (az === "fatturaXml" || az === "provaFattura"){
