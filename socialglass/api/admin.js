@@ -65,6 +65,7 @@ module.exports = L.wrap(async (req, res) => {
     ];
     const comp = x => { const c = x.Compenso || {}; return {CompensoTipo: c.tipo || "", CompensoValore: c.valore || ""}; };
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
+    const cfgS = await L.DB.meta("config");
     return L.send(res, 200, {
       caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
       ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a)), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a))}, comp(x))),
@@ -79,6 +80,15 @@ module.exports = L.wrap(async (req, res) => {
         sottoScorta: mont.filter(x => { const i = L.infoMont(x); return i.sottoScorta || i.esaurita; }).filter(x => !x.Eliminata).length,
         morosi: utenti.filter(u => { const pg = L.parseOrdine(u.f.Ordine).pagamento || {}; return pg.insoluto && !pg.chiuso; }).length},
       previsione: L.previsione(utenti.map(u => u.f), caf, ottici),
+      // recensioni dei clienti, occhiali restituiti da donare, amici portati
+      servizio: (() => { const rec = [], dona = [], amici = []; let donati = 0;
+        for (const {f} of utenti){ const o = L.parseOrdine(f.Ordine), nome = `${f.Nome || ""} ${f.Cognome || ""}`.trim(), ott = String(f.Ottica1 || "").split(" - ")[0];
+          if (o.recensione) rec.push(Object.assign({univoco: f.Univoco, nome, ottica: ott}, o.recensione));
+          if (o.dona && o.dona.donato) donati++; else if (o.dona && o.dona.daDonare) dona.push({univoco: f.Univoco, nome, ottica: ott, dal: o.dona.daDonare, montatura: o.montatura ? `${o.montatura.codice} ${o.montatura.modello} ${o.montatura.colore}` : ""});
+          if (f.PresentatoDa && f.AmicoPremiato) amici.push({da: f.PresentatoDa, nuovo: f.Univoco, il: f.AmicoPremiato}); }
+        rec.sort((a, b) => String(b.il).localeCompare(String(a.il)));
+        return {recensioni: rec.slice(0, 50), media: rec.length ? Math.round(rec.reduce((t, x) => t + x.voto, 0) / rec.length * 10) / 10 : 0, totRecensioni: rec.length, daLeggere: rec.filter(x => x.voto <= 3 && !x.letta).length,
+          daDonare: dona, donati, amici: amici.length, linkRecensioni: ((cfgS || {}).linkRecensioni) || "", notifiche: utenti.filter(u => (u.f.Push || []).length).length}; })(),
       laboratorio: await (async () => { const l = (await L.DB.meta("laboratorio")) || {}; const lav = utenti.map(u => L.parseOrdine(u.f.Ordine).lab).filter(Boolean);
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
@@ -143,6 +153,18 @@ module.exports = L.wrap(async (req, res) => {
     if (b.password){ if (String(b.password).length < 8) return L.send(res, 400, {errore: "Password di almeno 8 caratteri."}); d.password = L.hashPw(String(b.password)); }
     if (d.attivo && !d.password && !prima.password) return L.send(res, 400, {errore: "Per attivare il laboratorio imposta una password di accesso."});
     await L.DB.meta("laboratorio", d); return L.send(res, 200, {ok: true});
+  }
+  if (az === "linkRecensioni"){
+    let l = pulito(b.link, 300); if (l && !/^https:\/\//i.test(l)) return L.send(res, 400, {errore: "Il link deve iniziare con https://"});
+    await L.DB.meta("config", {linkRecensioni: l}); return L.send(res, 200, {ok: true});
+  }
+  if (az === "recensioneLetta" || az === "donati"){
+    const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(x => pulito(x, 20).toUpperCase()).filter(Boolean).slice(0, 200), ora = new Date().toISOString();
+    for (const id of ids){ const u = await L.DB.utente("Univoco", id); if (!u) continue; const o = L.parseOrdine(u.f.Ordine);
+      if (az === "recensioneLetta" && o.recensione) o.recensione.letta = ora;
+      if (az === "donati" && o.dona && o.dona.daDonare){ o.dona.donato = ora; try { await L.pushCliente(u.f, `SocialGlass: ${u.f.Nome}, il tuo occhiale è stato donato a chi ne aveva bisogno. Grazie di cuore!`, "Il tuo occhiale ha aiutato qualcuno"); } catch(_){} }
+      o.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); }
+    return L.send(res, 200, {ok: true});
   }
   if (az === "canaleSolleciti"){
     const c = ["whatsapp", "sms", "spento"].includes(b.canale) ? b.canale : null; if (!c) return L.send(res, 400, {errore: "Canale non valido."});
@@ -292,7 +314,7 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "scheda"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
     const f = u.f, o = L.parseOrdine(f.Ordine), ott = String(f.Ottica1 || "").split(" - ")[0];
-    return L.send(res, 200, {cliente: {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
+    return L.send(res, 200, {cliente: {presentatoDa: f.PresentatoDa || "", amicoPremiato: f.AmicoPremiato || "", notifiche: (f.Push || []).length, univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
       genere: f.Genere || "", caf: f.CAF || "", ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
       situazione: L.situazione(f), link: L.linkCliente(f.Univoco, ott, f.CAF, f.Listino)}});
   }

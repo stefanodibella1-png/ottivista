@@ -114,6 +114,12 @@ const handler = L.wrap(async (req, res) => {
       } }
     if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) continue;
     const ord = L.parseOrdine(u.f.Ordine), p = L.PREZZI.periodo(ord, ora);
+    // 7 giorni dopo la consegna: «come ti trovi?» (notifica gratuita; la domanda compare anche nella sua pagina)
+    if (ord.consegnatoIl && !ord.recensione && !ord.recensioneChiesta && new Date(ora) - new Date(ord.consegnatoIl) >= 7*864e5){
+      ord.recensioneChiesta = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      try { await L.pushCliente(u.f, `SocialGlass: ${u.f.Nome}, come ti trovi con i tuoi occhiali nuovi? Dicci la tua con un tocco.`, "Come ti trovi?"); } catch(e){}
+      esiti.push({univoco: u.f.Univoco, esito: "richiesta recensione"});
+    }
     if (!p || p.chiuso) continue;
     try {
       const r = await esegui(u, ord, p, ora);

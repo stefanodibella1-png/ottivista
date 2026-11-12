@@ -454,6 +454,149 @@ $("formCodice").addEventListener("submit", async e => {
   location.href = `${location.pathname.replace(/\/(caf|ottico|admin)\/?$/, "/")}?Univoco=${encodeURIComponent(c)}`;
 });
 
+/* ---------- app installabile, notifiche, porta un amico, tessera, il mio anno ---------- */
+let promptInstalla = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); promptInstalla = e; if (mio && !$("miaPagina").hidden) disegnaMio(); });
+if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw-sg.js").catch(() => {});
+const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const installata = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushPossibile = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+// l'app installata dal cliente si apre sulla sua pagina (chiamata dopo la lettura del link)
+function avvioApp(){
+  if (UNIVOCO){ try { localStorage.setItem("sg_univoco", UNIVOCO); } catch(_){} if ($("manifestLink")) $("manifestLink").href = `api/benvenuto?manifest=1&univoco=${encodeURIComponent(UNIVOCO)}`; }
+  else if (par("app")){ let u = ""; try { u = localStorage.getItem("sg_univoco") || ""; } catch(_){} if (u) location.replace(`./?Univoco=${encodeURIComponent(u)}&app=1`); }
+  linkAmico();
+}
+const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+function bannerApp(u){
+  if (DEMO === "browser") return "";
+  if (!installata() && (promptInstalla || iOS)) return `<div class="banner-app">${svgI('<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/>').replace("<svg", '<svg style="width:30px;height:30px;flex:0 0 auto"')}<div><b>Metti SocialGlass sul telefono</b><span>Un'icona per aprire subito la tua pagina e ricevere gli avvisi gratis.</span></div><button type="button" id="mpInstalla">Installa</button></div>`;
+  if (pushPossibile() && u.vapid && !u.notifiche && Notification.permission !== "denied") return `<div class="banner-app">${svgI('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>').replace("<svg", '<svg style="width:30px;height:30px;flex:0 0 auto"')}<div><b>Attiva le notifiche</b><span>Ti avvisiamo quando gli occhiali sono pronti e prima delle scadenze.</span></div><button type="button" id="mpNotifiche">Attiva</button></div>`;
+  return "";
+}
+async function installa(){
+  if (promptInstalla){ promptInstalla.prompt(); const r = await promptInstalla.userChoice.catch(() => ({})); promptInstalla = null; if (r.outcome === "accepted") notaDemo("App installata: la trovi tra le icone del telefono."); disegnaMio(); return; }
+  apriExtra("Metti SocialGlass sul telefono", `<ol class="passi-ora"><li>Tocca il pulsante <b>Condividi</b> di Safari (il quadrato con la freccia in su).</li><li>Scegli <b>«Aggiungi alla schermata Home»</b> e poi <b>Aggiungi</b>.</li><li>Apri SocialGlass dalla nuova icona e tocca <b>«Attiva le notifiche»</b>.</li></ol><p class="hint">Su iPhone le notifiche funzionano solo dall'icona sulla schermata Home (iOS 16.4 o successivo).</p>`);
+}
+const b64 = s => { const p = "=".repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
+async function attivaNotifiche(){
+  const btn = $("mpNotifiche"); if (btn){ btn.disabled = true; btn.textContent = "Attendi…"; }
+  try {
+    if (await Notification.requestPermission() !== "granted") throw new Error("Hai negato il permesso: puoi riattivarlo dalle impostazioni del browser.");
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64(mio.vapid)});
+    const r = await post("api/benvenuto", {azione: "push", univoco: UNIVOCO, sub: sub.toJSON()});
+    if (!r.ok) throw new Error(r.data.errore || "Non è stato possibile attivarle.");
+    mio.notifiche = true; disegnaMio();
+  } catch(e){ if (btn){ btn.disabled = false; btn.textContent = "Attiva"; } notaDemo(e.message || "Notifiche non disponibili su questo browser."); }
+}
+function apriExtra(titolo, html){ $("extraTitolo").textContent = titolo; $("extraCorpo").innerHTML = html; open("extraPopup"); }
+// coriandoli quando gli occhiali sono pronti o consegnati (una volta per stato)
+function coriandoli(){
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const c = document.createElement("canvas"); c.className = "coriandoli"; c.width = innerWidth * devicePixelRatio; c.height = innerHeight * devicePixelRatio; document.body.appendChild(c);
+  const x = c.getContext("2d"), col = ["#0069D9", "#2E7D32", "#F5B301", "#E5484D", "#0A1F5C", "#7FB8FF"], P = [];
+  for (let i = 0; i < 140; i++) P.push({x: c.width / 2 + (Math.random() - .5) * c.width * .3, y: c.height * .35, vx: (Math.random() - .5) * 16 * devicePixelRatio, vy: (-Math.random() * 15 - 6) * devicePixelRatio, r: (4 + Math.random() * 5) * devicePixelRatio, a: Math.random() * 6, va: (Math.random() - .5) * .3, c: col[i % col.length]});
+  let t = 0; (function f(){ x.clearRect(0, 0, c.width, c.height); P.forEach(p => { p.vy += .45 * devicePixelRatio; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.a += p.va; x.save(); x.translate(p.x, p.y); x.rotate(p.a); x.fillStyle = p.c; x.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); x.restore(); });
+    if (++t < 170) requestAnimationFrame(f); else c.remove(); })();
+}
+function festeggia(u){
+  if (![STATI.PRONTO, STATI.CONSEGNATO].includes(u.stato)) return;
+  const k = `sg_festa_${UNIVOCO}_${u.stato}`; try { if (localStorage.getItem(k)) return; localStorage.setItem(k, "1"); } catch(_){ return; }
+  setTimeout(coriandoli, 350);
+}
+// tracciamento: le tappe del suo occhiale, con il laboratorio
+function traccia(u){
+  const od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato), m = od.montatura, lab = u.lab;
+  const fatte = u.stato === STATI.CONSEGNATO ? TAPPE.length : i + 1;
+  const dettaglio = k => k === 1 && m ? `${esc(m.modello)} ${esc(m.colore)}` : k === 3 && od.pagamento && od.pagamento.attivatoIl ? dt(od.pagamento.attivatoIl)
+    : k === 4 && u.stato === STATI.ATTIVO && lab ? (lab.stato === "IN LAVORAZIONE" ? "Il laboratorio sta montando le lenti" : lab.fonte !== "LAB" && !lab.ritirata ? "Il laboratorio sta prendendo la montatura" : "In coda in laboratorio")
+    : k === 4 && u.prontoIl ? dt(u.prontoIl) : k === 5 && u.consegnatoIl ? dt(u.consegnatoIl) : "";
+  const pct = Math.round(Math.min(fatte, TAPPE.length) / TAPPE.length * 100);
+  return `<div class="barra-av" aria-hidden="true"><i style="width:${pct}%"></i></div><ol class="traccia">${TAPPE.map(([t, prossima], k) => `<li class="${k < fatte ? "fatto" : k === fatte ? "ora" : ""}"><span class="pt">${k < fatte ? "✓" : k + 1}</span><span class="tt">${k < fatte ? t : prossima}${dettaglio(k) && k <= fatte ? `<small>${dettaglio(k)}</small>` : ""}</span></li>`).join("")}</ol>`;
+}
+function boxRecensione(u){
+  if (u.recensione || !u.chiediRecensione) return "";
+  return `<div class="scheda" id="mpRec" style="text-align:center"><b>Come ti trovi con i tuoi occhiali?</b><div class="stelle" role="radiogroup" aria-label="Voto">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-stella="${n}" aria-label="${n} stelle">★</button>`).join("")}</div>
+    <textarea id="mpRecTesto" rows="2" maxlength="600" placeholder="Vuoi dirci qualcosa? (facoltativo)" style="width:100%"></textarea><button type="button" class="full" id="mpRecInvia" disabled>Invia</button></div>`;
+}
+function boxDona(u){
+  const od = u.ordine || {}, d = u.dona || {}, fp = od.finePeriodo;
+  if (d.donato) return `<div class="dona"><span style="font-size:26px">💚</span><div><b>Il tuo occhiale ha aiutato qualcuno.</b><br>Grazie: l'abbiamo donato a chi non può permetterselo.</div></div>`;
+  if (d.daDonare) return `<div class="dona"><span style="font-size:26px">💚</span><div><b>Grazie!</b> Il tuo occhiale restituito verrà donato a chi ne ha bisogno.</div></div>`;
+  const restituisce = (od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato) || (fp && ["restituisci", "rinnova"].includes(fp.scelta) && !fp.eseguita);
+  if (!restituisce) return "";
+  return `<label class="dona" for="mpDona"><input type="checkbox" id="mpDona" ${d.si ? "checked" : ""} style="width:22px;height:22px;margin:2px 0 0;box-shadow:none;flex:0 0 auto"><div><b>Dono il mio occhiale</b><br>Quando lo riconsegni, lo doniamo a chi non può permettersi un paio di occhiali.</div></label>`;
+}
+function strumentiCli(u){
+  const anno = u.primaAttivazione && u.consegnatoIl;
+  return `<div class="extra-cli"><button type="button" id="mpTessera">${svgI('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}La mia tessera</button>
+    <button type="button" id="mpAmico">${svgI('<path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>')}Porta un amico</button>
+    ${anno ? `<button type="button" id="mpAnno">${svgI('<path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/>')}Il mio anno</button>` : `<button type="button" id="mpChiama">${svgI('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>')}La mia ottica</button>`}</div>`;
+}
+const caricaQr = () => window.QRCode ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+async function apriTessera(){
+  const u = mio, nome = `${u.nome} ${u.cognome || ""}`.trim();
+  apriExtra("La mia tessera", `<div class="tessera" id="tesCard"><div class="marchio">SocialGlass</div><div class="qr" id="tesQr"></div><div><div class="nome">${esc(nome)}</div><div class="cod">${esc(UNIVOCO)}</div></div></div>
+    <p class="hint" style="margin:12px 0">Mostrala in ottica: l'ottico trova subito il tuo ordine.${!installata() ? " Installa SocialGlass sul telefono per averla sempre a portata di mano." : ""}</p>
+    <button type="button" class="full" id="tesSalva">Salva come immagine</button>`);
+  try { await caricaQr(); new QRCode($("tesQr"), {text: UNIVOCO, width: 192, height: 192, correctLevel: QRCode.CorrectLevel.M}); } catch(_){ $("tesQr").hidden = true; }
+  $("tesSalva").onclick = () => {
+    const W = 1012, H = 638, c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+    const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#0A1F5C"); g.addColorStop(.6, "#0069D9"); g.addColorStop(1, "#2E7D32"); x.fillStyle = g;
+    x.beginPath(); x.roundRect ? x.roundRect(0, 0, W, H, 48) : x.rect(0, 0, W, H); x.fill();
+    x.fillStyle = "#fff"; x.font = "800 52px system-ui,Arial"; x.fillText("SocialGlass", 56, 104);
+    x.font = "700 52px system-ui,Arial"; x.fillText(nome.slice(0, 24), 56, 500); x.font = "700 56px 'Courier New',monospace"; x.fillText(UNIVOCO, 56, 576);
+    const q = $("tesQr").querySelector("canvas"); if (q){ x.fillStyle = "#fff"; x.fillRect(W - 336, 150, 280, 280); x.drawImage(q, W - 316, 170, 240, 240); }
+    salvaImmagine(c, `tessera-socialglass-${UNIVOCO}.png`);
+  };
+}
+function salvaImmagine(c, nome){
+  c.toBlob(async b => {
+    const f = new File([b], nome, {type: "image/png"});
+    if (navigator.canShare && navigator.canShare({files: [f]})){ try { await navigator.share({files: [f], title: "SocialGlass"}); return; } catch(e){ if (e.name === "AbortError") return; } }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, "image/png");
+}
+function amico(){
+  const u = mio, testo = `Io ho gli occhiali nuovi con SocialGlass: montatura e lenti graduate pagate un mese alla volta. Porta al CAF il mio codice amico ${UNIVOCO}: ${u.linkAmico}`;
+  const ok = (u.amici || []).filter(a => /^accreditato/.test(a.stato)).length;
+  apriExtra("Porta un amico", `<p style="margin:0 0 10px">Consiglia SocialGlass: quando un tuo amico attiva l'abbonamento, <b>a te un mese di canone gratis</b>.</p>
+    <div class="codice-grande">${esc(UNIVOCO)}</div><p class="hint" style="margin:-4px 0 12px;text-align:center">Il tuo codice amico: va detto al CAF quando si registra.</p>
+    <div class="riga"><a class="btn-link" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(testo)}">Invia su WhatsApp</a><button type="button" id="amCondividi" style="flex:1">Condividi</button></div>
+    ${(u.amici || []).length ? `<div class="scheda"><b>I tuoi amici (${u.amici.length})</b>${u.amici.map(a => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(a.nome.charAt(0) + a.nome.slice(1).toLowerCase())} · ${dt(a.il)}</span><span>${/^accreditato/.test(a.stato) ? "✅ mese gratis" : "⏳ in verifica"}</span></div>`).join("")}${ok ? `<p class="hint" style="margin:6px 0 0">${ok} ${ok === 1 ? "mese gratis" : "mesi gratis"}: li vedi scalati dai prossimi canoni.</p>` : ""}</div>` : ""}
+    <p class="hint">Il mese gratis vale quando l'amico attiva l'abbonamento e il tuo è attivo.</p>`);
+  $("amCondividi").onclick = async () => { if (navigator.share){ try { await navigator.share({title: "SocialGlass", text: testo}); } catch(_){} } else { try { await navigator.clipboard.writeText(testo); notaDemo("Messaggio copiato: incollalo dove vuoi."); } catch(_){} } };
+}
+function mioAnno(){
+  const u = mio, od = u.ordine || {}, mesi = Math.max(1, Math.round((Date.now() - new Date(u.primaAttivazione)) / (30.44 * 864e5)));
+  const titolo = mesi >= 11 ? "Il mio anno con SocialGlass" : "Il mio SocialGlass finora", m = od.montatura, amici = (u.amici || []).length;
+  const voci = [[`${mesi}`, mesi === 1 ? "mese insieme" : "mesi insieme"], [m ? `${m.modello}` : "—", m ? `montatura ${m.colore}` : "montatura"], [od.lenti ? od.lenti.nome : "—", "le mie lenti"]];
+  if (amici) voci.push([`${amici}`, amici === 1 ? "amico portato" : "amici portati"]);
+  if (u.dona && (u.dona.donato || u.dona.daDonare)) voci.push(["💚", "occhiale donato"]);
+  apriExtra(titolo, `<div class="tessera" style="aspect-ratio:auto;display:block;padding:22px"><div class="marchio">SocialGlass</div><div style="font-size:22px;font-weight:800;margin:10px 0 14px">${esc(titolo)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${voci.map(([v, t]) => `<div><div style="font-size:24px;font-weight:800;line-height:1.1">${esc(v)}</div><div style="opacity:.85;font-size:13px">${esc(t)}</div></div>`).join("")}</div></div>
+    <button type="button" class="full" id="annoCondividi" style="margin-top:14px">Condividi l'immagine</button>`);
+  $("annoCondividi").onclick = () => {
+    const W = 1080, H = 1350, c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+    const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#0A1F5C"); g.addColorStop(.65, "#0069D9"); g.addColorStop(1, "#2E7D32"); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.fillStyle = "rgba(255,255,255,.08)"; for (let i = 0; i < 7; i++){ x.beginPath(); x.arc(W * (i / 6), H * .12 + (i % 2) * 60, 120 + i * 18, 0, 7); x.fill(); }
+    x.fillStyle = "#fff"; x.font = "800 64px system-ui,Arial"; x.fillText("SocialGlass", 90, 170);
+    x.font = "800 84px system-ui,Arial"; titolo.split(" con ").forEach((r, i, a) => x.fillText(i < a.length - 1 ? r + " con" : r, 90, 360 + i * 96));
+    voci.forEach(([v, t], i) => { const y = 640 + i * 130; x.font = "800 72px system-ui,Arial"; x.fillText(String(v).slice(0, 18), 90, y); x.font = "500 36px system-ui,Arial"; x.globalAlpha = .85; x.fillText(t, 90, y + 46); x.globalAlpha = 1; });
+    x.font = "600 34px system-ui,Arial"; x.globalAlpha = .9; x.fillText("Occhiali nuovi ogni anno, un mese alla volta", 90, H - 90); x.globalAlpha = 1;
+    salvaImmagine(c, "il-mio-anno-socialglass.png");
+  };
+}
+// home aperta dal link di un amico
+function linkAmico(){
+  const am = par("amico");
+  if (am && !UNIVOCO) ready.finally(async () => {
+    const r = await api(`api/benvenuto?amico=${encodeURIComponent(am)}`); if (!r.ok) return;
+    const o = document.querySelector(".occhiello"); if (o){ o.innerHTML = `💙 ${esc(r.data.nome)} ti consiglia SocialGlass · codice amico <b>${esc(r.data.codice)}</b>`; o.title = "Dillo al CAF quando ti registri"; }
+  });
+}
+
 /* ---------- nuovo utente (CAF) ---------- */
 const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","ottica","gdprAcceptance"];
 function resetForm(){
@@ -484,7 +627,7 @@ $("attivaCodiceFiscale").addEventListener("click", async () => {
 $("formCliente").addEventListener("submit", async e => {
   e.preventDefault();
   const v = id => $(id).value.trim();
-  const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), gdpr: $("gdprAcceptance").checked};
+  const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), amico: v("amico").toUpperCase(), gdpr: $("gdprAcceptance").checked};
   const manca = [["nome","Nome"],["cognome","Cognome"],["nato","Luogo di nascita"],["datanascita","Data di nascita"],["sesso","Sesso"],["cellulare","Cellulare"],["ottica","Ottica"]].filter(([k]) => !d[k]).map(([, n]) => n);
   if (manca.length || !d.gdpr){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : "Serve il consenso GDPR del cliente.", "err"); return; }
   if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)){ esito($("formErr"), "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso: controlla i dati.", "err"); return; }
@@ -627,7 +770,7 @@ function disegnaClienti(){
     // ritiro e recesso restano possibili anche con l'anagrafica bloccata
     const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Recesso (14 giorni)</button>` : "") : "";
     return `<details class="cli" data-u="${esc(c.univoco)}" ${aperti.has(c.univoco) ? "open" : ""}><summary><div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>
-        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${sc}${chip(c.stato)}</div></div></summary>
+        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}</div></div></summary>
       <div class="corpo">
       ${c.bloccato ? contattoAdmin() : ""}
       <dl class="dl">${voce("Cellulare", esc(c.cellulare))}${voce(isOtt ? "CAF" : "Ottica", esc(isOtt ? c.caf : c.ottica))}${voce("Registrato il", dIt(c.creato))}
@@ -641,6 +784,7 @@ function disegnaClienti(){
       ${c.esito ? `<div><span class="chip s4">${esc(c.esito)}</span></div>` : ""}
       ${c.finePeriodo ? `<div><span class="chip s2">SCELTA DEL CLIENTE: ${esc(c.finePeriodo)}</span></div>` : ""}
       ${c.daRitirare ? `<div><span class="chip s3">OCCHIALE DA RITIRARE${c.ritiroInRitardo ? " · IN RITARDO" : ""}</span></div>` : ""}
+      ${c.dona && c.daRitirare ? `<div class="avviso-cli">💚 Il cliente ha scelto di <b>donare</b> l'occhiale restituito: mettilo da parte per SocialGlass.</div>` : ""}
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
       ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
         : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
@@ -686,7 +830,7 @@ function alertBox(t){ notaDemo(t); }
 // avviso al cliente dopo un'azione dell'ottico: SMS automatico oppure WhatsApp con un tocco
 function avvisoCliente(av, titolo){
   const box = document.createElement("div"); box.className = "esito ok";
-  box.innerHTML = `${esc(titolo)} ${av.sms ? (av.canale === "whatsapp" ? "Il cliente è stato avvisato su WhatsApp." : "Il cliente ha ricevuto un SMS.") : `Avvisa il cliente: <a class="btn-link" style="display:inline-block;margin:6px 0 0" target="_blank" rel="noopener" href="${esc(av.whatsapp)}">Invia su WhatsApp</a>`}`;
+  box.innerHTML = `${esc(titolo)} ${av.sms ? (av.canale === "whatsapp" ? "Il cliente è stato avvisato su WhatsApp." : av.canale === "notifica" ? "Il cliente ha ricevuto una notifica sul telefono." : "Il cliente ha ricevuto un SMS.") : `Avvisa il cliente: <a class="btn-link" style="display:inline-block;margin:6px 0 0" target="_blank" rel="noopener" href="${esc(av.whatsapp)}">Invia su WhatsApp</a>`}`;
   const host = $("clientiPopup").hidden ? $("ordineEsito") : $("clientiLista");
   if (host === $("ordineEsito")){ host.hidden = false; host.className = "esito ok"; host.innerHTML = box.innerHTML; } else host.prepend(box);
 }
@@ -758,6 +902,7 @@ $("formOrdine").addEventListener("submit", async e => {
 
 /* ---------- pagina personale del cliente ---------- */
 const UNIVOCO = par("Univoco"), ESPOSITORE = par("espositore");
+avvioApp();
 if (UNIVOCO) document.body.classList.add("cliente");
 let mio = null, pollT = 0;
 if (UNIVOCO || ESPOSITORE){ $("scan-btn").hidden = false; document.body.classList.add("con-scan"); }
@@ -811,9 +956,8 @@ function boxAbbonamento(od){
 function disegnaMio(){
   const u = mio, o = u.ottico, od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato);
   $("mpTitolo").textContent = `Ciao ${u.nome}`;
-  // le tappe raggiunte sono verdi; quella successiva è "in corso" (blu)
-  const fatte = u.stato === STATI.CONSEGNATO ? TAPPE.length : i + 1;
-  $("mpTappe").innerHTML = TAPPE.map(([t, prossima], k) => `<li class="${k < fatte ? "fatto" : k === fatte ? "ora" : ""}">${k < fatte ? t : prossima}${k === 1 && od.montatura ? `<br><small>${esc(od.montatura.modello)} ${esc(od.montatura.colore)}</small>` : ""}</li>`).join("");
+  // tracciamento: tappe fatte in verde, quella in corso in blu che pulsa
+  $("mpTappe").outerHTML = `<div id="mpTappe">${traccia(u)}</div>`;
   let a = "";
   const dove = o ? `<b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}` : "";
   if (u.stato === STATI.REGISTRATO){
@@ -876,6 +1020,8 @@ function disegnaMio(){
   } else if (u.stato === STATI.CONSEGNATO){
     a = `<div class="esito ok">Occhiali consegnati. Buona visione! Controllo della vista e una sostituzione all'anno in caso di rottura sono inclusi: chiedi al tuo ottico.</div>${boxAbbonamento(od)}`;
   }
+  if (u.stato === STATI.CONSEGNATO || u.stato === STATI.PRONTO) a = boxRecensione(u) + a;
+  a += boxDona(u);
   if (u.stato === STATI.PAGAMENTO && par("pagamento") === "annullato") a = `<div class="esito info">Pagamento annullato: non ti è stato addebitato nulla. Quando vuoi, riprova da qui.</div>` + a;
   const ins = od.pagamento && od.pagamento.insoluto;
   if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}).
@@ -884,10 +1030,21 @@ function disegnaMio(){
     ${ins.link ? `<a class="btn-link" style="display:block;margin-top:8px;text-align:center" href="${esc(ins.link)}" target="_blank" rel="noopener">Paga ora o cambia carta</a>` : ""}</div>` + a;
   if (od.pagamento && od.pagamento.ratePagate && od.prezzi && !od.pagamento.chiuso) a += `<p style="margin:8px 0 0;font-size:13px;color:#555">Mesi pagati in questo periodo: ${od.pagamento.ratePagate} su ${od.prezzi.mesi} minimi</p>`;
   if (od.prezzi && !a.includes(`id="mpCond"`)) a += `<p class="piede-cli"><button type="button" class="linkbtn" id="mpCond">Condizioni dell'abbonamento</button></p>`;
+  a += bannerApp(u) + strumentiCli(u);
   a += `<p class="piede-cli"><a href="privacy.html" target="_blank" rel="noopener">Informativa privacy</a></p>`;
   if (o && o.telefono) a += `<p class="piede-cli">Domande? <a href="tel:+${esc(String(o.telefono).replace(/\D/g, ""))}">Chiama ${esc(o.nome)}</a></p>`;
   $("mpAzione").innerHTML = a;
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
+  const on = (id, f) => { const el = $(id); if (el) el.onclick = f; };
+  on("mpInstalla", installa); on("mpNotifiche", attivaNotifiche); on("mpTessera", apriTessera); on("mpAmico", amico); on("mpAnno", mioAnno);
+  on("mpChiama", () => apriExtra("La mia ottica", o ? `<div class="scheda"><b>${esc(o.nome)}</b><br>${esc(o.indirizzo)}${esc(o.citta)}</div><div class="riga">${o.telefono ? `<a class="btn-link" href="tel:+${esc(String(o.telefono).replace(/\D/g, ""))}">Chiama</a>` : ""}<a class="btn-link" style="background:var(--blu)" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.nome + " " + o.indirizzo + " " + o.citta)}">Indicazioni</a></div>` : "<p>Ottica non ancora assegnata.</p>"));
+  const dn = $("mpDona"); if (dn) dn.onchange = async () => { const r = await post("api/benvenuto", {azione: "dona", univoco: UNIVOCO, si: dn.checked}); if (!r.ok){ dn.checked = !dn.checked; notaDemo(r.data.errore || "Riprova."); } else { mio.dona = Object.assign({}, mio.dona, {si: dn.checked}); if (dn.checked) notaDemo("Grazie! Lo doneremo a chi ne ha bisogno."); } };
+  const rec = $("mpRec"); if (rec){ let voto = 0;
+    rec.querySelectorAll("[data-stella]").forEach(b => b.onclick = () => { voto = +b.dataset.stella; rec.querySelectorAll("[data-stella]").forEach(x => x.classList.toggle("on", +x.dataset.stella <= voto)); $("mpRecInvia").disabled = false; });
+    $("mpRecInvia").onclick = async () => { $("mpRecInvia").disabled = true; const r = await post("api/benvenuto", {azione: "recensione", univoco: UNIVOCO, voto, testo: $("mpRecTesto").value});
+      if (!r.ok){ $("mpRecInvia").disabled = false; return notaDemo(r.data.errore || "Riprova."); }
+      mio.recensione = {voto}; rec.innerHTML = voto >= 4 ? `<b>Grazie! 🎉</b>${r.data.google ? `<p style="margin:6px 0 10px">Ci aiuti a farci conoscere? Bastano 30 secondi.</p><a class="btn-link" target="_blank" rel="noopener" href="${esc(r.data.google)}">Scrivilo anche su Google</a>` : ""}` : `<b>Grazie per la sincerità.</b><p style="margin:6px 0 0">Ti contattiamo presto per capire cosa possiamo migliorare.</p>`; }; }
+  festeggia(u);
   const pc = $("mpPaga"); if (pc) pc.onclick = attivaRate;
   const cc = $("mpCond"); if (cc) cc.onclick = mostraCondizioni;
   $("mpAzione").querySelectorAll("[data-fine]").forEach(b => b.onclick = async () => {

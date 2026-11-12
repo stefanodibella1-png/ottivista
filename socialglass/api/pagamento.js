@@ -16,6 +16,7 @@ module.exports = L.wrap(async (req, res) => {
     ord.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString(), ratePagate: 1}; ord.aggiornato = ord.pagamento.attivatoIl;
     await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
     try { await L.avviaLavorazione(u, ord); } catch(e){ console.error(e); }
+    if (!(ord.storico || []).length) try { await L.premiaAmico(u, ord); } catch(e){ console.error(e); }
     return L.send(res, 200, {simulato: true});
   }
   // rinnovo con abbonamento già attivo: niente nuovo pagamento, cambia solo il canone dal prossimo mese

@@ -148,7 +148,9 @@ function disegnaScheda(c){
     <div class="scheda"><div class="top" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">${esc(c.nome)} ${esc(c.cognome)}</b><span class="chip">${esc(c.stato)}</span></div>
     ${si.bloccato ? '<span class="chip s3">ANAGRAFICA BLOCCATA</span> ' : ""}${si.moroso ? '<span class="chip s3">MOROSO</span>' : ""}
     <dl class="dl">${riga("Codice cliente", esc(c.univoco))}${riga("Codice fiscale", esc(c.cf))}${riga("Cellulare", esc(c.cellulare))}${riga("Nato a", esc(c.natoA))}${riga("Data di nascita", c.dataNascita ? dt(c.dataNascita) : "")}${riga("Registrato il", dt(c.creato))}
-      ${riga("CAF", esc(c.caf))}${riga("Ottica", esc(c.ottica))}${riga("Listino", esc(c.listino))}</dl>
+      ${riga("CAF", esc(c.caf))}${riga("Ottica", esc(c.ottica))}${riga("Listino", esc(c.listino))}
+      ${riga("Presentato da", c.presentatoDa ? esc(c.presentatoDa) + (c.amicoPremiato ? " · mese gratis dato il " + dt(c.amicoPremiato) : "") : "")}${riga("Amici portati", (o.amici || []).length ? o.amici.map(a => `${esc(a.nome)} (${esc(a.stato)})`).join(", ") : "")}
+      ${riga("Notifiche sul telefono", c.notifiche ? "attive" : "")}${riga("Recensione", o.recensione ? "★".repeat(o.recensione.voto) + (o.recensione.testo ? " «" + esc(o.recensione.testo) + "»" : "") : "")}${riga("Occhiale da donare", o.dona && o.dona.si ? (o.dona.donato ? "donato il " + dt(o.dona.donato) : o.dona.daDonare ? "ritirato, da donare" : "sì, alla restituzione") : "")}</dl>
     <a class="btn-link" target="_blank" rel="noopener" href="${esc(c.link)}" style="display:inline-block">Apri la pagina del cliente</a></div>
 
     <div class="scheda"><b>Anagrafica: blocco</b>
@@ -197,12 +199,21 @@ function disegna(){
     f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
     f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
     f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
+    const sv = d.servizio || {daDonare: [], recensioni: []};
+    if (sv.daLeggere) fare.push(`<button type="button" data-vai-servizio class="urg"><span class="n">${sv.daLeggere}</span><span>Recensioni da 1 a 3 stelle da leggere<small>Contatta il cliente prima che lo scriva altrove</small></span><span class="va">Apri ›</span></button>`);
+    if (sv.daDonare.length) fare.push(`<button type="button" data-vai-servizio><span class="n">${sv.daDonare.length}</span><span>Occhiali restituiti da donare<small>I clienti hanno scelto di donarli</small></span><span class="va">Apri ›</span></button>`);
     const max = Math.max(1, ...Object.values(n.perStato));
     h += `<div class="cru-kpi"><button type="button" data-tab="clienti"><b>${n.clienti}</b>Clienti</button><button type="button" data-tab="clienti" class="ok"><b>${n.abbonamentiAttivi}</b>Abbonamenti attivi</button>
         <button type="button" data-tab="conteggi"><b>${euro(n.canoniMensili)}</b>Canoni al mese</button><button type="button" data-tab="solleciti" class="${n.morosi ? "att" : ""}"><b>${n.morosi || 0}</b>Morosi</button>
         <button type="button" data-tab="conteggi"><b>${euro(totLiq)}</b>Da liquidare</button>${lb.attivo ? `<button type="button" data-tab="clienti"><b>${lb.daFare + lb.inLavorazione}</b>In laboratorio</button>` : ""}</div>
       <div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: niente in sospeso.</div>'}</div>
         <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
+      <div class="cru-box" id="admServizio" style="margin-top:14px"><h3>Clienti contenti</h3>
+        <div class="cru-kpi" style="margin-bottom:8px"><div class="kpi-f"><b>${sv.totRecensioni ? "★ " + String(sv.media).replace(".", ",") : "—"}</b>${sv.totRecensioni} ${sv.totRecensioni === 1 ? "recensione" : "recensioni"}</div><div class="kpi-f"><b>${sv.amici || 0}</b>clienti portati da amici</div><div class="kpi-f"><b>${sv.donati || 0}</b>occhiali donati</div><div class="kpi-f"><b>${sv.notifiche || 0}</b>clienti con le notifiche attive</div></div>
+        ${sv.recensioni.length ? `<div class="lista" style="max-height:300px">${sv.recensioni.slice(0, 20).map(r => `<div class="riga-cli" style="cursor:default;align-items:flex-start"><span><span class="nome" style="color:#F5B301">${"★".repeat(r.voto)}<span style="color:#cfd6e2">${"★".repeat(5 - r.voto)}</span></span> ${esc(r.nome)} · ${esc(r.ottica)} · ${dt(r.il)}${r.testo ? `<span class="cod" style="font-family:inherit;white-space:normal">«${esc(r.testo)}»</span>` : ""}</span>
+          <span class="bad">${r.voto <= 3 && !r.letta ? `<button type="button" class="grigio" data-rec-letta="${esc(r.univoco)}" style="margin:0;padding:6px 10px">Fatto</button>` : ""}<button type="button" class="grigio" data-scheda-da-soll="${esc(r.univoco)}" style="margin:0;padding:6px 10px">Scheda</button></span></div>`).join("")}</div>` : '<p class="hint">Le recensioni arrivano 7 giorni dopo la consegna degli occhiali.</p>'}
+        ${sv.daDonare.length ? `<h3 style="margin-top:12px">Occhiali da donare (${sv.daDonare.length})</h3><div class="lista">${sv.daDonare.map(x => `<div class="riga-cli" style="cursor:default"><span><span class="nome">${esc(x.nome)}</span><span class="cod">${esc(x.montatura)} · ritirato dall'ottica ${esc(x.ottica)} il ${dt(x.dal)}</span></span></div>`).join("")}</div>
+          <button type="button" class="verde" data-donati style="margin-top:8px">Segna tutti come donati</button><p class="hint" style="font-size:12.5px">Al cliente arriva «il tuo occhiale ha aiutato qualcuno».</p>` : ""}</div>
       <details class="cru-box" style="margin-top:14px" ${mancano && mancano < d.pronto.length ? "" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--notte)">Pronto per il pubblico? ${mancano ? `Mancano ${mancano} passi su ${d.pronto.length}` : "Sì, tutto fatto"}</summary>
         <ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></details>`;
   }
@@ -258,6 +269,8 @@ function disegna(){
     const t = d.titolare || {}, cn = d.canali || {}, cs = d.canaleSolleciti;
     const stato = k => cn[k] ? '<span class="chip s4">COLLEGATO</span>' : '<span class="chip s3">NON COLLEGATO</span>';
     const lb = d.laboratorio || {};
+    h += `<form data-f="linkRecensioni" class="scheda"><b>Recensioni su Google</b><p class="hint" style="margin:4px 0">A chi dà 4 o 5 stelle proponiamo di scriverlo anche su Google. Incolla il link «Chiedi recensioni» della tua scheda Google Business.</p>
+      <input name="link" type="url" placeholder="https://g.page/r/…" value="${esc((d.servizio || {}).linkRecensioni)}" style="width:100%"><button type="submit" class="full">Salva link</button></form>`;
     h += `<form data-f="salvaLab" class="scheda"><b>Laboratorio</b> ${lb.attivo ? '<span class="chip s4">ATTIVO</span>' : '<span class="chip">NON ATTIVO</span>'}
       <p class="hint" style="margin:4px 0">Quando è attivo, ogni ordine pagato diventa una busta di lavoro per il laboratorio, che la vede su <b>${esc(location.origin)}/laboratorio</b> e segna l'occhiale pronto (il cliente viene avvisato). ${lb.attivo ? `Ora: ${lb.daFare} da fare, ${lb.inLavorazione} in lavorazione, ${lb.daRitirare} montature da ritirare in ottica.` : ""}</p>
       <label class="lbl" for="lbN">Nome</label><input id="lbN" name="nome" value="${esc(lb.nome)}">
@@ -312,6 +325,11 @@ async function clic(e){
   if (b.hasAttribute("data-art-nuovo")){ artAperto = "nuovo"; disegna(); inCima(); return; }
   if (b.hasAttribute("data-chiudi-art")){ artAperto = null; disegna(); return; }
   if (b.hasAttribute("data-stampa-mag")) return stampaMagazzino();
+  if (b.hasAttribute("data-vai-servizio")){ const el = $("admServizio"); if (el) el.scrollIntoView({behavior: "smooth", block: "start"}); return; }
+  if (b.dataset.recLetta){ const r = await call("recensioneLetta", {id: b.dataset.recLetta}); if (!r.ok) return msg(r.data.errore, "err"); await carica(); return msg("Segnata come gestita."); }
+  if (b.hasAttribute("data-donati")){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Tocca di nuovo"; return; }
+    const r = await call("donati", {ids: (dati.servizio.daDonare || []).map(x => x.univoco)}); if (!r.ok) return msg(r.data.errore, "err"); await carica(); return msg("Occhiali segnati come donati: grazie!"); }
   if (b.dataset.csv === "clienti") return csv("clienti-socialglass", ["Codice", "Cliente", "Codice fiscale", "CAF", "Ottica", "Stato", "Registrato il", "Scadenza", "Abbonamento attivo", "Moroso", "Bloccato", "Esito"],
     clientiVisti.map(c => [c.univoco, c.nome, c.cf, c.caf, c.ottica, c.stato, c.creato ? dt(c.creato) : "", c.scadenza ? dt(c.scadenza) : "", c.abbonamentoAttivo ? "sì" : "no", c.moroso ? "sì" : "no", c.bloccato ? "sì" : "no", c.esito]));
   if (b.dataset.csv === "magazzino") return csv("magazzino-socialglass", ["Codice", "Modello", "Colore", "Calibro", "Asta", "Fornitore", "Codice fornitore", "Disponibili", "Prenotate", "Dove", "Scorta minima", "Costo", "Prezzo", "Stato"],
@@ -420,6 +438,7 @@ async function invio(e){
     if (!r.ok){ btn.disabled = false; btn.dataset.ok = ""; btn.textContent = "Paga con Stripe"; return msg(r.data.errore || "Errore", "err"); }
     await carica(); return msg(`Pagamento inviato con Stripe (${r.data.trasferimento}) e registrato nell'estratto conto.`);
   }
+  if (k === "linkRecensioni"){ const r = await call("linkRecensioni", v); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); return msg("Link salvato."); }
   if (k === "liquidazione"){
     const r = await call("liquidazione", Object.assign({tipo: f.dataset.tipo, id: f.dataset.id}, v)); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     await carica(); return msg("Pagamento registrato: compare anche nell'estratto conto del partner.");

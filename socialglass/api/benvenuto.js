@@ -1,8 +1,52 @@
 // Pagina personale del cliente (link ricevuto via SMS o WhatsApp)
 const L = require("./_lib");
+// indirizzo da cui il cliente sta usando il sito (l'app installata deve restare sullo stesso dominio)
+let SITO = () => String(L.CFG.site || "").replace(/\/$/, "");
 module.exports = L.wrap(async (req, res) => {
   if (L.bloccato(req)) return L.send(res, 429, L.TROPPI);
-  const url = new URL(req.url, "http://x");
+  const url = new URL(req.url, "http://x"), host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  if (/^[a-z0-9.-]+(:\d+)?$/i.test(host)) SITO = () => `${/^(localhost|127\.)/.test(host) ? "http" : "https"}://${host}`;
+  // azioni del cliente dalla sua pagina: notifiche, recensione, occhiale da donare
+  if (req.method === "POST"){
+    const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").trim().toUpperCase());
+    if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+    const ord = L.parseOrdine(u.f.Ordine), ora = new Date().toISOString();
+    if (b.azione === "push"){
+      const s = b.sub || {}; if (!/^https:\/\//.test(s.endpoint || "") || !s.keys || !s.keys.p256dh || !s.keys.auth) return L.send(res, 400, {errore: "Iscrizione non valida."});
+      const l = (u.f.Push || []).filter(x => x.endpoint !== s.endpoint).concat([{endpoint: s.endpoint, keys: {p256dh: String(s.keys.p256dh), auth: String(s.keys.auth)}}]).slice(-5);
+      await L.DB.aggiorna(u, {Push: l});
+      const ok = await L.pushCliente(Object.assign({}, u.f, {Push: [l[l.length - 1]]}), `SocialGlass: ${u.f.Nome}, notifiche attive! Ti scriviamo qui quando c'è una novità sui tuoi occhiali.`, "Notifiche attive");
+      return L.send(res, 200, {ok: true, prova: ok});
+    }
+    if (b.azione === "recensione"){
+      const voto = Math.round(Number(b.voto)); if (!(voto >= 1 && voto <= 5)) return L.send(res, 400, {errore: "Scegli da 1 a 5 stelle."});
+      if (!ord.consegnatoIl) return L.send(res, 409, {errore: "Potrai lasciare un giudizio dopo il ritiro degli occhiali."});
+      if (ord.recensione) return L.send(res, 409, {errore: "Hai già lasciato il tuo giudizio. Grazie!"});
+      ord.recensione = {voto, testo: String(b.testo || "").trim().slice(0, 600), il: ora}; ord.aggiornato = ora;
+      await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      const cfg = (await L.DB.meta("config")) || {};
+      return L.send(res, 200, {ok: true, google: voto >= 4 ? (cfg.linkRecensioni || "") : ""});
+    }
+    if (b.azione === "dona"){
+      if (ord.dona && ord.dona.donato) return L.send(res, 409, {errore: "L'occhiale è già stato donato."});
+      ord.dona = Object.assign({}, ord.dona, {si: !!b.si, il: ora}); ord.aggiornato = ora;
+      await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return L.send(res, 200, {ok: true});
+    }
+    return L.send(res, 400, {errore: "Operazione non valida."});
+  }
+  // chi ti ha consigliato SocialGlass (link «porta un amico»): solo il nome
+  if (url.searchParams.get("amico")){
+    const a = await L.DB.utente("Univoco", String(url.searchParams.get("amico")).trim().toUpperCase());
+    if (!a){ L.codiceErrato(req); return L.send(res, 404, {errore: "Codice non valido."}); }
+    return L.send(res, 200, {nome: String(a.f.Nome || "").charAt(0) + String(a.f.Nome || "").slice(1).toLowerCase(), codice: a.f.Univoco});
+  }
+  // manifest dell'app installata dal cliente: si apre direttamente sulla sua pagina
+  if (url.searchParams.get("manifest")){
+    const uv = String(url.searchParams.get("univoco") || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 20);
+    res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+    return res.end(JSON.stringify({name: "SocialGlass", short_name: "SocialGlass", lang: "it", start_url: `${SITO()}/?Univoco=${uv}&app=1`, scope: `${SITO()}/`, id: `${SITO()}/?app=${uv}`, display: "standalone",
+      background_color: "#ffffff", theme_color: "#0A1F5C", icons: [{src: `${SITO()}/assets/icon-192.png`, sizes: "192x192", type: "image/png"}, {src: `${SITO()}/assets/icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any"}, {src: `${SITO()}/assets/icon-maskable.png`, sizes: "512x512", type: "image/png", purpose: "maskable"}]}));
+  }
   const uv = (url.searchParams.get("univoco") || "").trim();
   if (!uv) return L.send(res, 400, {errore: "Codice mancante"});
   const u = await L.DB.utente("Univoco", uv);
@@ -11,7 +55,16 @@ module.exports = L.wrap(async (req, res) => {
   const idOtt = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore");
   const o = await L.DB.ottico(idOtt);
   const ord = L.parseOrdine(u.f.Ordine);
-  L.send(res, 200, {nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
+  const chiavi = await L.chiaviPush().catch(() => null), cfg = (await L.DB.meta("config")) || {};
+  // tracciamento, tessera, porta un amico e riepilogo dell'anno
+  const extra = {univoco: u.f.Univoco, vapid: chiavi ? chiavi.pubblica : "", notifiche: (u.f.Push || []).length > 0,
+    lab: ord.lab ? {stato: ord.lab.stato, ritirata: !!ord.lab.ritirata, fonte: ord.lab.fonte, pronto: ord.lab.pronto || ""} : null,
+    consegnatoIl: ord.consegnatoIl || "", prontoIl: ord.prontoIl || "", recensione: ord.recensione ? {voto: ord.recensione.voto} : null,
+    chiediRecensione: !!(ord.consegnatoIl && !ord.recensione && Date.now() - new Date(ord.consegnatoIl) >= 7*864e5), linkRecensioni: cfg.linkRecensioni || "",
+    dona: ord.dona ? {si: !!ord.dona.si, donato: ord.dona.donato || "", daDonare: ord.dona.daDonare || ""} : null,
+    amici: (ord.amici || []).map(x => ({nome: x.nome, il: x.il, stato: x.stato})), linkAmico: `${SITO()}/?amico=${u.f.Univoco}`,
+    primaAttivazione: ((ord.storico || [])[0] || {}).inizio || (ord.pagamento && ord.pagamento.attivatoIl) || "", creato: u.f.Creato || ""};
+  L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
     ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo || "", citta: o.Citta || "", telefono: o.Telefono || ""} : null,
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,
       finePeriodo: ord.finePeriodo || null, periodo: L.PREZZI.periodo(ord), rinnovo: ord.rinnovo ? {prosegue: !!(ord.rinnovo.prosegue)} : null,

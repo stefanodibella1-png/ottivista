@@ -213,13 +213,52 @@ function checkPw(stored, p){
 }
 const PROVA = {caf: ["CAF001"], ottici: ["OTT07", "OTT12"], montature: ["SG-1042", "SG-1043", "SG-1044"]};
 /* avvisi al cliente: SMS se configurato, altrimenti link WhatsApp da far inviare a CAF/ottico */
+/* ---------- notifiche push gratuite (app installata o browser che le supporta) ---------- */
+let WP = null; try { WP = require("web-push"); } catch(_){}
+async function chiaviPush(){
+  if (!WP) return null;
+  let k = await DB.meta("push");
+  if (!k || !k.pubblica){ const v = WP.generateVAPIDKeys(); k = {pubblica: v.publicKey, privata: v.privateKey}; await DB.meta("push", k); }
+  return k;
+}
+// testo del messaggio → notifica: senza il prefisso «SocialGlass:» e senza il link in fondo
+function corpoPush(testo){ return String(testo || "").replace(/^SocialGlass:\s*/, "").replace(/\s*https?:\/\/\S+\s*$/, "").slice(0, 220); }
+async function pushCliente(f, testo, titolo){
+  const subs = Array.isArray(f.Push) ? f.Push : []; if (!subs.length || !WP) return false;
+  const k = await chiaviPush(); if (!k) return false;
+  const url = linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino);
+  const dati = JSON.stringify({titolo: titolo || "SocialGlass", testo: corpoPush(testo), url});
+  let ok = false; const scadute = [];
+  for (const s of subs){
+    try { await WP.sendNotification(s, dati, {vapidDetails: {subject: "mailto:assistenza@socialglass.it", publicKey: k.pubblica, privateKey: k.privata}, TTL: 172800}); ok = true; }
+    catch(e){ if (e.statusCode === 404 || e.statusCode === 410) scadute.push(s.endpoint); else console.error("push", e.statusCode || e.message); }
+  }
+  if (scadute.length) try { const u = await DB.utente("Univoco", f.Univoco); if (u) await DB.aggiorna(u, {Push: (u.f.Push || []).filter(x => !scadute.includes(x.endpoint))}); } catch(e){ console.error(e); }
+  return ok;
+}
+/* ---------- porta un amico: un canone gratis a chi ha presentato il nuovo cliente, quando questo attiva ---------- */
+async function premiaAmico(u, ord){
+  const cod = String(u.f.PresentatoDa || "").toUpperCase(); if (!cod || u.f.AmicoPremiato) return;
+  await DB.aggiorna(u, {AmicoPremiato: new Date().toISOString()});
+  const r = await DB.utente("Univoco", cod); if (!r) return;
+  const ro = parseOrdine(r.f.Ordine), pg = ro.pagamento || {}, rata = Number((ro.prezzi || {}).rata) || 0, ora = new Date().toISOString();
+  const voce = {univoco: u.f.Univoco, nome: u.f.Nome || "", il: ora, premio: rata, stato: "da riconoscere"};
+  if (pg.cliente && !pg.chiuso && rata && CFG.stripeKey){
+    try { await stripeApi("POST", `customers/${pg.cliente}/balance_transactions`, {amount: -Math.round(rata * 100), currency: "eur", description: `SocialGlass: un mese gratis, hai presentato ${u.f.Nome || "un amico"}`}, `amico-${u.f.Univoco}`); voce.stato = "accreditato"; }
+    catch(e){ voce.motivo = String(e.message).slice(0, 160); }
+  } else if (pg.stato === "SIMULATO" || (!CFG.stripeKey && pg.attivatoIl)) voce.stato = "accreditato (prova)";
+  ro.amici = (ro.amici || []).filter(x => x.univoco !== voce.univoco).concat([voce]);
+  ro.aggiornato = ora; await DB.aggiorna(r, {Ordine: JSON.stringify(ro)});
+  await pushCliente(r.f, `SocialGlass: ${r.f.Nome}, ${u.f.Nome || "il tuo amico"} si è abbonato grazie a te: ${voce.stato.startsWith("accreditato") ? "il prossimo canone è gratis" : "ti spetta un mese gratis"}. Grazie!`, "Un mese gratis per te");
+}
 async function avvisa(u, testo){
   const numero = String(u.f.Prefisso || "+39") + String(u.f.Cellulare || "");
   let sms = false;
   if (CFG.smsWebhook && u.f.Cellulare){
     try { const r = await fetch(CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to: numero, text: testo})}); sms = r.ok; } catch(e){}
   }
-  return {sms, whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
+  const notifica = await pushCliente(u.f, testo).catch(() => false);
+  return {sms: sms || notifica, canale: sms ? "sms" : notifica ? "notifica" : "", whatsapp: `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
 }
 // «occhiali pronti»: parte da solo con il canale scelto nelle impostazioni (WhatsApp o SMS);
 // se il canale non è collegato resta il link WhatsApp da inviare a mano
@@ -241,7 +280,13 @@ function testoSollecito(f, ins, giorni, consegnato){
     : `Oggi l'abbonamento verrà chiuso. `) + `Paga o cambia carta qui: ${ins.link || linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino)}`;
 }
 // invia al cliente con il canale scelto nelle impostazioni; se il canale non è collegato il messaggio resta da inviare a mano
+// prima la notifica gratuita (se il cliente l'ha attivata), poi il canale scelto
 async function inviaCliente(f, testo, param, modello){
+  const notifica = await pushCliente(f, testo).catch(() => false), e = await inviaCanale(f, testo, param, modello);
+  if (!e.inviato && notifica) return {canale: "notifica", inviato: true, motivo: ""};
+  return notifica ? Object.assign(e, {notifica: true}) : e;
+}
+async function inviaCanale(f, testo, param, modello){
   const cfg = (await DB.meta("config")) || {}, canale = cfg.canaleSolleciti || "whatsapp", to = numeroCliente(f), c = canaliCollegati();
   if (canale === "spento") return {canale, inviato: false, motivo: "invio automatico disattivato"};
   if (!f.Cellulare) return {canale, inviato: false, motivo: "cellulare mancante"};
@@ -326,6 +371,7 @@ async function attiva(u, sessione){
   ord.aggiornato = ord.pagamento.attivatoIl;
   await DB.aggiorna(u, {Stato: STATI.ATTIVO, Ordine: JSON.stringify(ord)});
   try { await avviaLavorazione(u, ord); } catch(e){ console.error(e); }
+  if (!(ord.storico || []).length) try { await premiaAmico(u, ord); } catch(e){ console.error(e); }
   return true;
 }
 // se la conferma di Stripe non è ancora arrivata, la si chiede direttamente a Stripe
@@ -634,4 +680,4 @@ function conteggi(utenti, acc, da, a){
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: c.tipo ? {tipo: c.tipo, valore: v} : null,
     maturato: r2(comp(attivati, canoni)), maturatoTotale: r2(maturatoTot), liquidato: r2(liquidato), saldo: r2(maturatoTot - liquidato)};
 }
-module.exports = {avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

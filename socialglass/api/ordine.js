@@ -68,8 +68,9 @@ module.exports = L.wrap(async (req, res) => {
     if (!ord.ritiro || !ord.ritiro.daRitirare) return L.send(res, 409, {errore: "Non c'è un occhiale da ritirare."});
     const ora = new Date().toISOString();
     ord.ritiro.ritirato = ora; ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; ord.aggiornato = ora;
+    if (ord.dona && ord.dona.si && !ord.dona.donato) ord.dona.daDonare = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-    return L.send(res, 200, {ok: true});
+    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.si)});
   }
   if ((b.azione === "pronto" || b.azione === "consegnato") && ord.lab && ord.lab.stato !== "PRONTO") return L.send(res, 409, {errore: "L'occhiale è ancora in laboratorio: lo segna pronto il laboratorio quando ha finito."});
   if (b.azione === "pronto" || b.azione === "consegnato"){
