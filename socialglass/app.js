@@ -806,13 +806,14 @@ function salvaImmagine(c, nome){
   }, "image/png");
 }
 function amico(){
+  if (!mio.puoAmico) return apriExtra("Porta un amico", `<div class="esito info"><b>Premio mensile non attivabile.</b> Puoi portare un amico quando il tuo abbonamento è attivo: dopo il primo pagamento, e fino a quando non si chiude.</div>`);
   const u = mio, testo = `Io ho gli occhiali nuovi con SocialGlass: montatura e lenti graduate pagate un mese alla volta. Porta al CAF il mio codice amico ${UNIVOCO}: ${u.linkAmico}`;
   const ok = (u.amici || []).filter(a => /^accreditato/.test(a.stato)).length;
   apriExtra("Porta un amico", `<p style="margin:0 0 10px">Consiglia SocialGlass: quando un tuo amico attiva l'abbonamento, <b>a te un mese di canone gratis</b>.</p>
     <div class="codice-grande">${esc(UNIVOCO)}</div><p class="hint" style="margin:-4px 0 12px;text-align:center">Il tuo codice amico: va detto al CAF quando si registra.</p>
     <div class="riga"><a class="btn-link" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(testo)}">Invia su WhatsApp</a><button type="button" id="amCondividi" style="flex:1">Condividi</button></div>
-    ${(u.amici || []).length ? `<div class="scheda"><b>I tuoi amici (${u.amici.length})</b>${u.amici.map(a => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(a.nome.charAt(0) + a.nome.slice(1).toLowerCase())} · ${dt(a.il)}</span><span>${/^accreditato/.test(a.stato) ? "✅ mese gratis" : "⏳ in verifica"}</span></div>`).join("")}${ok ? `<p class="hint" style="margin:6px 0 0">${ok} ${ok === 1 ? "mese gratis" : "mesi gratis"}: li vedi scalati dai prossimi canoni.</p>` : ""}</div>` : ""}
-    <p class="hint">Il mese gratis vale quando l'amico attiva l'abbonamento e il tuo è attivo.</p>`);
+    ${(u.amici || []).length ? `<div class="scheda"><b>I tuoi amici (${u.amici.length})</b>${u.amici.map(a => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(a.nome.charAt(0) + a.nome.slice(1).toLowerCase())} · ${dt(a.il)}</span><span>${/^accreditato/.test(a.stato) ? "✅ mese gratis" : a.stato === "non attivabile" ? "premio non attivabile" : "⏳ in verifica"}</span></div>`).join("")}${ok ? `<p class="hint" style="margin:6px 0 0">${ok} ${ok === 1 ? "mese gratis" : "mesi gratis"}: li vedi scalati dai prossimi canoni.</p>` : ""}</div>` : ""}
+    <p class="hint">Il mese gratis vale quando l'amico attiva l'abbonamento e il tuo è ancora attivo: se nel frattempo il tuo si chiude, il premio non è attivabile.</p>`);
   $("amCondividi").onclick = async () => { if (navigator.share){ try { await navigator.share({title: "SocialGlass", text: testo}); } catch(_){} } else { try { await navigator.clipboard.writeText(testo); notaDemo("Messaggio copiato: incollalo dove vuoi."); } catch(_){} } };
 }
 function mioAnno(){

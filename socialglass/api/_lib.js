@@ -255,13 +255,22 @@ async function pushCliente(f, testo, titolo){
   if (scadute.length) try { const u = await DB.utente("Univoco", f.Univoco); if (u) await DB.aggiorna(u, {Push: (u.f.Push || []).filter(x => !scadute.includes(x.endpoint))}); } catch(e){ console.error(e); }
   return ok;
 }
-/* ---------- porta un amico: un canone gratis a chi ha presentato il nuovo cliente, quando questo attiva ---------- */
+/* ---------- porta un amico: un canone gratis a chi ha presentato il nuovo cliente, quando questo attiva ----------
+   Regola: può portare un amico solo chi ha un abbonamento attivo (attivato e non chiuso); altrimenti «premio mensile non attivabile». */
+const PREMIO_NON_ATTIVABILE = "Premio mensile non attivabile: chi ti ha presentato non ha un abbonamento SocialGlass attivo.";
+function abbonamentoAttivo(f){ const pg = parseOrdine(f && f.Ordine).pagamento || {}; return !!(pg.attivatoIl && !pg.chiuso); }
 async function premiaAmico(u, ord){
   const cod = String(u.f.PresentatoDa || "").toUpperCase(); if (!cod || u.f.AmicoPremiato) return;
   await DB.aggiorna(u, {AmicoPremiato: new Date().toISOString()});
   const r = await DB.utente("Univoco", cod); if (!r) return;
   const ro = parseOrdine(r.f.Ordine), pg = ro.pagamento || {}, rata = Number((ro.prezzi || {}).rata) || 0, ora = new Date().toISOString();
   const voce = {univoco: u.f.Univoco, nome: u.f.Nome || "", il: ora, premio: rata, stato: "da riconoscere"};
+  // nel frattempo l'abbonamento di chi lo ha presentato si è chiuso: niente premio
+  if (!abbonamentoAttivo(r.f)){
+    voce.stato = "non attivabile"; voce.premio = 0;
+    ro.amici = (ro.amici || []).filter(x => x.univoco !== voce.univoco).concat([voce]); ro.aggiornato = ora; await DB.aggiorna(r, {Ordine: JSON.stringify(ro)});
+    await registra("porta un amico", "premio mensile non attivabile", r.f.Univoco, `amico ${u.f.Univoco}: abbonamento di chi lo ha presentato non attivo`); return;
+  }
   if (pg.cliente && !pg.chiuso && rata && CFG.stripeKey){
     try { await stripeApi("POST", `customers/${pg.cliente}/balance_transactions`, {amount: -Math.round(rata * 100), currency: "eur", description: `SocialGlass: un mese gratis, hai presentato ${u.f.Nome || "un amico"}`}, `amico-${u.f.Univoco}`); voce.stato = "accreditato"; }
     catch(e){ voce.motivo = String(e.message).slice(0, 160); }
@@ -821,4 +830,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

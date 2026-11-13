@@ -123,6 +123,7 @@ module.exports = L.wrap(async (req, res) => {
   if (url.searchParams.get("amico")){
     const a = await L.DB.utente("Univoco", String(url.searchParams.get("amico")).trim().toUpperCase());
     if (!a){ L.codiceErrato(req); return L.send(res, 404, {errore: "Codice non valido."}); }
+    if (!L.abbonamentoAttivo(a.f)) return L.send(res, 409, {errore: L.PREMIO_NON_ATTIVABILE});
     return L.send(res, 200, {nome: String(a.f.Nome || "").charAt(0) + String(a.f.Nome || "").slice(1).toLowerCase(), codice: a.f.Univoco});
   }
   // manifest dell'app installata dal cliente: si apre direttamente sulla sua pagina
@@ -147,7 +148,7 @@ module.exports = L.wrap(async (req, res) => {
     consegnatoIl: ord.consegnatoIl || "", prontoIl: ord.prontoIl || "", recensione: ord.recensione ? {voto: ord.recensione.voto} : null,
     chiediRecensione: !!(ord.consegnatoIl && !ord.recensione && Date.now() - new Date(ord.consegnatoIl) >= 7*864e5), linkRecensioni: cfg.linkRecensioni || "",
     dona: ord.dona ? {si: !!ord.dona.si, donato: ord.dona.donato || "", daDonare: ord.dona.daDonare || ""} : null,
-    amici: (ord.amici || []).map(x => ({nome: L.nm(x.nome), il: x.il, stato: x.stato})), linkAmico: `${SITO()}/?amico=${u.f.Univoco}`,
+    amici: (ord.amici || []).map(x => ({nome: L.nm(x.nome), il: x.il, stato: x.stato})), linkAmico: `${SITO()}/?amico=${u.f.Univoco}`, puoAmico: L.abbonamentoAttivo(u.f),
     primaAttivazione: ((ord.storico || [])[0] || {}).inizio || (ord.pagamento && ord.pagamento.attivatoIl) || "", creato: u.f.Creato || "",
     appuntamento: ord.appuntamento && ord.appuntamento.il >= L.oraRoma().slice(0, 10) && !(ord.appuntamento.tipo === "scelta" && ord.montatura) ? Object.assign({descrizione: L.TIPI_APP[ord.appuntamento.tipo] || ""}, ord.appuntamento) : null,
     segnalazioni: (ord.segnalazioni || []).slice(-5).reverse(), haCarta: !!(ord.pagamento && ord.pagamento.cliente && !ord.pagamento.chiuso),

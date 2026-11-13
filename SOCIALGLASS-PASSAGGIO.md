@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796400000**, prossimo 1796500000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796500000**, prossimo 1796600000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -38,6 +38,10 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Invio Aruba: serve il piano Premium (API). Secrets del repo `ARUBA_USER` e `ARUBA_PASSWORD` (da passare a Vercel come le altre chiavi), ambiente demo/reale dal pannello. Senza credenziali le fatture restano «da inviare»; il controllo del mattino rimanda quelle in sospeso. Validate in locale con lo schema FatturaPA (codici natura attuali).
 - Residenza del cliente obbligatoria (campo `Residenza`): la chiede il CAF alla registrazione; chi è registrato prima la scrive all'attivazione.
 - Da fare: attivare Aruba Premium e inserire le credenziali, contratti con l'avvocato, dati del titolare in Impostazioni.
+
+## Porta un amico
+- Codice amico = codice cliente (`Univoco`). Il CAF lo scrive alla registrazione (`PresentatoDa`). Premio: un canone gratis come credito sul cliente Stripe di chi ha presentato, all'attivazione dell'amico (una volta per amico); la fattura Stripe a 0 € conta come mese pagato, senza fattura fiscale.
+- Regola (13/11/2026): può portare un amico solo chi ha un abbonamento attivo (`L.abbonamentoAttivo`: attivato e non chiuso). Altrimenti «Premio mensile non attivabile» (`L.PREMIO_NON_ATTIVABILE`) alla registrazione dal CAF, sul link `?amico=` e nel pulsante della pagina cliente (`puoAmico`); se l'abbonamento si chiude prima che l'amico attivi, la voce diventa «non attivabile» e finisce nel Registro.
 
 ## Barra del tempo (PROVE TECNICHE — da togliere prima dell'uscita al pubblico)
 - Etichetta «⏱ PROVE» in alto a sinistra nella pagina del cliente, **solo** per i clienti di prova (CAF001, OTT07, OTT12); sparisce da sola dopo «rimuovi dati di prova».

@@ -77,7 +77,8 @@ module.exports = L.wrap(async (req, res) => {
   if (!o) return L.send(res, 400, {errore: "Ottica non trovata."});
   // porta un amico: codice cliente di chi lo ha presentato (facoltativo)
   const amico = String(b.amico || "").toUpperCase().replace(/\s/g, "");
-  if (amico){ const a = await L.DB.utente("Univoco", amico); if (!a) return L.send(res, 400, {errore: "Codice amico non trovato: controllalo o lascia il campo vuoto."}); if (a.f["Codice Fiscale"] === d.cf) return L.send(res, 400, {errore: "Il codice amico è dello stesso cliente."}); }
+  if (amico){ const a = await L.DB.utente("Univoco", amico); if (!a) return L.send(res, 400, {errore: "Codice amico non trovato: controllalo o lascia il campo vuoto."}); if (a.f["Codice Fiscale"] === d.cf) return L.send(res, 400, {errore: "Il codice amico è dello stesso cliente."});
+    if (!L.abbonamentoAttivo(a.f)) return L.send(res, 400, {errore: L.PREMIO_NON_ATTIVABILE + " Lascia vuoto il campo «Codice amico» per registrare il cliente."}); }
   const fields = {"CAF": s.id, "Nome": d.nome, "Cognome": d.cognome, "Cellulare": d.cellulare, "Codice Fiscale": d.cf,
     "Ottica1": `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`, "Nato a": d.nato, "Genere": d.sesso, "Data Nascita": d.data,
     "Listino": o.Listino || "", "Stato": L.STATI.REGISTRATO, "Residenza": res_, ...(amico ? {PresentatoDa: amico} : {})};
