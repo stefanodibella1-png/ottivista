@@ -34,6 +34,12 @@ module.exports = L.wrap(async (req, res) => {
         const imp = (o.amount_paid || 0) / 100, rata = Number((ord.prezzi || {}).rata) || imp, sped = Math.max(0, Math.round((imp - rata) * 100) / 100);
         pg.pagamenti = (pg.pagamenti || []).filter(x => x.id !== o.id).concat([{id: o.id, il: ora, canone: Math.round((imp - sped) * 100) / 100, spedizione: sped, riscatto: 0}]).slice(-60);
       }
+      // canone a 0 € pagato dal credito «porta un amico» (saldo cliente Stripe): è un mese che conta, ma non è un incasso (niente fattura)
+      if (ev.type === "invoice.paid" && !(o.amount_paid > 0) && meta.tipo !== "riscatto" && o.billing_reason === "subscription_cycle" && Number(o.starting_balance) < 0 && !(pg.pagamenti || []).some(x => x.id === o.id)){
+        pg.ratePagate = (pg.ratePagate || 0) + 1; pg.ultimaRata = ora; delete pg.insoluto;
+        pg.pagamenti = (pg.pagamenti || []).concat([{id: o.id, il: ora, canone: 0, spedizione: 0, riscatto: 0, gratis: Math.min(-Number(o.starting_balance), Number(o.total) || 0) / 100}]).slice(-60);
+        const v = (ord.amici || []).find(x => x.stato === "accreditato" && !x.usato); if (v) v.usato = ora;
+      }
       if (ev.type === "invoice.payment_failed"){
         // morosità: compare nell'elenco Solleciti dell'amministratore; al cliente parte il primo messaggio del conto alla rovescia
         const prima = pg.insoluto || {};
