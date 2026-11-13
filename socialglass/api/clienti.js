@@ -20,7 +20,8 @@ module.exports = L.wrap(async (req, res) => {
         trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, consegnatoIl: o.consegnatoIl || "", chiuso: !!(o.pagamento && o.pagamento.chiuso),
         ottica: {id: oid, nome: ot.Intestatario || "", indirizzo: `${ot.Indirizzo || ""}${ot.Citta || ""}`, telefono: ot.Telefono || ""}};
     }).sort((a, b) => String(a.lab.creato).localeCompare(String(b.lab.creato)));
-    return L.send(res, 200, {buste});
+    const lb = (await L.DB.meta("laboratorio")) || {};
+    return L.send(res, 200, {buste, laboratorio: {nome: lb.nome || "Laboratorio"}});
   }
   if (!["caf", "ottico"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
   // segna come inviato su WhatsApp l'ultimo avviso automatico
@@ -42,7 +43,7 @@ module.exports = L.wrap(async (req, res) => {
     const tecnico = isOtt ? {montaturaCodice: m ? m.codice : "", calibro: m ? `${m.calibro || ""}${m.asse ? "-" + m.asse : ""}` : "",
       lenti: o.lenti ? o.lenti.nome : "", trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, riscatto: o.prezzi ? o.prezzi.riscatto : null, prontoIl: o.prontoIl || ""} : {};
     return Object.assign({univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", scadeLink: L.scadenzaLink(f), cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,
-      bloccato: L.situazione(f).bloccato, dona: !!(o.dona && o.dona.si && !o.dona.donato), voto: o.recensione ? o.recensione.voto : 0, lab: o.lab ? {stato: o.lab.stato, fonte: o.lab.fonte, ritirata: o.lab.ritirata || "", pronto: o.lab.pronto || ""} : null, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
+      bloccato: L.situazione(f).bloccato, dona: !!(o.dona && o.dona.si && !o.dona.donato), voto: o.recensione ? o.recensione.voto : 0, lab: o.lab ? {stato: o.lab.stato, fonte: o.lab.fonte, ritirata: o.lab.ritirata || "", pronto: o.lab.pronto || "", richiesta: o.lab.richiesta || ""} : null, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
       ottica: String(f.Ottica1 || "").split(" - ").slice(0, 2).join(" - "), caf: f.CAF || "",
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
       rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || f.Creato || "",
@@ -73,5 +74,6 @@ module.exports = L.wrap(async (req, res) => {
   // listini aggiornati: l'ottica vede il suo, il CAF tutti (per il calcolatore del canone)
   const conv = await L.caricaListini(), mioLis = isOtt ? String((acc && acc.Listino) || "A").toUpperCase() : "";
   const listini = isOtt ? {[mioLis]: conv[mioLis] || conv.A} : conv;
-  L.send(res, 200, {clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")), isOtt ? "ottica" : "caf")});
+  const lb = isOtt ? (await L.DB.meta("laboratorio")) || {} : {};
+  L.send(res, 200, {laboratorio: isOtt ? {nome: lb.nome || "Laboratorio", indirizzo: lb.indirizzo || "", telefono: lb.telefono || ""} : undefined, clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")), isOtt ? "ottica" : "caf")});
 });

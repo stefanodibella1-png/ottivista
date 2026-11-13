@@ -5,6 +5,13 @@ module.exports = L.wrap(async (req, res) => {
   const s = L.verify(req); if (!s || !["ottico", "lab"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
   await L.caricaListini();   // prezzi aggiornati dall'amministratore
   const url = new URL(req.url, "http://x");
+  // notifiche sul telefono/computer per laboratorio e ottica
+  if (url.searchParams.get("vapid")){ const k = await L.chiaviPushPubblica(); return L.send(res, 200, {vapid: k}); }
+  if (req.method === "POST" && url.searchParams.get("push")){
+    const b = await L.readBody(req), r = await L.iscriviPartner(s.ruolo, s.id, b.sub); if (r.errore) return L.send(res, 400, r);
+    const ok = await L.pushPartner(s.ruolo, s.id, s.ruolo === "lab" ? "Notifiche attive: ti avvisiamo a ogni nuovo ordine pagato." : "Notifiche attive: ti avvisiamo quando il laboratorio chiede una montatura.", "Notifiche attive", s.ruolo === "lab" ? "laboratorio.html" : "./?ottico=1");
+    return L.send(res, 200, {ok: true, prova: ok});
+  }
   // laboratorio: avanzamento della lavorazione (ritiro montatura, inizio, pronto)
   if (s.ruolo === "lab"){
     if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
@@ -12,8 +19,14 @@ module.exports = L.wrap(async (req, res) => {
     if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
-    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: "occhiale pronto", inizia: "lavorazione iniziata"}[b.azione] || b.azione, u.f.Univoco);
+    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: "occhiale pronto", inizia: "lavorazione iniziata", disponibile: "montatura disponibile", richiedi: "montatura richiesta all'ottica"}[b.azione] || b.azione, u.f.Univoco);
     const ora = new Date().toISOString(), lab = ord.lab;
+    if (b.azione === "disponibile" || b.azione === "richiedi"){
+      if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
+      const r = await L.labMontatura(u, ord, b.azione); if (r.errore) return L.send(res, 409, r);
+      ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return L.send(res, 200, r);
+    }
+    if (lab.verifica && !lab.disponibile && ["ritirata", "inizia", "pronto"].includes(b.azione)) return L.send(res, 409, {errore: "Prima indica se la montatura è disponibile in laboratorio."});
     if (b.azione === "ritirata"){ if (lab.fonte === "LAB") return L.send(res, 409, {errore: "La montatura è già in laboratorio."}); lab.ritirata = ora; }
     else if (b.azione === "inizia"){ if (lab.stato === "PRONTO") return L.send(res, 409, {errore: "Già pronto."}); lab.stato = "IN LAVORAZIONE"; lab.iniziato = lab.iniziato || ora; }
     else if (b.azione === "nota"){ lab.note = String(b.nota || "").slice(0, 300); }

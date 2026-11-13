@@ -154,6 +154,7 @@ document.addEventListener("click", e => {
   if (c){ c.closest(".popup").hidden = true; storia = []; scarica(nStati); ritornaFocus(); return; }
   const o = e.target.closest("[data-open]");
   if (o){ if (o.hasAttribute("data-reset-form")) resetForm(); open(o.dataset.open); if (o.dataset.open === "popupForm") loadOttici(); if (o.dataset.open === "ordinePopup") resetOrdine(); return; }
+  if (e.target.closest("[data-notif-ott]")){ notificheOttica(e.target.closest("[data-notif-ott]")); return; }
   if (e.target.closest("[data-logout]")){ ["sg_tok","sg_ruolo","sg_id","sg_listino"].forEach(k => sessionStorage.removeItem(k)); cruDati = null; closeAll(); return; }
   if (e.target.closest("[data-clienti]")){ apriClienti({}); return; }
   if (e.target.classList && e.target.classList.contains("popup") && !e.target.classList.contains("pagina")){ e.target.hidden = true; storia = []; scarica(nStati); }
@@ -345,19 +346,20 @@ const ICO = {
 const ico = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k]}</svg>`;
 const tessera = (k, titolo, sotto, attr, primo) => `<button type="button" ${attr}${primo ? ' class="primo"' : ""}>${ico(k)}<span>${titolo}</span><small>${sotto}</small></button>`;
 const giorniDa = d => d ? (Date.now() - new Date(d)) / 864e5 : 0;
-let cruDati = null;
+let cruDati = null, labInfo = null;
 async function apriCruscotto(r0, silenzioso){
   const isOtt = r0 === "ottico";
   if (!silenzioso){ open(isOtt ? "optionsOtticoPopup" : "optionsPopup"); disegnaCruscotto(isOtt, cruDati); }
   const r = await api("api/clienti"); if (scaduta(r)) return;
-  cruDati = r.ok ? r.data : {clienti: []}; clienti = cruDati.clienti || [];
+  cruDati = r.ok ? r.data : {clienti: []}; clienti = cruDati.clienti || []; if (cruDati.laboratorio) labInfo = cruDati.laboratorio;
   if (cruDati.listini) Object.assign(LISTINI.LISTINI.convenzioni, cruDati.listini);
   if (ruolo() === r0) disegnaCruscotto(isOtt, cruDati);
 }
 function disegnaCruscotto(isOtt, d){
   const box = $(isOtt ? "cruOtt" : "cruCaf"), nome = sessionStorage.getItem("sg_nome") || "", id = sessionStorage.getItem("sg_id") || "";
   const oggi = new Date().toLocaleDateString("it-IT", {weekday: "long", day: "numeric", month: "long"});
-  const testa = `<div class="cru-top"><div><span class="cru-ruolo">${isOtt ? "OTTICA" : "CAF"} · ${esc(id)}</span><div class="cru-nome">${esc(nome)}</div><p>${oggi}</p></div><button type="button" class="grigio" data-logout style="margin:0">Esci</button></div>`;
+  const notifOtt = isOtt && pushPossibile() && Notification.permission !== "granted" && Notification.permission !== "denied" && DEMO !== "browser";
+  const testa = `<div class="cru-top"><div><span class="cru-ruolo">${isOtt ? "OTTICA" : "CAF"} · ${esc(id)}</span><div class="cru-nome">${esc(nome)}</div><p>${oggi}</p></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${notifOtt ? '<button type="button" class="grigio" data-notif-ott style="margin:0">🔔 Attiva notifiche</button>' : ""}<button type="button" class="grigio" data-logout style="margin:0">Esci</button></div></div>`;
   if (!d){ box.innerHTML = testa + `<div class="cru-kpi">${'<div class="scheletro"></div>'.repeat(4)}</div><div class="scheletro" style="height:160px"></div>`; return; }
   const l = d.clienti || [], n = f => l.filter(f).length, e = d.estratto, attivi = n(c => c.attivatoIl && !c.chiuso);
   const kpi = (v, t, attr, cl) => `<button type="button" ${attr}${cl ? ` class="${cl}"` : ""}><b>${v}</b>${t}</button>`;
@@ -370,7 +372,7 @@ function disegnaCruscotto(isOtt, d){
     f(appOggi, "Appuntamenti di oggi", "Clienti che hanno prenotato dal loro link", "data-agenda");
     f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
     f(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", "Il cliente ha scelto la montatura: inserisci lenti e ricetta", `data-vai="stato:${STATI.MONTATURA}"`);
-    f(n(SIT_P.lab), "Montature da dare al laboratorio", "Mettile da parte con il codice del cliente", 'data-vai="sit:lab"');
+    f(n(SIT_P.lab), "Montature da inviare al laboratorio", "Mettile da parte con la «Scheda per il laboratorio»: passa il corriere", 'data-vai="sit:lab"', true);
     f(n(c => c.stato === STATI.PRONTO), "Occhiali pronti da consegnare", "Quando il cliente li ritira, segna «consegnato»", `data-vai="stato:${STATI.PRONTO}"`);
     f(n(c => c.daRitirare), "Occhiali da ritirare dal cliente", "Fine abbonamento, recesso o rinnovo", 'data-vai="sit:ritiro"', l.some(c => c.ritiroInRitardo));
     f(n(c => c.stato === STATI.PAGAMENTO), "Clienti che devono attivare l'abbonamento", "Preventivo inviato: ricordaglielo", `data-vai="stato:${STATI.PAGAMENTO}"`);
@@ -595,6 +597,17 @@ async function attivaNotifiche(){
     if (!r.ok) throw new Error(r.data.errore || "Non è stato possibile attivarle.");
     mio.notifiche = true; disegnaMio();
   } catch(e){ if (btn){ btn.disabled = false; btn.textContent = "Attiva"; } notaDemo(e.message || "Notifiche non disponibili su questo browser."); }
+}
+// ottica: notifiche quando il laboratorio chiede una montatura
+async function notificheOttica(btn){
+  btn.disabled = true; btn.textContent = "Attendi…";
+  try {
+    if (await Notification.requestPermission() !== "granted") throw new Error("Permesso negato: riattivalo dalle impostazioni del browser.");
+    const v = await api("api/ordine?vapid=1"); if (!v.ok || !v.data.vapid) throw new Error("Notifiche non disponibili ora.");
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64(v.data.vapid)});
+    const r = await api("api/ordine?push=1", {method: "POST", body: JSON.stringify({sub: sub.toJSON()})}); if (!r.ok) throw new Error(r.data.errore || "Non riuscito.");
+    btn.remove();
+  } catch(e){ btn.disabled = false; btn.textContent = "🔔 Attiva notifiche"; alert(e.message); }
 }
 function apriExtra(titolo, html){ $("extraTitolo").textContent = titolo; $("extraCorpo").innerHTML = html; open("extraPopup"); }
 // coriandoli quando gli occhiali sono pronti o consegnati (una volta per stato)
@@ -955,7 +968,7 @@ async function apriClienti(pre){
   open("clientiPopup"); $("clientiLista").innerHTML = '<div class="vuoto">Caricamento…</div>';
   const [da, a] = periodoDa(perCli.p, perCli.da, perCli.a);
   const r = await api(`api/clienti${da || a ? `?da=${da}&a=${a}` : ""}`); if (scaduta(r)) return;
-  clienti = r.ok ? r.data.clienti : [];
+  clienti = r.ok ? r.data.clienti : []; if (r.ok && r.data.laboratorio) labInfo = r.data.laboratorio;
   // i conteggi hanno la loro pagina («I miei conteggi»): nell'elenco clienti non si ripetono
   const conti = !!pre.conti; $("clientiTitolo").textContent = conti ? "I miei conteggi" : "I miei clienti";
   ["clientiFiltri", "clientiNum", "clientiLista"].forEach(id => { $(id).hidden = conti; });
@@ -985,8 +998,22 @@ const SIT_P = {
   ultimati: c => c.periodo && c.periodo.scaduto, consegnati: c => !!c.consegnatoIl || c.stato === STATI.CONSEGNATO, avvisi: c => !!c.avviso,
   attivi: c => c.attivatoIl && !c.chiuso, inattesa: c => !c.attivatoIl && !c.esito, mese: c => String(c.creato).slice(0, 7) === new Date().toISOString().slice(0, 7),
   fermi: c => c.stato === STATI.REGISTRATO && giorniDa(c.creato) > 3, ritiro: c => !!c.daRitirare, rinnovabili: c => c.rinnovabile && c.stato === STATI.CONSEGNATO && !c.bloccato,
-  lab: c => c.lab && c.lab.fonte === "OTTICA" && !c.lab.ritirata && c.lab.stato !== "PRONTO"
+  lab: c => c.lab && c.lab.fonte === "OTTICA" && !c.lab.ritirata && !["PRONTO", "DA VERIFICARE"].includes(c.lab.stato)
 };
+const STATO_LAB = {"DA VERIFICARE": "il laboratorio controlla se ha la montatura", "ATTESA MONTATURA": "aspetta la montatura dall'ottica", "DA FARE": "in attesa di lavorazione", "IN LAVORAZIONE": "in lavorazione"};
+// scheda da mettere con la montatura per il corriere
+function stampaSchedaLab(c){
+  const lb = labInfo || {}, m = c.montaturaCodice || "";
+  stampaDoc("Scheda per il laboratorio", `<div style="border:4px solid #111;padding:14px;margin-bottom:14px;text-align:center">
+      <div style="font-size:30pt;font-weight:800;line-height:1.15">DA INVIARE PRESSO IL LABORATORIO<br>${esc((lb.nome || "SocialGlass").toUpperCase())}</div>
+      ${lb.indirizzo ? `<div style="font-size:15pt;margin-top:8px">${esc(lb.indirizzo)}</div>` : ""}${lb.telefono ? `<div style="font-size:13pt">tel. ${esc(lb.telefono)}</div>` : ""}</div>
+    <div style="text-align:center;font-size:12pt">Codice cliente</div><div style="text-align:center;font-size:40pt;font-weight:800;letter-spacing:3px">${esc(c.univoco)}</div>
+    <table style="font-size:13pt;margin-top:12px"><tr><th>Cliente</th><td>${esc(c.nome)} ${esc(c.cognome)}</td></tr>
+      <tr><th>Montatura</th><td>${esc(c.montatura || "")}</td></tr><tr><th>Codice e calibro</th><td><b>${esc([m, c.calibro].filter(Boolean).join(" · "))}</b></td></tr>
+      <tr><th>Lenti</th><td>${esc(c.lenti || "")}</td></tr><tr><th>Ottica mittente</th><td>${esc(sessionStorage.getItem("sg_id") || "")} ${esc(sessionStorage.getItem("sg_nome") || "")}</td></tr>
+      <tr><th>Richiesta del laboratorio</th><td>${dIt(c.lab && c.lab.richiesta)}</td></tr></table>
+    <p style="font-size:11pt">Metti la montatura in una busta chiusa insieme a questa scheda e consegnala al corriere. La ricetta il laboratorio la vede già nel suo gestionale.</p>`);
+}
 const dIt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
 const voce = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : "";
 function contattoAdmin(){
@@ -1049,13 +1076,14 @@ function disegnaClienti(){
         ${voce("Montatura", esc(c.montatura))}${isOtt ? voce("Codice e calibro", esc([c.montaturaCodice, c.calibro].filter(Boolean).join(" · "))) + voce("Lenti", esc(c.lenti)) + voce("Trattamenti", esc((c.trattamenti || []).join(", "))) : ""}
         ${voce("Valore occhiale", c.totale ? euro(c.totale) : "")}${voce("Canone", c.rata ? euro(c.rata) + "/mese" : "")}${isOtt ? voce("Riscatto", c.riscatto ? euro(c.riscatto) : "") : ""}
         ${voce("Abbonamento dal", dIt(c.attivatoIl))}${voce("Canoni pagati", c.attivatoIl ? String(c.ratePagate) : "")}${voce("Durata minima completata", c.esito ? "" : ultimato)}
-        ${c.lab && c.lab.stato !== "PRONTO" ? voce("Laboratorio", c.lab.stato === "DA FARE" ? "in attesa di lavorazione" : "in lavorazione") + (isOtt && c.lab.fonte === "OTTICA" ? voce("Montatura esposta", c.lab.ritirata ? "ritirata dal laboratorio il " + dIt(c.lab.ritirata) : "da consegnare al laboratorio") : "") : ""}
+        ${c.lab && c.lab.stato !== "PRONTO" ? voce("Laboratorio", STATO_LAB[c.lab.stato] || "in lavorazione") + (isOtt && c.lab.fonte === "OTTICA" ? voce("Montatura esposta", c.lab.ritirata ? "arrivata in laboratorio il " + dIt(c.lab.ritirata) : "da inviare al laboratorio") : "") : ""}
         ${isOtt ? voce("Pronto il", dIt(c.prontoIl)) : ""}${voce("Occhiale ricevuto", c.consegnatoIl ? "sì, il " + dIt(c.consegnatoIl) : c.attivatoIl ? "non ancora" : "")}
         ${voce("Chiuso il", dIt(c.chiuso))}</dl>
       ${isOtt && c.ricetta ? "<b>Ricetta</b>" + ricettaCli(c.ricetta) : ""}
       ${c.esito ? `<div><span class="chip s4">${esc(c.esito)}</span></div>` : ""}
       ${c.finePeriodo ? `<div><span class="chip s2">SCELTA DEL CLIENTE: ${esc(c.finePeriodo)}</span></div>` : ""}
       ${c.daRitirare ? `<div><span class="chip s3">OCCHIALE DA RITIRARE${c.ritiroInRitardo ? " · IN RITARDO" : ""}</span></div>` : ""}
+      ${isOtt && SIT_P.lab(c) ? `<div class="avviso-cli">📦 <b>Il laboratorio ${esc((labInfo || {}).nome || "")} chiede questa montatura${c.lab.richiesta ? " (" + dIt(c.lab.richiesta) + ")" : ""}.</b> Mettila da parte con la scheda stampata, in attesa del corriere.<br><button type="button" data-stampa-lab="${esc(c.univoco)}">Stampa scheda per il laboratorio</button></div>` : ""}
       ${c.daRitirare ? `<div class="avviso-cli">💚 L'occhiale restituito va messo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica.</div>` : ""}
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
       ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
@@ -1070,6 +1098,7 @@ $("clientiPopup").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.hasAttribute("data-stampa-elenco")) stampaElencoClienti();
   if (b.hasAttribute("data-stampa-estratto")) stampaDoc(`Estratto conto con SocialGlass · ${sessionStorage.getItem("sg_id") || ""} ${sessionStorage.getItem("sg_nome") || ""}`, pulisciStampa($("clientiContiCorpo")));
+  if (b.dataset.stampaLab){ const c = clienti.find(x => x.univoco === b.dataset.stampaLab); if (c) stampaSchedaLab(c); return; }
   if (b.dataset.stampaCli){ const d = document.querySelector(`#clientiLista details[data-u="${CSS.escape(b.dataset.stampaCli)}"]`); if (d) stampaDoc("Scheda cliente", `<div class="cli">${pulisciStampa(d)}</div>`); }
 });
 $("clientiLista").addEventListener("click", async e => {

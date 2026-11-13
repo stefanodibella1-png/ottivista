@@ -239,6 +239,29 @@ async function chiaviPush(){
   if (!k || !k.pubblica){ const v = WP.generateVAPIDKeys(); k = {pubblica: v.publicKey, privata: v.privateKey}; await DB.meta("push", k); }
   return k;
 }
+async function chiaviPushPubblica(){ const k = await chiaviPush(); return k ? k.pubblica : ""; }
+// notifiche push ai partner: laboratorio (meta «push-lab») e ottiche (campo Push della scheda dell'ottica)
+async function iscriviPartner(ruolo, id, sub){
+  if (!sub || !/^https:\/\//.test(sub.endpoint || "") || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return {errore: "Iscrizione non valida."};
+  const x = {endpoint: sub.endpoint, keys: {p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth)}};
+  if (ruolo === "lab"){ const m = (await DB.meta("push-lab")) || {}; await DB.meta("push-lab", {subs: (m.subs || []).filter(y => y.endpoint !== x.endpoint).concat([x]).slice(-10)}); }
+  else { const o = await DB.ottico(id); if (!o) return {errore: "Ottica non trovata."}; await DB.salva("ottici", id, {Push: (Array.isArray(o.Push) ? o.Push : []).filter(y => y.endpoint !== x.endpoint).concat([x]).slice(-10)}); }
+  return {ok: true};
+}
+async function pushPartner(ruolo, id, testo, titolo, url){
+  try {
+    if (!WP) return false; const k = await chiaviPush(); if (!k) return false;
+    const subs = ruolo === "lab" ? ((await DB.meta("push-lab")) || {}).subs || [] : ((await DB.ottico(id)) || {}).Push || [];
+    if (!subs.length) return false;
+    const dati = JSON.stringify({titolo: titolo || "SocialGlass", testo: corpoPush(testo), url: url || "./"}), scadute = []; let ok = false;
+    for (const s of subs){
+      try { await WP.sendNotification(s, dati, {vapidDetails: {subject: "mailto:assistenza@socialglass.it", publicKey: k.pubblica, privateKey: k.privata}, TTL: 172800}); ok = true; }
+      catch(e){ if (e.statusCode === 404 || e.statusCode === 410) scadute.push(s.endpoint); else console.error("push partner", e.statusCode || e.message); }
+    }
+    if (scadute.length){ const rest = subs.filter(x => !scadute.includes(x.endpoint)); if (ruolo === "lab") await DB.meta("push-lab", {subs: rest}); else await DB.salva("ottici", id, {Push: rest}); }
+    return ok;
+  } catch(e){ console.error("push partner", e.message); return false; }
+}
 // testo del messaggio → notifica: senza il prefisso «SocialGlass:» e senza il link in fondo
 function corpoPush(testo){ return String(testo || "").replace(/^SocialGlass:\s*/, "").replace(/\s*https?:\/\/\S+\s*$/, "").slice(0, 220); }
 async function pushCliente(f, testo, titolo){
@@ -466,7 +489,7 @@ function residenza(r){
 // lenti su misura: dopo l'inizio della lavorazione l'annullamento (recesso) non è più possibile
 function inLavorazione(o, stato){
   const lab = o && o.lab;
-  return !!(lab && (lab.iniziato || lab.ritirata || lab.stato === "IN LAVORAZIONE" || lab.stato === "PRONTO")) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
+  return !!(lab && (lab.disponibile || lab.iniziato || lab.ritirata || lab.stato === "IN LAVORAZIONE" || lab.stato === "PRONTO")) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
 }
 function annullabile(o, stato){
   const pg = (o && o.pagamento) || {};
@@ -583,23 +606,51 @@ async function avviaLavorazione(u, ord){
   const codice = ord.montatura && ord.montatura.codice, univoco = u.f.Univoco, ora = new Date().toISOString();
   if (!(await labAttivo())){ if (codice) await liberaMontatura(codice, univoco, true); return; }
   if (ord.lab) return;
-  let fonte = "OTTICA", sede = String(u.f.Ottica1 || "").split(" - ")[0];
-  if (codice) await DB.tx("mont", codice, f => {
-    const {g, r} = scorte(f);
-    let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?");
-    const x = i >= 0 ? r.splice(i, 1)[0] : null;
-    if ((g[LAB] || 0) > 0){
-      g[LAB]--; if (x) g[x.ottica] = (g[x.ottica] || 0) + 1; fonte = "LAB"; sede = LAB;
-      return campiScorte(f, g, r, {tipo: "uscita cliente (copia del laboratorio)", qta: -1, dove: LAB, cliente: univoco});
-    }
-    if (!x) return null;
-    fonte = x.ottica === MAG ? "MAG" : "OTTICA"; sede = x.ottica;
-    return campiScorte(f, g, r, {tipo: "uscita cliente (da ritirare per il laboratorio)", qta: 0, dove: x.ottica, cliente: univoco});
-  });
-  ord.lab = {stato: "DA FARE", fonte, sede, creato: ora};
-  if (fonte === "OTTICA"){ ord.avvisi = ord.avvisi || {}; ord.avvisi["lab" + ora.slice(0, 10)] = {il: ora, testo: `Il laboratorio ritirerà la montatura ${codice} esposta in ottica: mettila da parte con il codice cliente ${univoco}.`}; }
+  // il laboratorio riceve la busta «da verificare»: controlla se ha la montatura in magazzino e sceglie
+  // «montatura disponibile» oppure «ritira la montatura dall'ottico» (azioni in api/ordine.js → labMontatura)
+  let sede = String(u.f.Ottica1 || "").split(" - ")[0], labHa = false;
+  if (codice) await DB.tx("mont", codice, f => { const {g, r} = scorte(f); labHa = (g[LAB] || 0) > 0; const x = r.find(y => y.univoco === univoco); if (x) sede = x.ottica; return null; });
+  ord.lab = {stato: "DA VERIFICARE", verifica: true, fonte: "", sede, labHa, creato: ora};
   ord.aggiornato = ora;
   await DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+  const m = ord.montatura || {};
+  await pushPartner("lab", null, `Nuovo ordine pagato (${univoco}): verifica se hai in magazzino la montatura ${codice || ""} ${m.modello || ""} ${m.colore || ""}.`.replace(/\s+/g, " "), "Nuovo ordine da verificare", "laboratorio.html");
+}
+// scelta del laboratorio sulla montatura di una busta «da verificare»
+async function labMontatura(u, ord, azione){
+  const lab = ord.lab, codice = ord.montatura && ord.montatura.codice, univoco = u.f.Univoco, ora = new Date().toISOString(), ott = String(u.f.Ottica1 || "").split(" - ")[0];
+  if (azione === "richiedi"){
+    if (lab.stato !== "DA VERIFICARE") return {errore: "Hai già scelto per questa montatura."};
+    let fonte = "OTTICA", sede = lab.sede || ott;
+    if (codice) await DB.tx("mont", codice, f => {
+      const {g, r} = scorte(f); let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?"); if (i < 0) return null;
+      const [x] = r.splice(i, 1); sede = x.ottica; fonte = x.ottica === MAG ? "MAG" : "OTTICA";
+      return campiScorte(f, g, r, {tipo: "uscita cliente (da inviare al laboratorio)", qta: 0, dove: x.ottica, cliente: univoco});
+    });
+    Object.assign(lab, {stato: "ATTESA MONTATURA", fonte, sede, richiesta: ora});
+    const nomeLab = ((await DB.meta("laboratorio")) || {}).nome || "Laboratorio";
+    if (fonte === "OTTICA"){
+      // in ottica l'avviso compare nella scheda del cliente e tra le cose da fare (SIT_P.lab)
+      await pushPartner("ottico", sede, `Metti da parte la montatura ${codice} (cliente ${univoco}) e allega la scheda per il laboratorio ${nomeLab}: passa il corriere.`, "Montatura da inviare al laboratorio", "./?ottico=1");
+    }
+    return {ok: true, fonte};
+  }
+  if (azione === "disponibile"){
+    if (!["DA VERIFICARE", "ATTESA MONTATURA"].includes(lab.stato)) return {errore: "La montatura risulta già disponibile."};
+    if (lab.stato === "DA VERIFICARE"){
+      // copia del laboratorio: la prenotazione torna all'ottica (che tiene il suo pezzo esposto) e si scarica la giacenza del laboratorio
+      if (codice) await DB.tx("mont", codice, f => {
+        const {g, r} = scorte(f); let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?");
+        const x = i >= 0 ? r.splice(i, 1)[0] : null; if (x) g[x.ottica] = (g[x.ottica] || 0) + 1;
+        const c = (g[LAB] || 0) > 0; if (c) g[LAB]--;
+        return campiScorte(f, g, r, {tipo: c ? "uscita cliente (copia del laboratorio)" : "uscita cliente (copia del laboratorio non registrata in giacenza)", qta: c ? -1 : 0, dove: LAB, cliente: univoco});
+      });
+      Object.assign(lab, {fonte: "LAB", sede: LAB});
+    } else lab.ritirata = ora;   // arrivata dall'ottica con il corriere
+    Object.assign(lab, {stato: "DA FARE", disponibile: ora});
+    return {ok: true};
+  }
+  return {errore: "Operazione non valida."};
 }
 // rilascia: il pezzo torna nella sede da cui era stato preso; scarica: esce dal magazzino (ordine pagato)
 async function liberaMontatura(codice, univoco, scarico){
@@ -847,4 +898,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

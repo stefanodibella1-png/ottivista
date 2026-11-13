@@ -26,5 +26,6 @@ mkdir -p npmqr && (cd npmqr && npm pack qrcodejs@1.0.0 >/dev/null && tar xzf qrc
 - `m1.py` modifiche UX · `m2.py` funzioni cliente · `m3.py` ottica, admin, listini, registro, importazione, copia, report · `m4.py` preventivo con lente nuova · `x1.py` servizi (amico, recensioni, tessera, dona).
 - Percorso completo cliente: `v1.py` … `v11.py` (con `srv-viaggio.js`, in ordine; i salti di tempo sono nei comandi curl).
 - Fine abbonamento: `crea_cliente.py` (crea una cliente consegnata via API) + `f1.py` scelta, `f2.py` pagina cliente, `f3.py` ritiro in ottica.
+- `labflusso.py` laboratorio: verifica montatura, richiesta all'ottica, scheda per il laboratorio, arrivo e pronto (con `srv.js`).
 - `loc.py` stampa la locandina in PNG/PDF.
 - `tempo.py [riscatta|restituisci|rinnova]` percorso completo su PC (CAF), tablet (ottica), telefono (cliente) e laboratorio, con la barra del tempo (`node srv.js`).
