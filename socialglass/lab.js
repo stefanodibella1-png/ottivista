@@ -83,7 +83,7 @@
   function dove(b){
     const m = b.montatura || {};
     if (daVerificare(b)) return `<div class="dove ott">Controlla se hai in magazzino la montatura <b>${esc(m.codice)}</b> ${esc(m.modello)} ${esc(m.colore)}. ${b.lab.labHa ? "Secondo il magazzino ne hai una copia." : "Il magazzino non registra copie in laboratorio."} Se c'è, tocca «Montatura disponibile»; se non c'è, «Ritira la montatura dall'ottico».</div>`;
-    if (inArrivo(b)) return `<div class="dove ott">Montatura richiesta il ${dt(b.lab.richiesta)} ${b.lab.fonte === "MAG" ? "al magazzino SocialGlass" : `all'ottica ${esc(b.ottica.id)} ${esc(b.ottica.nome)}${b.ottica.telefono ? ` · tel. <a href="tel:${esc(b.ottica.telefono)}">${esc(b.ottica.telefono)}</a>` : ""}`}: arriva con il corriere, insieme alla scheda del cliente. Quando la ricevi tocca «Montatura arrivata: disponibile».</div>`;
+    if (inArrivo(b)) return `<div class="dove ott">Montatura richiesta il ${dt(b.lab.richiesta)} all'ottica ${esc(b.ottica.id)} ${esc(b.ottica.nome)}${b.ottica.telefono ? ` · tel. <a href="tel:${esc(b.ottica.telefono)}">${esc(b.ottica.telefono)}</a>` : ""}: arriva con il corriere, insieme alla scheda del cliente. Quando la ricevi tocca «Montatura arrivata: disponibile».</div>`;
     if (b.lab.verifica && b.lab.fonte !== "LAB" && b.lab.ritirata) return `<div class="dove lab">Montatura arrivata dall'ottica il ${dt(b.lab.ritirata)}.</div>`;
     if (b.lab.fonte === "LAB") return `<div class="dove lab">Montatura: usa la copia del laboratorio.</div>`;
     const da = b.lab.fonte === "MAG" ? "dal magazzino SocialGlass" : `presso l'ottica ${esc(b.ottica.id)} ${esc(b.ottica.nome)}${b.ottica.indirizzo ? ", " + esc(b.ottica.indirizzo) : ""}${b.ottica.telefono ? ` · tel. <a href="tel:${esc(b.ottica.telefono)}">${esc(b.ottica.telefono)}</a>` : ""}`;
@@ -106,7 +106,7 @@
   // il passo successivo, sempre visibile sulla riga della busta
   function prossimo(b){
     if (b.chiuso || b.lab.stato === "PRONTO" || !b.inLavorazione) return "";
-    if (daVerificare(b)) return `<button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Montatura disponibile</button><button type="button" data-az="richiedi" data-u="${esc(b.univoco)}">${b.lab.sede === "MAG" ? "Richiedi la montatura al magazzino SocialGlass" : "Ritira la montatura dall'ottico"}</button>`;
+    if (daVerificare(b)) return `<button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Montatura disponibile</button><button type="button" data-az="richiedi" data-u="${esc(b.univoco)}">Ritira la montatura dall'ottico</button>`;
     if (inArrivo(b)) return `<button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Montatura arrivata: disponibile</button>`;
     if (daRitirare(b)) return `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>`;
     return `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}">Occhiale pronto · avvisa il cliente</button>`;
@@ -162,7 +162,7 @@
       if (r.ok && b.dataset.az === "disponibile"){ apri = b.dataset.u; filtro = "dafare"; }
       messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata.",
         disponibile: "Montatura disponibile: qui sotto trovi la ricetta, procedi con la lavorazione.",
-        richiedi: r.data.fonte === "MAG" ? "Montatura richiesta al magazzino SocialGlass: quando arriva tocca «Montatura arrivata: disponibile»." : "L'ottica è stata avvisata: mette da parte la montatura con la scheda per il corriere. Quando arriva tocca «Montatura arrivata: disponibile».",
+        richiedi: "L'ottica è stata avvisata: mette da parte la montatura con la scheda per il corriere. Quando arriva tocca «Montatura arrivata: disponibile».",
         pronto: av && /moroso/.test(av.motivo || "") ? "Occhiale pronto: l'ottica è avvisata. Il cliente ha un pagamento in sospeso, quindi non viene invitato al ritiro finché non paga." : av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${({sms: "SMS", notifica: "notifica sul telefono"})[av.canale] || "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
       return carica();
     }

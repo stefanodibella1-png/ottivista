@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796800000**, prossimo 1796900000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796900000**, prossimo 1797000000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -54,7 +54,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 ## Laboratorio: verifica della montatura (13/11/2026)
 - Al pagamento (`avviaLavorazione`) la busta nasce «DA VERIFICARE» (`ord.lab.verifica`) e il laboratorio riceve una notifica push (iscrizione con «🔔 Attiva notifiche» in `laboratorio.html`; meta `push-lab`). La ricetta resta nascosta finché la montatura non è disponibile; le azioni ritirata/inizia/pronto sono rifiutate prima.
 - «Montatura disponibile» → usa la copia del laboratorio (scarica `g[LAB]`, la prenotazione torna all'ottica) e apre la ricetta.
-- «Ritira la montatura dall'ottico» → stato «ATTESA MONTATURA»; l'ottica riceve una push (iscrizione «🔔 Attiva notifiche» nel cruscotto; campo `Push` dell'ottica), la voce «Montature da inviare al laboratorio» nelle cose da fare e, nella scheda del cliente, il pulsante «Stampa scheda per il laboratorio» (scritta grande «DA INVIARE PRESSO IL LABORATORIO …», codice cliente, montatura). Se la montatura era prenotata nel magazzino centrale il pulsante diventa «Richiedi la montatura al magazzino SocialGlass».
+- «Ritira la montatura dall'ottico» → stato «ATTESA MONTATURA»; l'ottica riceve una push (iscrizione «🔔 Attiva notifiche» nel cruscotto; campo `Push` dell'ottica), la voce «Montature da inviare al laboratorio» nelle cose da fare e, nella scheda del cliente, il pulsante «Stampa scheda per il laboratorio» (scritta grande «DA INVIARE PRESSO IL LABORATORIO …», codice cliente, montatura). La montatura si chiede SEMPRE all'ottica del cliente (`Ottica1`, dove l'ha provata e scansionata), anche se la prenotazione era finita sul magazzino centrale perché la giacenza dell'ottica non era caricata: in quel caso la prenotazione torna al magazzino e si scarica l'ottica.
 - All'arrivo il laboratorio tocca «Montatura arrivata: disponibile» e riprende l'iter (pronto → consegna). Logica in `L.labMontatura` (`api/_lib.js`), azioni `disponibile`/`richiedi` in `api/ordine.js`.
 - Prova locale: `prove-socialglass/labflusso.py` (CAF → cliente → ottica → laboratorio richiede → ottica stampa la scheda → laboratorio riceve → pronto).
 

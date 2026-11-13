@@ -9,7 +9,7 @@ module.exports = L.wrap(async (req, res) => {
   if (url.searchParams.get("vapid")){ const k = await L.chiaviPushPubblica(); return L.send(res, 200, {vapid: k}); }
   if (req.method === "POST" && url.searchParams.get("push")){
     const b = await L.readBody(req), r = await L.iscriviPartner(s.ruolo, s.id, b.sub); if (r.errore) return L.send(res, 400, r);
-    const ok = await L.pushPartner(s.ruolo, s.id, s.ruolo === "lab" ? "Notifiche attive: ti avvisiamo a ogni nuovo ordine pagato." : "Notifiche attive: ti avvisiamo quando il laboratorio chiede una montatura.", "Notifiche attive", s.ruolo === "lab" ? "laboratorio.html" : "./?ottico=1");
+    const ok = await L.pushPartner(s.ruolo, s.id, s.ruolo === "lab" ? "Notifiche attive: ti avvisiamo a ogni nuovo ordine pagato." : "Notifiche attive: ti avvisiamo quando il laboratorio chiede una montatura.", "Notifiche attive", s.ruolo === "lab" ? "laboratorio.html" : "/ottico");
     return L.send(res, 200, {ok: true, prova: ok});
   }
   // laboratorio: avanzamento della lavorazione (ritiro montatura, inizio, pronto)

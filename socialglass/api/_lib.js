@@ -608,8 +608,8 @@ async function avviaLavorazione(u, ord){
   if (ord.lab) return;
   // il laboratorio riceve la busta «da verificare»: controlla se ha la montatura in magazzino e sceglie
   // «montatura disponibile» oppure «ritira la montatura dall'ottico» (azioni in api/ordine.js → labMontatura)
-  let sede = String(u.f.Ottica1 || "").split(" - ")[0], labHa = false;
-  if (codice) await DB.tx("mont", codice, f => { const {g, r} = scorte(f); labHa = (g[LAB] || 0) > 0; const x = r.find(y => y.univoco === univoco); if (x) sede = x.ottica; return null; });
+  const sede = String(u.f.Ottica1 || "").split(" - ")[0]; let labHa = false;
+  if (codice) await DB.tx("mont", codice, f => { const {g} = scorte(f); labHa = (g[LAB] || 0) > 0; return null; });
   ord.lab = {stato: "DA VERIFICARE", verifica: true, fonte: "", sede, labHa, creato: ora};
   ord.aggiornato = ora;
   await DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
@@ -621,17 +621,20 @@ async function labMontatura(u, ord, azione){
   const lab = ord.lab, codice = ord.montatura && ord.montatura.codice, univoco = u.f.Univoco, ora = new Date().toISOString(), ott = String(u.f.Ottica1 || "").split(" - ")[0];
   if (azione === "richiedi"){
     if (lab.stato !== "DA VERIFICARE") return {errore: "Hai già scelto per questa montatura."};
-    let fonte = "OTTICA", sede = lab.sede || ott;
+    // la montatura si chiede sempre all'ottica del cliente, dove l'ha provata e scansionata
+    const fonte = "OTTICA", sede = ott || lab.sede;
     if (codice) await DB.tx("mont", codice, f => {
-      const {g, r} = scorte(f); let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?"); if (i < 0) return null;
-      const [x] = r.splice(i, 1); sede = x.ottica; fonte = x.ottica === MAG ? "MAG" : "OTTICA";
-      return campiScorte(f, g, r, {tipo: "uscita cliente (da inviare al laboratorio)", qta: 0, dove: x.ottica, cliente: univoco});
+      const {g, r} = scorte(f); let i = r.findIndex(x => x.univoco === univoco); if (i < 0) i = r.findIndex(x => x.univoco === "?");
+      const x = i >= 0 ? r.splice(i, 1)[0] : null;
+      // prenotata sul magazzino centrale (giacenza dell'ottica non caricata): il pezzo che parte è quello dell'ottica
+      if (x && x.ottica !== sede){ g[x.ottica] = (g[x.ottica] || 0) + 1; if ((g[sede] || 0) > 0) g[sede]--; }
+      return campiScorte(f, g, r, {tipo: "uscita cliente (da inviare al laboratorio)", qta: 0, dove: sede, cliente: univoco});
     });
     Object.assign(lab, {stato: "ATTESA MONTATURA", fonte, sede, richiesta: ora});
     const nomeLab = ((await DB.meta("laboratorio")) || {}).nome || "Laboratorio";
     if (fonte === "OTTICA"){
       // in ottica l'avviso compare nella scheda del cliente e tra le cose da fare (SIT_P.lab)
-      await pushPartner("ottico", sede, `Metti da parte la montatura ${codice} (cliente ${univoco}) e allega la scheda per il laboratorio ${nomeLab}: passa il corriere.`, "Montatura da inviare al laboratorio", "./?ottico=1");
+      await pushPartner("ottico", sede, `Metti da parte la montatura ${codice} (cliente ${univoco}) e allega la scheda per il laboratorio ${nomeLab}: passa il corriere.`, "Montatura da inviare al laboratorio", "/ottico");
     }
     return {ok: true, fonte};
   }
