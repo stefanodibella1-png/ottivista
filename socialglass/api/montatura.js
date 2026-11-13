@@ -17,6 +17,7 @@ module.exports = L.wrap(async (req, res) => {
   const {univoco, codice} = await L.readBody(req);
   if (!univoco || !codice) return L.send(res, 400, {errore: "Dati mancanti"});
   const u = await L.DB.utente("Univoco", String(univoco));
+  if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
   if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato"}); }
   if (![L.STATI.REGISTRATO, L.STATI.MONTATURA].includes(u.f.Stato)) return L.send(res, 409, {errore: "La montatura è già confermata: per cambiarla parla con l'ottico."});
   const m = await L.DB.montatura(String(codice));

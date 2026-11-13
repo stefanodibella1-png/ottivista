@@ -27,7 +27,7 @@ async function tempo(req, res, u, b){
     for (let resto = g; resto > 0;){
       const passo = Math.min(29, resto); resto -= passo;
       const o = L.parseOrdine(v.f.Ordine); sposta(o, passo);
-      await L.DB.aggiorna(v, {Ordine: JSON.stringify(o), Creato: indietro(v.f.Creato, passo), ProveGiorni: (Number(v.f.ProveGiorni) || 0) + passo});
+      await L.DB.aggiorna(v, Object.assign({Ordine: JSON.stringify(o), Creato: indietro(v.f.Creato, passo), ProveGiorni: (Number(v.f.ProveGiorni) || 0) + passo}, v.f.LinkFino ? {LinkFino: indietro(v.f.LinkFino, passo)} : {}));
       v = await L.DB.utente("Univoco", u.f.Univoco); await require("./scadenze").controlla(v, new Date().toISOString(), esiti);
       v = await L.DB.utente("Univoco", u.f.Univoco);
     }
@@ -52,6 +52,7 @@ module.exports = L.wrap(async (req, res) => {
   // azioni del cliente dalla sua pagina: notifiche, recensione, occhiale da donare
   if (req.method === "POST"){
     const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").trim().toUpperCase());
+    if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
     if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
     const ord = L.parseOrdine(u.f.Ordine), ora = new Date().toISOString();
     if (b.azione === "push"){
@@ -136,6 +137,7 @@ module.exports = L.wrap(async (req, res) => {
   const uv = (url.searchParams.get("univoco") || "").trim();
   if (!uv) return L.send(res, 400, {errore: "Codice mancante"});
   const u = await L.DB.utente("Univoco", uv);
+  if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
   if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Link non valido o scaduto."}); }
   await L.verificaPagamento(u);
   const idOtt = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore");
@@ -154,7 +156,7 @@ module.exports = L.wrap(async (req, res) => {
     segnalazioni: (ord.segnalazioni || []).slice(-5).reverse(), haCarta: !!(ord.pagamento && ord.pagamento.cliente && !ord.pagamento.chiuso),
     contratto: ord.pagamento && ord.pagamento.attivatoIl ? {attivatoIl: ord.pagamento.attivatoIl, consensi: ord.consensi || null, caf: u.f.CAF || ""} : null,
     barraTempo: barraAttiva(cfg, u.f) ? {giorni: Number(u.f.ProveGiorni) || 0} : null,
-    residenza: !!(u.f.Residenza && u.f.Residenza.cap)};
+    residenza: !!(u.f.Residenza && u.f.Residenza.cap), scadeLink: L.scadenzaLink(u.f)};
   L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
     ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo || "", citta: o.Citta || "", telefono: o.Telefono || ""} : null,
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,

@@ -5,7 +5,7 @@ async function sendSms(to, text){
   try { const r = await fetch(L.CFG.smsWebhook, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({to, text})}); return r.ok; }
   catch(e){ return false; }
 }
-function messaggio(nome, ottica, link){ return `SocialGlass: ciao ${L.nm(nome)}, ecco il tuo link personale per scegliere i nuovi occhiali da ${ottica}. Aprilo e mostra all'ottico il tuo codice: ${link}`; }
+function messaggio(nome, ottica, link){ return `SocialGlass: ciao ${L.nm(nome)}, ecco il tuo link personale per scegliere i nuovi occhiali da ${ottica}. Aprilo e mostra all'ottico il tuo codice. Il link vale 30 giorni, fino al ${L.giornoIt(Date.now() + L.GIORNI_LINK * 864e5)}: ${link}`; }
 function wa(numero, testo){ return `https://wa.me/${String(numero).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`; }
 module.exports = L.wrap(async (req, res) => {
   const url = new URL(req.url, "http://x");
@@ -71,7 +71,9 @@ module.exports = L.wrap(async (req, res) => {
   if (!L.CF.coerente(d.cf, d.nome, d.cognome, d.data, d.sesso)) return L.send(res, 400, {errore: "Codice fiscale non conforme a nome, cognome, data di nascita e sesso."});
   if (d.cellulare.length < 6) return L.send(res, 400, {errore: "Numero di cellulare non valido."});
   const res_ = L.residenza(b.residenza); if (res_.errore) return L.send(res, 400, res_);
-  const gia = await L.DB.utente("Codice Fiscale", d.cf);
+  let gia = await L.DB.utente("Codice Fiscale", d.cf);
+  // pratica precedente scaduta (link oltre i 30 giorni): i suoi dati si cancellano subito e il cliente riparte da capo
+  if (gia && gia.f.Archiviato){ await require("./scadenze").anonimizza(gia, new Date().toISOString(), "nuova registrazione"); gia = null; }
   if (gia) return L.send(res, 409, {errore: `ATTENZIONE ! CODICE FISCALE ${gia.f.Stato || "GIÀ REGISTRATO"}`, univoco: gia.f.Univoco});
   const o = await L.DB.ottico(d.ottica);
   if (!o) return L.send(res, 400, {errore: "Ottica non trovata."});
@@ -81,7 +83,7 @@ module.exports = L.wrap(async (req, res) => {
     if (!L.abbonamentoAttivo(a.f)) return L.send(res, 400, {errore: L.PREMIO_NON_ATTIVABILE + " Lascia vuoto il campo «Codice amico» per registrare il cliente."}); }
   const fields = {"CAF": s.id, "Nome": d.nome, "Cognome": d.cognome, "Cellulare": d.cellulare, "Codice Fiscale": d.cf,
     "Ottica1": `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`, "Nato a": d.nato, "Genere": d.sesso, "Data Nascita": d.data,
-    "Listino": o.Listino || "", "Stato": L.STATI.REGISTRATO, "Residenza": res_, ...(amico ? {PresentatoDa: amico} : {})};
+    "Listino": o.Listino || "", "Stato": L.STATI.REGISTRATO, "Residenza": res_, "LinkFino": new Date(Date.now() + L.GIORNI_LINK * 864e5).toISOString(), ...(amico ? {PresentatoDa: amico} : {})};
   const uv = await L.DB.creaUtente(fields);
   const link = L.linkCliente(uv, o.ID, s.id, o.Listino);
   const testo = messaggio(d.nome, o.Intestatario, link);

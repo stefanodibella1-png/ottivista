@@ -438,8 +438,25 @@ const STATI = {
   PAGAMENTO: "IN ATTESA PAGAMENTO",
   ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE",
   PRONTO: "PRONTO PER IL RITIRO",
-  CONSEGNATO: "CONSEGNATO"
+  CONSEGNATO: "CONSEGNATO",
+  SCADUTO: "LINK SCADUTO",                      // 30 giorni senza attivare: pratica in archivio
+  ANONIMO: "ARCHIVIATO (DATI CANCELLATI)"       // altri 30 giorni dopo: dati personali cancellati
 };
+/* ---------- link del cliente: vale 30 giorni dalla registrazione finché l'abbonamento non è attivato ----------
+   Alla scadenza la pratica va in archivio (montatura liberata, link non più valido); i dati personali restano
+   in archivio altri 30 giorni e poi si cancellano (resta una traccia anonima). Non vale per chi ha già avuto un abbonamento. */
+const GIORNI_LINK = 30, GIORNI_ARCHIVIO = 30;
+const LINK_SCADUTO = "Il link è scaduto: sono passati 30 giorni dalla registrazione senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF: ti registriamo di nuovo in un minuto.";
+function maiAttivato(f){ const o = parseOrdine(f && f.Ordine), pg = o.pagamento || {}; return !pg.attivatoIl && !(o.storico || []).length && !o.rinnovo; }
+// chi si registra da ora ha la data scritta nella scheda (LinkFino); per chi era già registrato i 30 giorni partono dal 13/11/2026
+const INIZIO_REGOLA_LINK = "2026-11-13T00:00:00.000Z";
+function scadenzaLink(f){
+  if (!f || f.Archiviato || !f.Creato || !maiAttivato(f) || ![STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO].includes(f.Stato)) return null;
+  if (f.LinkFino) return f.LinkFino;
+  const da = Math.max(new Date(f.Creato).getTime(), new Date(INIZIO_REGOLA_LINK).getTime());
+  return new Date(da + GIORNI_LINK * 864e5).toISOString();
+}
+const giornoIt = d => new Date(d).toLocaleDateString("it-IT", {day: "numeric", month: "long", timeZone: "Europe/Rome"});
 // residenza del cliente (serve in fattura): controlla e normalizza
 function residenza(r){
   r = r || {}; const x = {indirizzo: String(r.indirizzo || "").trim().slice(0, 80), cap: String(r.cap || "").replace(/\D/g, ""), comune: String(r.comune || "").trim().toUpperCase().slice(0, 60), provincia: String(r.provincia || "").trim().toUpperCase()};
@@ -830,4 +847,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

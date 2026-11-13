@@ -102,8 +102,54 @@ async function attesa(u, ora){
   }
   return null;
 }
+// link di chi non ha mai attivato: promemoria, scadenza a 30 giorni dalla registrazione, archivio, cancellazione dei dati
+async function archivia(u, ora){
+  const o = L.parseOrdine(u.f.Ordine);
+  if (o.montatura) try { await L.liberaMontatura(o.montatura.codice, u.f.Univoco); } catch(e){ console.error(e); }
+  o.archiviato = {il: ora, stato: u.f.Stato, montatura: o.montatura ? `${o.montatura.codice} ${o.montatura.modello || ""}`.trim() : ""};
+  await annota(u, o, "linkScaduto", `SocialGlass: ${L.nm(u.f.Nome)}, il tuo link è scaduto perché sono passati 30 giorni senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF: ti registriamo di nuovo in un minuto.`);
+  o.aggiornato = ora;
+  await L.DB.aggiorna(u, {Stato: L.STATI.SCADUTO, Archiviato: ora, Ordine: JSON.stringify(o)});
+  await L.registra("controllo giornaliero", "link scaduto (30 giorni)", u.f.Univoco, o.archiviato.stato);
+  return "link scaduto";
+}
+async function anonimizza(u, ora, perche){
+  const o = L.parseOrdine(u.f.Ordine);
+  await L.DB.aggiorna(u, {Nome: "", Cognome: "", Cellulare: "", "Codice Fiscale": "", "Nato a": "", Genere: "", "Data Nascita": "", Residenza: null, Push: [],
+    Stato: L.STATI.ANONIMO, Anonimizzato: ora, Ordine: JSON.stringify({archiviato: o.archiviato || {il: u.f.Archiviato}, anonimizzato: ora})});
+  await L.registra("controllo giornaliero", "dati cancellati", u.f.Univoco, perche || `${L.GIORNI_ARCHIVIO} giorni in archivio`);
+  return "dati cancellati";
+}
+async function linkInScadenza(u, ora){
+  if (u.f.Archiviato){
+    if (!u.f.Anonimizzato && new Date(ora) - new Date(u.f.Archiviato) >= L.GIORNI_ARCHIVIO * 864e5) return anonimizza(u, ora);
+    return null;
+  }
+  const sc = L.scadenzaLink(u.f); if (!sc) return undefined;          // undefined = non riguarda questo cliente
+  const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {};
+  if (new Date(ora) >= new Date(sc)){
+    if (pg.stato === "IN CORSO" && new Date(ora) - new Date(pg.creato || o.aggiornato || ora) < 2 * 864e5) return null;   // pagamento appena avviato: si aspetta l'esito
+    return archivia(u, ora);
+  }
+  const resta = Math.ceil((new Date(sc) - new Date(ora)) / 864e5), fino = L.giornoIt(sc), da = new Date(ora) - new Date(u.f.Creato), av = o.avvisi || {};
+  const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino), nome = L.nm(u.f.Nome);
+  let chiave = "", testo = "";
+  if (resta <= 5 && !av.link5){ chiave = "link5"; testo = `SocialGlass: ${nome}, ultimi giorni: il tuo link scade il ${fino}. Dopo dovrai registrarti di nuovo al CAF. ${link}`; }
+  else if (resta <= 16 && !av.link14 && !av.link5){ chiave = "link14";
+    testo = u.f.Stato === L.STATI.PAGAMENTO ? `SocialGlass: ${nome}, il preventivo del tuo occhiale ti aspetta: attiva l'abbonamento entro il ${fino}, poi il link scade. ${link}`
+      : u.f.Stato === L.STATI.MONTATURA ? `SocialGlass: ${nome}, la montatura che hai scelto è prenotata per te fino al ${fino}: passa in ottica per lenti e ricetta. ${link}`
+      : `SocialGlass: ${nome}, il tuo link per scegliere gli occhiali vale fino al ${fino}: passa in ottica e scegli la montatura. ${link}`; }
+  else if (u.f.Stato === L.STATI.PAGAMENTO && da > 3 * 864e5 && !av.attivazione && !av.link14 && !av.link5){ chiave = "attivazione";
+    testo = `SocialGlass: ${nome}, il preventivo del tuo occhiale è pronto: attiva l'abbonamento dal tuo link entro il ${fino} e l'ottica lo prepara subito. ${link}`; }
+  if (!chiave) return null;
+  await annota(u, o, chiave, testo); await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+  return chiave === "link5" ? "promemoria scadenza link" : chiave === "link14" ? "promemoria link (14 giorni)" : "promemoria attivazione";
+}
 // controllo di un cliente (usato dal controllo giornaliero e dalla barra del tempo delle prove)
 async function controlla(u, ora, esiti){
+  // chi non ha mai attivato: link valido 30 giorni dalla registrazione (poi archivio e, dopo altri 30, dati cancellati)
+  try { const r = await linkInScadenza(u, ora); if (r !== undefined){ if (r) esiti.push({univoco: u.f.Univoco, esito: r}); return; } }
+  catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); return; }
   // montatura prenotata ma ordine mai confermato: promemoria a 14 giorni, a 30 la montatura torna disponibile
   if ([L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){
     try { const r = await attesa(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
@@ -157,3 +203,4 @@ const handler = L.wrap(async (req, res) => {
 module.exports = handler;
 module.exports.esegui = esegui;
 module.exports.controlla = controlla;
+module.exports.anonimizza = anonimizza;

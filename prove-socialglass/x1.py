@@ -33,7 +33,7 @@ async def main():
         # dona: sceglie restituisci
         await pg.click("#mpAzione details.regole-box summary") if await pg.is_visible("#mpAzione details.regole-box summary") else None
         await pg.click("[data-fine=restituisci]"); await pg.click("#fineSi"); await pg.wait_for_timeout(900)
-        print("box dona:", await pg.is_visible("#mpDona")); await pg.check("#mpDona"); await pg.wait_for_timeout(500)
+        print("box dona (solo testo):", await pg.locator(".dona").count(), await pg.locator("#mpDona").count())
         # amico: registrazione dal CAF con codice amico + attivazione
         C=post("api/login",{"ruolo":"caf","codice":"CAF001","password":"demo"})["token"]
         r=post("api/utenti",{"cf":"RSSGNN80A01C351H","nome":"GIANNI","cognome":"ROSSI","nato":"CATANIA","datanascita":"1980-01-01","sesso":"M","prefisso":"+39","cellulare":"3331231234","ottica":"OTT07","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"},"amico":"SG8BAXXXX"},C)

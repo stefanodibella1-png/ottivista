@@ -905,7 +905,8 @@ $("formCliente").addEventListener("submit", async e => {
   mostraLink(r.data, `${d.prefisso} ${d.cellulare}`);
 });
 function mostraLink(data, numero){
-  $("inviatoTesto").textContent = data.smsInviato ? `SMS inviato a ${numero}. Codice del cliente:` : `Invia il link al cliente${numero ? " (" + numero + ")" : ""}. Codice del cliente:`;
+  const fino = new Date(Date.now() + 30 * 864e5).toLocaleDateString("it-IT", {day: "numeric", month: "long"});
+  $("inviatoTesto").textContent = (data.smsInviato ? `SMS inviato a ${numero}.` : `Invia il link al cliente${numero ? " (" + numero + ")" : ""}.`) + ` Il link vale 30 giorni (fino al ${fino}): diglielo. Codice del cliente:`;
   $("inviatoCodice").textContent = data.univoco; $("inviatoLink").textContent = data.link; $("inviatoWa").href = data.whatsapp;
   $("copiaLink").textContent = "Copia link";
   $("copiaLink").onclick = async () => { try { await navigator.clipboard.writeText(data.link); $("copiaLink").textContent = "Copiato"; } catch(_){ const s = getSelection(), rg = document.createRange(); rg.selectNodeContents($("inviatoLink")); s.removeAllRanges(); s.addRange(rg); } };
@@ -1041,7 +1042,7 @@ function disegnaClienti(){
     // ritiro e recesso restano possibili anche con l'anagrafica bloccata
     const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "") : "";
     return `<details class="cli" data-u="${esc(c.univoco)}" ${aperti.has(c.univoco) ? "open" : ""}><summary><div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>
-        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}</div></div></summary>
+        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}${c.scadeLink ? `<span class="chip" title="Il link del cliente scade se non attiva l'abbonamento">link fino al ${new Date(c.scadeLink).toLocaleDateString("it-IT", {day: "2-digit", month: "2-digit"})}</span>` : ""}</div></div></summary>
       <div class="corpo">
       ${c.bloccato ? contattoAdmin() : ""}
       <dl class="dl">${voce("Cellulare", esc(c.cellulare))}${voce(isOtt ? "CAF" : "Ottica", esc(isOtt ? c.caf : c.ottica))}${voce("Registrato il", dIt(c.creato))}
@@ -1193,7 +1194,7 @@ const TAPPE = [
 ];
 async function caricaMio(apri){
   const r = await api(`api/benvenuto?univoco=${encodeURIComponent(UNIVOCO)}&espositore=${encodeURIComponent(ESPOSITORE)}`);
-  if (!r.ok){ if (apri){ $("mpTitolo").textContent = "Link non valido"; $("mpTappe").innerHTML = ""; $("mpAzione").innerHTML = `<div class="esito err">${esc(r.data.errore || "Link non valido o scaduto.")} Contatta il tuo CAF.</div>`; open("miaPagina"); } return null; }
+  if (!r.ok){ if (apri){ $("mpTitolo").textContent = r.data.scaduto ? "Link scaduto" : "Link non valido"; $("mpTappe").innerHTML = ""; $("mpAzione").innerHTML = `<div class="esito err">${esc(r.data.errore || "Link non valido o scaduto.")}${r.data.scaduto ? "" : " Contatta il tuo CAF."}</div>`; open("miaPagina"); } return null; }
   mio = r.data; $("mio-ordine").hidden = false;
   disegnaMio(); return mio;
 }
@@ -1343,6 +1344,8 @@ function disegnaMio(){
   a += bannerApp(u) + strumentiCli(u);
   a += `<p class="piede-cli"><a href="privacy.html" target="_blank" rel="noopener">Informativa privacy</a></p>`;
   if (o && o.telefono) a += `<p class="piede-cli">Domande? <a href="tel:+${esc(String(o.telefono).replace(/\D/g, ""))}">Chiama ${esc(o.nome)}</a></p>`;
+  // link valido 30 giorni dalla registrazione finché non si attiva l'abbonamento
+  if (u.scadeLink) a = `<div class="esito info" style="margin-bottom:10px">⏳ Il tuo link vale fino al <b>${new Date(u.scadeLink).toLocaleDateString("it-IT", {day: "numeric", month: "long"})}</b>: attiva l'abbonamento entro quella data, poi per ripartire dovrai registrarti di nuovo al CAF.</div>` + a;
   $("mpAzione").innerHTML = a;
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
   const on = (id, f) => { const el = $(id); if (el) el.onclick = f; };

@@ -9,6 +9,7 @@ module.exports = L.wrap(async (req, res) => {
   if (s.ruolo === "lab"){
     if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
     const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
+    if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
     if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: "occhiale pronto", inizia: "lavorazione iniziata"}[b.azione] || b.azione, u.f.Univoco);
@@ -70,6 +71,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
+  if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
   L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", preventivo: "preventivo inserito", riscatto: "riscatto"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco);
   const ord = L.parseOrdine(u.f.Ordine);

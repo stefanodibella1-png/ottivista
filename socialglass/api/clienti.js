@@ -33,7 +33,7 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
     return L.send(res, 200, {ok: true});
   }
-  const rows = await L.DB.utenti(s.ruolo === "caf" ? {caf: s.id} : {ottico: s.id});
+  const rows = (await L.DB.utenti(s.ruolo === "caf" ? {caf: s.id} : {ottico: s.id})).filter(r => !r.f.Archiviato);
   for (const r of rows) if (r.f.Stato === L.STATI.PAGAMENTO) await L.verificaPagamento(r);
   const isOtt = s.ruolo === "ottico";
   const list = rows.map(({f}) => {
@@ -41,7 +41,7 @@ module.exports = L.wrap(async (req, res) => {
     // l'ottico vede anche i dati tecnici dell'occhiale e la ricetta; il CAF no (dati sanitari)
     const tecnico = isOtt ? {montaturaCodice: m ? m.codice : "", calibro: m ? `${m.calibro || ""}${m.asse ? "-" + m.asse : ""}` : "",
       lenti: o.lenti ? o.lenti.nome : "", trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, riscatto: o.prezzi ? o.prezzi.riscatto : null, prontoIl: o.prontoIl || ""} : {};
-    return Object.assign({univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,
+    return Object.assign({univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", scadeLink: L.scadenzaLink(f), cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,
       bloccato: L.situazione(f).bloccato, dona: !!(o.dona && o.dona.si && !o.dona.donato), voto: o.recensione ? o.recensione.voto : 0, lab: o.lab ? {stato: o.lab.stato, fonte: o.lab.fonte, ritirata: o.lab.ritirata || "", pronto: o.lab.pronto || ""} : null, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
       ottica: String(f.Ottica1 || "").split(" - ").slice(0, 2).join(" - "), caf: f.CAF || "",
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
