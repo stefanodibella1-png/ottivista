@@ -628,11 +628,10 @@ function boxRecensione(u){
 }
 function boxDona(u){
   const od = u.ordine || {}, d = u.dona || {}, fp = od.finePeriodo;
-  if (d.donato) return `<div class="dona"><span style="font-size:26px">💚</span><div><b>Il tuo occhiale ha aiutato qualcuno.</b><br>Grazie: l'abbiamo donato a chi non può permetterselo.</div></div>`;
-  if (d.daDonare) return `<div class="dona"><span style="font-size:26px">💚</span><div><b>Grazie!</b> Il tuo occhiale restituito verrà donato a chi ne ha bisogno.</div></div>`;
-  const restituisce = (od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato) || (fp && ["restituisci", "rinnova"].includes(fp.scelta) && !fp.eseguita);
+  if (d.donato) return `<div class="dona"><span style="font-size:26px">💚</span><div><b>Grazie!</b> Il tuo occhiale è stato rigenerato e donato a un'associazione benefica.</div></div>`;
+  const restituisce = d.daDonare || (od.ritiro && od.ritiro.daRitirare && !od.ritiro.ritirato) || (fp && ["restituisci", "rinnova"].includes(fp.scelta) && !fp.eseguita);
   if (!restituisce) return "";
-  return `<label class="dona" for="mpDona"><input type="checkbox" id="mpDona" ${d.si ? "checked" : ""} style="width:22px;height:22px;margin:2px 0 0;box-shadow:none;flex:0 0 auto"><div><b>Dono il mio occhiale</b><br>Quando lo riconsegni, lo doniamo a chi non può permettersi un paio di occhiali.</div></label>`;
+  return `<div class="dona"><span style="font-size:26px">💚</span><div>L'occhiale che restituisci verrà <b>rigenerato e donato a un'associazione benefica</b>.</div></div>`;
 }
 function strumentiCli(u){
   // «Il mio anno» ha senso dopo almeno 10 mesi di abbonamento
@@ -1056,7 +1055,7 @@ function disegnaClienti(){
       ${c.esito ? `<div><span class="chip s4">${esc(c.esito)}</span></div>` : ""}
       ${c.finePeriodo ? `<div><span class="chip s2">SCELTA DEL CLIENTE: ${esc(c.finePeriodo)}</span></div>` : ""}
       ${c.daRitirare ? `<div><span class="chip s3">OCCHIALE DA RITIRARE${c.ritiroInRitardo ? " · IN RITARDO" : ""}</span></div>` : ""}
-      ${c.dona && c.daRitirare ? `<div class="avviso-cli">💚 Il cliente ha scelto di <b>donare</b> l'occhiale restituito: mettilo da parte per SocialGlass.</div>` : ""}
+      ${c.daRitirare ? `<div class="avviso-cli">💚 L'occhiale restituito va messo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica.</div>` : ""}
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
       ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
         : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
@@ -1083,8 +1082,8 @@ $("clientiLista").addEventListener("click", async e => {
     await apriClienti();
     if (r.ok && r.data.avviso) avvisoCliente(r.data.avviso, "Occhiali segnati come pronti.");
     if (r.ok && b.dataset.azione === "ritirato") alertBox(r.data.rinnovo ? "Occhiale vecchio ritirato: il cambio è completo, l'abbonamento continua con quello nuovo."
-      : r.data.chiuso ? `Occhiale restituito registrato: l'abbonamento era già chiuso.${r.data.daDonare ? " Il cliente ha scelto di donarlo: tienilo da parte per SocialGlass." : ""}`
-      : `Occhiale restituito registrato: l'abbonamento si chiude da solo alla fine del mese in corso.${r.data.daDonare ? " Il cliente ha scelto di donarlo: tienilo da parte per SocialGlass." : ""}`);
+      : r.data.chiuso ? `Occhiale restituito registrato: l'abbonamento era già chiuso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`
+      : `Occhiale restituito registrato: l'abbonamento si chiude da solo alla fine del mese in corso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`);
     return;
   }
   if (b.dataset.recesso){
@@ -1214,7 +1213,7 @@ function regoleFine(p, per){
   return `<ul class="regole">
     <li><b>Occhiale nuovo:</b> vai dal tuo ottico (o da un altro ottico SocialGlass), scegli la nuova montatura e confermi il nuovo canone. L'abbonamento continua senza interruzioni; quando ritiri il nuovo riconsegni il vecchio.</li>
     <li><b>Lo compro usato:</b> se vuoi, compri l'occhiale usato pagando una volta ${p.riscatto ? euro(p.riscatto) : "il prezzo dell'usato"}: il noleggio si chiude e l'occhiale diventa tuo. Non è un obbligo e non è compreso nei canoni.</li>
-    <li><b>Lo restituisco:</b> riporti l'occhiale in ottica entro 15 giorni; l'abbonamento si chiude a fine mese, senza altri costi.</li>
+    <li><b>Lo restituisco:</b> riporti l'occhiale in ottica entro 15 giorni; l'abbonamento si chiude a fine mese, senza altri costi. L'occhiale verrà rigenerato e donato a un'associazione benefica.</li>
     <li><b>Se non scegli niente:</b> ${sc} l'abbonamento continua mese per mese allo stesso canone, con lo stesso occhiale, e puoi disdire quando vuoi.</li></ul>`;
 }
 // come spiegare al cliente la chiusura (i codici interni restano per ottica e amministratore)

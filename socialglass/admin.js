@@ -205,7 +205,7 @@ function disegna(){
     f((d.segnalazioni || []).length, "Segnalazioni dei clienti aperte", "Problemi con l'occhiale: le vede anche l'ottica", "numeri", true);
     const sv = d.servizio || {daDonare: [], recensioni: []};
     if (sv.daLeggere) fare.push(`<button type="button" data-vai-servizio class="urg"><span class="n">${sv.daLeggere}</span><span>Recensioni da 1 a 3 stelle da leggere<small>Contatta il cliente prima che lo scriva altrove</small></span><span class="va">Apri ›</span></button>`);
-    if (sv.daDonare.length) fare.push(`<button type="button" data-vai-servizio><span class="n">${sv.daDonare.length}</span><span>Occhiali restituiti da donare<small>I clienti hanno scelto di donarli</small></span><span class="va">Apri ›</span></button>`);
+    if (sv.daDonare.length) fare.push(`<button type="button" data-vai-servizio><span class="n">${sv.daDonare.length}</span><span>Occhiali restituiti da rigenerare e donare<small>Da rigenerare e consegnare a un'associazione benefica</small></span><span class="va">Apri ›</span></button>`);
     const max = Math.max(1, ...Object.values(n.perStato));
     // solo i numeri che non compaiono già nella lista «Da fare oggi»
     h += `<div class="cru-kpi"><button type="button" data-tab="clienti"><b>${n.clienti}</b>Clienti</button><button type="button" data-tab="clienti" class="ok"><b>${n.abbonamentiAttivi}</b>Abbonamenti attivi</button>

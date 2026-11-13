@@ -93,9 +93,10 @@ module.exports = L.wrap(async (req, res) => {
     // occhiale vecchio di un rinnovo: l'abbonamento continua, non si chiude niente
     ord.ritiro.ritirato = ora; ord.aggiornato = ora;
     if (!ord.ritiro.rinnovo){ ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; }
-    if (ord.dona && ord.dona.si && !ord.dona.donato) ord.dona.daDonare = ora;
+    // ogni occhiale restituito viene rigenerato e donato a un'associazione benefica
+    ord.dona = ord.dona || {}; if (!ord.dona.donato) ord.dona.daDonare = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.si), rinnovo: !!ord.ritiro.rinnovo, chiuso: !!(ord.pagamento && ord.pagamento.chiuso)});
+    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.daDonare), rinnovo: !!ord.ritiro.rinnovo, chiuso: !!(ord.pagamento && ord.pagamento.chiuso)});
   }
   if ((b.azione === "pronto" || b.azione === "consegnato") && ord.lab && ord.lab.stato !== "PRONTO") return L.send(res, 409, {errore: "L'occhiale è ancora in laboratorio: lo segna pronto il laboratorio quando ha finito."});
   if (b.azione === "pronto" || b.azione === "consegnato"){

@@ -260,7 +260,7 @@ module.exports = L.wrap(async (req, res) => {
     const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(x => pulito(x, 20).toUpperCase()).filter(Boolean).slice(0, 200), ora = new Date().toISOString();
     for (const id of ids){ const u = await L.DB.utente("Univoco", id); if (!u) continue; const o = L.parseOrdine(u.f.Ordine);
       if (az === "recensioneLetta" && o.recensione) o.recensione.letta = ora;
-      if (az === "donati" && o.dona && o.dona.daDonare){ o.dona.donato = ora; try { await L.pushCliente(u.f, `SocialGlass: ${L.nm(u.f.Nome)}, il tuo occhiale è stato donato a chi ne aveva bisogno. Grazie di cuore!`, "Il tuo occhiale ha aiutato qualcuno"); } catch(_){} }
+      if (az === "donati" && o.dona && o.dona.daDonare){ o.dona.donato = ora; try { await L.pushCliente(u.f, `SocialGlass: ${L.nm(u.f.Nome)}, il tuo occhiale è stato rigenerato e donato a un'associazione benefica. Grazie!`, "Il tuo occhiale ha aiutato qualcuno"); } catch(_){} }
       o.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); }
     return L.send(res, 200, {ok: true});
   }
