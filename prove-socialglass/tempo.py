@@ -1,3 +1,4 @@
+from aiuti_ottica import arrivo_e_consegna
 import asyncio, json, re, sys, urllib.request
 from playwright.async_api import async_playwright
 B = "http://localhost:8823/"
@@ -67,13 +68,7 @@ async def main():
             await bt.first.click(); await l.wait_for_timeout(900)
         await c.reload(); await c.wait_for_timeout(2200); print("5 LAB → TEL:", t(await c.inner_text("#mpTitolo")))
         # 6. tablet — consegna
-        await o.reload(); await o.wait_for_timeout(1200)
-        if await o.is_visible("#otticoPopup"): await o.fill("#codiceOttico", "OTT07"); await o.fill("#inputPasswordOttico", "demo"); await o.click("#otticoPopup button[type=submit]"); await o.wait_for_timeout(1500)
-        await o.locator("#cruOtt .fare button").filter(has_text="consegnare").click(); await o.wait_for_timeout(1200)
-        card = o.locator(f"#clientiLista details.cli[data-u={COD}]")
-        if not await card.get_attribute("open"): await card.locator("summary").click(); await o.wait_for_timeout(400)
-        cons = card.locator("button").filter(has_text="onsegnat"); await cons.first.click(); await o.wait_for_timeout(600)
-        if await cons.count() and re.search("onferm|di nuovo", await cons.first.inner_text()): await cons.first.click(); await o.wait_for_timeout(1000)
+        print("6 consegna:", await arrivo_e_consegna(o, COD))
         await c.reload(); await c.wait_for_timeout(2200); print("6 TABLET consegna → TEL:", t(await c.inner_text("#mpTitolo")))
         await c.screenshot(path="t06_tel_consegnato.png")
         # 7. il tempo passa (barra sul telefono)

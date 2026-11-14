@@ -20,10 +20,13 @@ module.exports = L.wrap(async (req, res) => {
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
     const no = L.permesso(b.azione === "pronto" ? "prontoLab" : b.azione, "lab", u.f); if (no) return L.send(res, 409, no);
-    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: "occhiale pronto", inizia: "lavorazione iniziata", disponibile: "montatura disponibile", richiedi: "montatura richiesta all'ottica"}[b.azione] || b.azione, u.f.Univoco);
+    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: b.spedisci ? "occhiale pronto e spedito all'ottica" : "occhiale pronto", spedito: "occhiale spedito all'ottica", inizia: "lavorazione iniziata", disponibile: "montatura disponibile", richiedi: "montatura richiesta all'ottica"}[b.azione] || b.azione, u.f.Univoco);
     const ora = new Date().toISOString(), lab = ord.lab;
     if (b.azione === "disponibile" || b.azione === "richiedi"){
       if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
+      // montatura arrivata dall'ottica: si controlla che sia proprio quella del cliente
+      if (b.azione === "disponibile" && lab.stato === "ATTESA MONTATURA" && !L.codiceMontatura(b.codice, ord.montatura && ord.montatura.codice))
+        return L.send(res, 409, {errore: b.codice ? `Il codice non corrisponde: questa non è la montatura del cliente (attesa ${(ord.montatura || {}).codice} ${(ord.montatura || {}).modello || ""} ${(ord.montatura || {}).colore || ""}). Non montare le lenti e avvisa l'ottica.` : "Scansiona o scrivi il codice della montatura ricevuta.", codice: true});
       const r = await L.labMontatura(u, ord, b.azione); if (r.errore) return L.send(res, 409, r);
       ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return L.send(res, 200, r);
     }
@@ -37,26 +40,14 @@ module.exports = L.wrap(async (req, res) => {
       return L.send(res, 200, {ok: true, stato: lab.stato});
     }
     else if (b.azione === "nota"){ lab.note = String(b.nota || "").slice(0, 300); }
-    else if (b.azione === "pronto"){
+    else if (b.azione === "pronto" || b.azione === "spedito"){
+      // occhiale finito: il cliente NON viene avvisato adesso (l'occhiale è ancora in laboratorio); lo avvisa l'ottica all'arrivo
       if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
-      if (lab.fonte !== "LAB" && !lab.ritirata) return L.send(res, 409, {errore: "Prima segna la montatura come ritirata."});
-      lab.stato = "PRONTO"; lab.pronto = ora; ord.prontoIl = ora;
-      // il cliente viene avvisato in automatico; se il canale non è collegato, il messaggio lo manda l'ottica
-      ord.avvisi = ord.avvisi || {};
-      // cliente moroso: l'occhiale resta in ottica e non lo invitiamo a ritirarlo finché non paga
-      if (L.situazione(u.f).bloccato){
-        lab.avvisoCliente = {il: ora, inviato: false, motivo: "cliente moroso: consegna bloccata"};
-        ord.avvisi["labpronto" + ora.slice(0, 10)] = {il: ora, testo: "Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente ha un canone non pagato: non può ritirarlo finché non paga (l'amministratore lo sta sollecitando)."};
-        ord.aggiornato = ora; await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
-        return L.send(res, 200, {ok: true, avviso: {inviato: false, motivo: "cliente moroso: non avvisato"}});
-      }
-      const av = await L.avvisaPronto(u); lab.avvisoCliente = {il: ora, canale: av.canale, inviato: av.inviato, motivo: av.motivo};
-      ord.avvisi["labpronto" + ora.slice(0, 10)] = av.inviato
-        ? {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente è già stato avvisato (${({sms: "SMS", notifica: "notifica sul telefono"})[av.canale] || "WhatsApp"}). Quando lo ritira, segna «consegnato».`}
-        : {il: ora, testo: `Il laboratorio ha finito l'occhiale: arriva in ottica. Il cliente NON è stato avvisato in automatico: mandagli tu il messaggio. ${av.testo}`, whatsapp: av.whatsapp};
-      ord.aggiornato = ora;
-      await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
-      return L.send(res, 200, {ok: true, avviso: {inviato: av.inviato, canale: av.canale, motivo: av.motivo}});
+      if (b.azione === "pronto"){ if (!lab.verifica && lab.fonte !== "LAB" && !lab.ritirata) return L.send(res, 409, {errore: "Prima segna la montatura come ritirata."}); lab.stato = "PRONTO"; lab.pronto = ora; }
+      if (b.azione === "spedito" || b.spedisci){ lab.stato = "SPEDITO"; lab.spedito = ora; }
+      ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      if (lab.stato === "SPEDITO") try { await L.pushPartner("ottico", String(u.f.Ottica1 || "").split(" - ")[0], `In arrivo dal laboratorio l'occhiale di ${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)} (${u.f.Univoco}): quando lo ricevi tocca «Occhiale arrivato».`, "Occhiale in arrivo", "/ottico"); } catch(e){ console.error(e); }
+      return L.send(res, 200, {ok: true, stato: lab.stato});
     } else return L.send(res, 400, {errore: "Operazione non valida."});
     ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {ok: true});
@@ -93,9 +84,35 @@ module.exports = L.wrap(async (req, res) => {
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
   if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
-  L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", preventivo: "preventivo inserito", riscatto: "riscatto"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco);
+  L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", arrivato: "occhiale arrivato in ottica", montaturaSpedita: "montatura spedita al laboratorio", preventivo: "preventivo inserito", riscatto: "riscatto"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco);
   const ord = L.parseOrdine(u.f.Ordine);
-  if (["recesso", "ritirato", "pronto", "consegnato"].includes(b.azione)){ const no = L.permesso(b.azione, "ottico", u.f); if (no) return L.send(res, 409, no); }
+  if (["recesso", "ritirato", "pronto", "consegnato", "arrivato", "montaturaSpedita"].includes(b.azione)){ const no = L.permesso(b.azione, "ottico", u.f); if (no) return L.send(res, 409, no); }
+  // montatura consegnata al corriere per il laboratorio
+  if (b.azione === "montaturaSpedita"){
+    const ora = new Date().toISOString(); ord.lab.spedita = ord.lab.spedita || ora; ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    try { await L.pushPartner("lab", "LAB", `L'ottica ${s.id} ha spedito la montatura ${(ord.montatura || {}).codice || ""} di ${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)} (${u.f.Univoco}).`, "Montatura in viaggio", "laboratorio.html"); } catch(e){ console.error(e); }
+    return L.send(res, 200, {ok: true});
+  }
+  // occhiale arrivato in ottica dal laboratorio: solo adesso il cliente viene invitato al ritiro
+  if (b.azione === "arrivato"){
+    const ora = new Date().toISOString(), lab = ord.lab;
+    lab.stato = "ARRIVATO"; lab.arrivato = ora; ord.prontoIl = ora; ord.avvisi = ord.avvisi || {}; ord.aggiornato = ora;
+    // cliente moroso: l'occhiale resta in ottica e non lo invitiamo a ritirarlo finché non paga
+    if (L.situazione(u.f).bloccato){
+      lab.avvisoCliente = {il: ora, inviato: false, motivo: "cliente moroso: consegna bloccata"};
+      await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
+      return L.send(res, 200, {ok: true, avviso: {inviato: false, motivo: "cliente moroso: non avvisato finché non paga"}});
+    }
+    await L.DB.aggiorna(u, {Stato: L.STATI.PRONTO, Ordine: JSON.stringify(ord)});
+    const av = await L.avvisaPronto(u), o2 = L.parseOrdine(u.f.Ordine);
+    o2.lab.avvisoCliente = {il: ora, canale: av.canale, inviato: av.inviato, motivo: av.motivo};
+    if (!av.inviato){ o2.avvisi = o2.avvisi || {}; o2.avvisi["arrivato" + ora.slice(0, 10)] = {il: ora, testo: `Occhiale arrivato: il cliente NON è stato avvisato in automatico, mandagli tu il messaggio.`, whatsapp: av.whatsapp}; }
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(o2)});
+    return L.send(res, 200, {ok: true, avviso: av});
+  }
+  // consegna: controllo del codice del cliente (tessera o ultime 4 cifre)
+  if (b.azione === "consegnato" && !L.codiceCliente(b.codice, u.f.Univoco))
+    return L.send(res, 409, {errore: b.codice ? "Il codice non corrisponde: controlla la tessera del cliente o chiedigli le ultime 4 cifre del suo codice." : "Scansiona la tessera del cliente o scrivi le ultime 4 cifre del suo codice.", codice: true});
   // recesso entro 14 giorni dall'attivazione (diritto del consumatore): l'abbonamento si chiude subito
   if (b.azione === "recesso"){
     const pg = ord.pagamento;
@@ -123,7 +140,7 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.daDonare), rinnovo: !!ord.ritiro.rinnovo, chiuso: !!(ord.pagamento && ord.pagamento.chiuso)});
   }
-  if ((b.azione === "pronto" || b.azione === "consegnato") && ord.lab && ord.lab.stato !== "PRONTO") return L.send(res, 409, {errore: "L'occhiale è ancora in laboratorio: lo segna pronto il laboratorio quando ha finito."});
+  if (b.azione === "pronto" && ord.lab) return L.send(res, 409, {errore: "L'occhiale lo segue il laboratorio: quando arriva in ottica tocca «Occhiale arrivato»."});
   if (b.azione === "pronto" || b.azione === "consegnato"){
     if (b.azione === "consegnato" && L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});

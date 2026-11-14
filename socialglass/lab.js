@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id), app = $("app");
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const dt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
-  let token = "", buste = [], filtro = "dafare", cerca = "", sel = new Set(), messaggio = null, apri = "", nomeLab = "Laboratorio";
+  let token = "", buste = [], filtro = "dafare", cerca = "", sel = new Set(), messaggio = null, apri = "", nomeLab = "Laboratorio", chiediCodice = "";
   try { token = sessionStorage.getItem("sg_lab") || ""; } catch(_){}
 
   async function api(path, opz){
@@ -41,13 +41,16 @@
 
   // buste nuove: il laboratorio verifica se ha la montatura (DA VERIFICARE) o la chiede all'ottica (ATTESA MONTATURA)
   const daVerificare = b => b.lab.stato === "DA VERIFICARE", inArrivo = b => b.lab.stato === "ATTESA MONTATURA", inAttesa = b => daVerificare(b) || inArrivo(b);
-  const daRitirare = b => !b.lab.verifica && b.lab.fonte !== "LAB" && !b.lab.ritirata && b.lab.stato !== "PRONTO";
+  // finito = lenti montate; spedito = partito verso l'ottica (o vecchie buste già «pronte per il ritiro»)
+  const finito = b => ["PRONTO", "SPEDITO", "ARRIVATO"].includes(b.lab.stato);
+  const spedito = b => ["SPEDITO", "ARRIVATO"].includes(b.lab.stato) || (b.lab.stato === "PRONTO" && b.stato !== "ABBONAMENTO ATTIVO - IN LAVORAZIONE");
+  const daRitirare = b => !b.lab.verifica && b.lab.fonte !== "LAB" && !b.lab.ritirata && !finito(b);
   const FILTRI = {
     verifica: ["Da verificare: hai la montatura?", b => daVerificare(b) && !b.chiuso],
     arrivo: ["Montature in arrivo dall'ottica", b => inArrivo(b) && !b.chiuso],
-    dafare: ["Da fare", b => b.lab.stato !== "PRONTO" && !inAttesa(b) && !b.chiuso],
+    dafare: ["Da fare", b => !spedito(b) && !inAttesa(b) && !b.chiuso],
     ritiro: ["Montature da ritirare", b => daRitirare(b) && !b.chiuso],
-    pronti: ["Pronti (30 giorni)", b => b.lab.stato === "PRONTO" && Date.now() - new Date(b.lab.pronto) < 30 * 864e5],
+    pronti: ["Spediti (30 giorni)", b => spedito(b) && Date.now() - new Date(b.lab.spedito || b.lab.pronto) < 30 * 864e5],
     tutti: ["Tutte le buste", () => true]
   };
   // montature da ritirare raggruppate per ottica: il giro da fare
@@ -65,9 +68,12 @@
       <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
     w.document.close();
   }
-  const attesa = b => { const g = Math.floor((Date.now() - new Date(b.lab.creato)) / 864e5); return b.lab.stato !== "PRONTO" && !b.chiuso && g >= 4 ? `<span class="chip c-rit">IN ATTESA DA ${g} GIORNI</span>` : ""; };
+  const attesa = b => { const g = Math.floor((Date.now() - new Date(b.lab.creato)) / 864e5); return !finito(b) && !b.chiuso && g >= 4 ? `<span class="chip c-rit">IN ATTESA DA ${g} GIORNI</span>` : ""; };
   function statoChip(b){
-    if (b.chiuso && b.lab.stato !== "PRONTO") return '<span class="chip c-rit">ORDINE CHIUSO</span>';
+    if (b.chiuso && !finito(b)) return '<span class="chip c-rit">ORDINE CHIUSO</span>';
+    if (b.lab.stato === "ARRIVATO") return `<span class="chip c-pronto">ARRIVATO IN OTTICA ${dt(b.lab.arrivato)}</span>`;
+    if (b.lab.stato === "SPEDITO") return `<span class="chip c-pronto">SPEDITO ALL'OTTICA ${dt(b.lab.spedito)}</span>`;
+    if (b.lab.stato === "PRONTO" && !spedito(b)) return `<span class="chip c-dafare">PRONTO: DA SPEDIRE</span>`;
     if (daVerificare(b)) return '<span class="chip c-rit">DA VERIFICARE: HAI LA MONTATURA?</span>' + attesa(b);
     if (inArrivo(b)) return `<span class="chip c-dafare">MONTATURA IN ARRIVO DALL'OTTICA (richiesta il ${dt(b.lab.richiesta)})</span>` + (b.lab.iniziato ? `<span class="chip c-lav">LENTI AVVIATE ${dt(b.lab.iniziato)}</span>` : "") + attesa(b);
     return (b.lab.stato === "PRONTO" ? `<span class="chip c-pronto">PRONTO ${dt(b.lab.pronto)}</span>` : b.lab.stato === "IN LAVORAZIONE" ? '<span class="chip c-lav">IN LAVORAZIONE</span>' : '<span class="chip c-dafare">DA FARE</span>')
@@ -105,13 +111,14 @@
 
   // il passo successivo, sempre visibile sulla riga della busta
   function prossimo(b){
-    if (b.chiuso || b.lab.stato === "PRONTO" || !b.inLavorazione) return "";
+    if (b.chiuso || spedito(b) || !b.inLavorazione) return "";
+    if (b.lab.stato === "PRONTO") return `<button type="button" class="verde" data-az="spedito" data-u="${esc(b.univoco)}">Spedito all'ottica</button>`;
     if (daVerificare(b)) return `<button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Montatura disponibile</button><button type="button" data-az="richiedi" data-u="${esc(b.univoco)}">Ritira la montatura dall'ottico</button>`;
     const inizio = `<button type="button" data-az="inizia" data-u="${esc(b.univoco)}">Inizio lavorazione</button>`;
-    if (inArrivo(b)) return `<button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Montatura arrivata: disponibile</button>${b.lab.iniziato ? "" : inizio}`;
+    if (inArrivo(b)) return `<button type="button" class="verde" data-arrivo="${esc(b.univoco)}">Montatura arrivata: controlla il codice</button>${b.lab.iniziato ? "" : inizio}`;
     if (daRitirare(b)) return `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>`;
     if (b.lab.stato !== "IN LAVORAZIONE") return inizio.replace('type="button"', 'type="button" class="verde"');
-    return `<button type="button" class="verde" data-az="pronto" data-u="${esc(b.univoco)}">Occhiale pronto · avvisa il cliente</button>`;
+    return `<button type="button" class="verde" data-az="pronto" data-spedisci="1" data-u="${esc(b.univoco)}">Pronto e spedito all'ottica</button><button type="button" class="grigio" data-az="pronto" data-u="${esc(b.univoco)}">Solo pronto</button>`;
   }
   function disegna(){
     const q = cerca.trim().toUpperCase();
@@ -121,7 +128,7 @@
     document.title = (conta("verifica") ? `(${conta("verifica")}) ` : "") + "Laboratorio · SocialGlass";
     const kp = (k, v, t, cl) => `<button type="button" data-f="${k}" class="${filtro === k ? "on " : ""}${cl || ""}"><b>${v}</b>${t}</button>`;
     app.innerHTML = `${messaggio ? `<div class="msg ${messaggio[1]}" role="status">${esc(messaggio[0])}</div>` : ""}
-      <div class="kpi">${kp("verifica", conta("verifica"), "Da verificare", conta("verifica") ? "att" : "")}${kp("arrivo", conta("arrivo"), "In arrivo dall'ottica")}${kp("dafare", conta("dafare"), "Da fare")}${conta("ritiro") ? kp("ritiro", conta("ritiro"), "Montature da ritirare", "att") : ""}${kp("pronti", conta("pronti"), "Pronti (30 giorni)", "ok")}${kp("tutti", conta("tutti"), "Tutte le buste")}</div>
+      <div class="kpi">${kp("verifica", conta("verifica"), "Da verificare", conta("verifica") ? "att" : "")}${kp("arrivo", conta("arrivo"), "In arrivo dall'ottica")}${kp("dafare", conta("dafare"), "Da fare")}${conta("ritiro") ? kp("ritiro", conta("ritiro"), "Montature da ritirare", "att") : ""}${kp("pronti", conta("pronti"), "Spediti (30 giorni)", "ok")}${kp("tutti", conta("tutti"), "Tutte le buste")}</div>
       <div class="barra"><input id="cerca" placeholder="Cerca per codice, cliente, ottica o montatura" value="${esc(cerca)}" aria-label="Cerca">
         <div class="az"><button type="button" class="grigio" id="aggiorna">Aggiorna</button><button type="button" id="stampaSel" ${sel.size ? "" : "disabled"}>Stampa buste selezionate (${sel.size})</button></div></div>
       ${l.length ? `<p style="margin:4px 0;color:#666;font-size:13px">${l.length} buste · <button type="button" class="link" id="selTutte">${l.every(b => sel.has(b.univoco)) ? "deseleziona" : "seleziona"} tutte</button></p>` : ""}
@@ -130,11 +137,12 @@
           <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}" onclick="event.stopPropagation()">
             <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${statoChip(b)}${prossimo(b)}</div></summary>
-        <div class="corpo">${corpoBusta(b)}
-          ${!b.chiuso && !b.lab.iniziato && b.lab.stato !== "PRONTO" && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">Tocca «Inizio lavorazione» quando ordini o prepari le lenti: da quel momento il cliente non può più annullare l'ordine.</p>` : ""}
-          ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione && !inAttesa(b) ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Occhiale pronto» il cliente riceve in automatico il messaggio (WhatsApp o SMS, come impostato da SocialGlass) e l'ottica viene avvisata.</p>` : ""}
+        <div class="corpo">${chiediCodice === b.univoco && inArrivo(b) ? `<div class="box" style="border:2px solid #2e7d32"><h4>Montatura arrivata: controllo</h4><p style="margin:0 0 6px">Scansiona il QR sulla montatura o scrivi il codice (atteso: <b>${esc((b.montatura || {}).codice || "")}</b>).</p>
+            <input id="codMont" autocomplete="off" placeholder="Codice montatura (es. SG-1042)" style="width:100%;max-width:280px"> <button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Conferma arrivo</button></div>` : ""}${corpoBusta(b)}
+          ${!b.chiuso && !b.lab.iniziato && !finito(b) && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">Tocca «Inizio lavorazione» quando ordini o prepari le lenti: da quel momento il cliente non può più annullare l'ordine.</p>` : ""}
+          ${!b.chiuso && !finito(b) && b.inLavorazione && !inAttesa(b) ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Pronto e spedito all'ottica» l'ottica riceve l'avviso che l'occhiale sta arrivando; il cliente lo avvisa l'ottica quando lo riceve.</p>` : ""}
           <div class="az">${!b.chiuso && daRitirare(b) ? `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>` : ""}
-            ${!b.chiuso && b.lab.stato !== "PRONTO" && b.inLavorazione && !inAttesa(b) && !daRitirare(b) ? prossimo(b) : ""}
+            ${!b.chiuso && !spedito(b) && b.inLavorazione && !inAttesa(b) && !daRitirare(b) ? prossimo(b) : ""}
             <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button></div></div></details>`).join("")
         || `<div class="vuoto">Nessuna busta in «${FILTRI[filtro][0]}».</div>`}`;
     const c = $("cerca"); c.oninput = () => { cerca = c.value; const p = c.selectionStart; disegna(); const n = $("cerca"); n.focus(); try { n.setSelectionRange(p, p); } catch(_){} };
@@ -155,18 +163,23 @@
       if (n === null) return; const r = await api("api/ordine", {method: "POST", body: JSON.stringify({univoco: x.univoco, azione: "nota", nota: n})});
       messaggio = r.ok ? ["Nota salvata.", "ok"] : [r.data.errore || "Errore", "err"]; return carica();
     }
+    if (b.dataset.arrivo){ chiediCodice = apri = b.dataset.arrivo; messaggio = null; disegna(); const i = $("codMont"); if (i) i.focus(); return; }
     if (b.dataset.az){
-      if (b.dataset.az === "pronto" && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Il cliente viene avvisato: tocca di nuovo"; return; }
+      if (b.dataset.az === "pronto" && b.dataset.spedisci && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? L'ottica viene avvisata che arriva: tocca di nuovo"; return; }
       if (b.dataset.az === "richiedi" && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Avvisiamo l'ottica di prepararla per il corriere: tocca di nuovo"; return; }
       b.disabled = true;
-      const r = await api("api/ordine", {method: "POST", body: JSON.stringify({univoco: b.dataset.u, azione: b.dataset.az})});
+      const corpo = {univoco: b.dataset.u, azione: b.dataset.az}; if (b.dataset.spedisci) corpo.spedisci = true;
+      if (b.dataset.az === "disponibile" && $("codMont") && chiediCodice === b.dataset.u) corpo.codice = $("codMont").value;
+      const r = await api("api/ordine", {method: "POST", body: JSON.stringify(corpo)});
+      if (r.ok && b.dataset.az === "disponibile") chiediCodice = "";
       if (r.status === 401) return esci();
       const av = r.ok && r.data.avviso;
       if (r.ok && b.dataset.az === "disponibile"){ apri = b.dataset.u; filtro = "dafare"; }
       messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata: il cliente è stato avvisato che da ora l'ordine non si può più annullare.",
         disponibile: "Montatura disponibile: qui sotto trovi la ricetta, procedi con la lavorazione.",
         richiedi: "L'ottica è stata avvisata: mette da parte la montatura con la scheda per il corriere. Quando arriva tocca «Montatura arrivata: disponibile».",
-        pronto: av && /moroso/.test(av.motivo || "") ? "Occhiale pronto: l'ottica è avvisata. Il cliente ha un pagamento in sospeso, quindi non viene invitato al ritiro finché non paga." : av && av.inviato ? `Occhiale pronto: il cliente è stato avvisato in automatico (${({sms: "SMS", notifica: "notifica sul telefono"})[av.canale] || "WhatsApp"}) e l'ottica lo sa.` : "Occhiale pronto: l'ottica è stata avvisata. Il messaggio automatico al cliente non è partito (canale non collegato), lo manda l'ottica."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
+        pronto: b.dataset.spedisci ? "Occhiale pronto e spedito: l'ottica è avvisata che sta arrivando. Il cliente lo avvisa l'ottica quando lo riceve." : "Occhiale pronto. Quando lo spedisci tocca «Spedito all'ottica».",
+        spedito: "Occhiale spedito: l'ottica è avvisata che sta arrivando."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
       return carica();
     }
   });

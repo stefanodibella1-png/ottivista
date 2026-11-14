@@ -365,9 +365,19 @@ async function avvisa(u, testo){
 }
 // «occhiali pronti»: parte da solo con il canale scelto nelle impostazioni (WhatsApp o SMS);
 // se il canale non è collegato resta il link WhatsApp da inviare a mano
+// consegna: il codice del cliente (scansione della tessera, codice intero o ultime 4 cifre) deve corrispondere
+function codiceCliente(inserito, univoco){
+  const n = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), x = n(inserito), uv = n(univoco);
+  return x.length >= 4 && (x === uv || x.includes(uv) || (x.length < uv.length && uv.endsWith(x)));
+}
+// arrivo della montatura in laboratorio: il codice scansionato o scritto deve essere quello della montatura del cliente
+function codiceMontatura(inserito, codice){
+  const n = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), x = n(inserito), c = n(codice);
+  return !!c && x.length >= 3 && (x === c || x.includes(c));
+}
 async function avvisaPronto(u){
   const ott = String(u.f.Ottica1 || "").split(" - ")[0], link = linkCliente(u.f.Univoco, ott, u.f.CAF, u.f.Listino);
-  const testo = `SocialGlass: ${nm(u.f.Nome)}, i tuoi occhiali sono pronti! Passa a ritirarli in ottica con il codice ${u.f.Univoco}. ${link}`;
+  const testo = `SocialGlass: ${nm(u.f.Nome)}, i tuoi occhiali sono pronti e ti aspettano in ottica! Passa a ritirarli con il codice ${u.f.Univoco}. ${link}`;
   const e = await inviaCliente(u.f, testo, [u.f.Nome || "", u.f.Univoco, link], CFG.waTemplatePronto);
   return {sms: e.inviato, inviato: e.inviato, canale: e.canale, motivo: e.motivo || "", testo, whatsapp: `https://wa.me/${numeroCliente(u.f).replace(/\D/g, "")}?text=${encodeURIComponent(testo)}`};
 }
@@ -563,8 +573,11 @@ const MAPPA = {
   inizia:          {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["DA FARE", "ATTESA MONTATURA"]},
   nota:            {ruoli: ["lab"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO, S_.CHIUSO]},
   prontoLab:       {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["IN LAVORAZIONE"]},
+  spedito:         {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["PRONTO"]},
+  montaturaSpedita:{ruoli: ["ottico"], stati: [S_.ATTIVO], lab: ["ATTESA MONTATURA"]},
+  arrivato:        {ruoli: ["ottico"], stati: [S_.ATTIVO], lab: ["SPEDITO", "PRONTO"]},
   pronto:          {ruoli: ["ottico"], stati: [S_.ATTIVO]},
-  consegnato:      {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO]},
+  consegnato:      {ruoli: ["ottico"], stati: [S_.PRONTO]},
   recesso:         {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
   ritirato:        {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO, S_.CHIUSO]},
   finePeriodo:     {ruoli: ["cliente"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
@@ -582,7 +595,10 @@ function permesso(azione, ruolo, f){
   if (!m.ruoli.includes(ruolo)) return {errore: "Operazione non permessa per il tuo ruolo."};
   if (!m.stati.includes(f.Stato)) return {errore: PERCHE_STATO[f.Stato] || "Operazione non possibile in questo stato."};
   if (m.lab){ const o = parseOrdine(f.Ordine), st = (o.lab && o.lab.stato) || ""; if (!m.lab.includes(st)) return {errore: st === "DA VERIFICARE" ? "Prima indica se la montatura è disponibile in laboratorio."
-    : azione === "prontoLab" ? (st === "PRONTO" ? "L'occhiale è già segnato pronto." : "Prima tocca «Inizio lavorazione».") : azione === "inizia" ? "La lavorazione è già iniziata." : "La montatura è già stata gestita: aggiorna la pagina."}; }
+    : azione === "prontoLab" ? (["PRONTO", "SPEDITO", "ARRIVATO"].includes(st) ? "L'occhiale è già segnato pronto." : "Prima tocca «Inizio lavorazione».")
+    : azione === "spedito" ? (st === "SPEDITO" || st === "ARRIVATO" ? "L'occhiale risulta già spedito." : "Prima segna l'occhiale pronto.")
+    : azione === "arrivato" ? (st === "ARRIVATO" ? "L'arrivo è già stato registrato." : "Il laboratorio non ha ancora finito l'occhiale.")
+    : azione === "montaturaSpedita" ? "Il laboratorio non sta aspettando questa montatura." : azione === "inizia" ? "La lavorazione è già iniziata." : "La montatura è già stata gestita: aggiorna la pagina."}; }
   return null;
 }
 
@@ -611,7 +627,7 @@ function residenza(r){
 function inLavorazione(o, stato){
   const lab = o && o.lab;
   // il cliente perde il diritto di annullare solo quando il laboratorio tocca «Inizio lavorazione» (lenti su misura)
-  return !!(lab && (lab.iniziato || lab.stato === "IN LAVORAZIONE" || lab.stato === "PRONTO")) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
+  return !!(lab && (lab.iniziato || ["IN LAVORAZIONE", "PRONTO", "SPEDITO", "ARRIVATO"].includes(lab.stato))) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
 }
 function annullabile(o, stato){
   const pg = (o && o.pagamento) || {};
@@ -1044,4 +1060,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

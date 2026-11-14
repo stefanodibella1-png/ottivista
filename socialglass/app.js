@@ -373,6 +373,7 @@ function disegnaCruscotto(isOtt, d){
     f(appOggi, "Appuntamenti di oggi", "Clienti che hanno prenotato dal loro link", "data-agenda");
     f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
     f(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", "Il cliente ha scelto la montatura: inserisci lenti e ricetta", `data-vai="stato:${STATI.MONTATURA}"`);
+    f(n(SIT_P.arrivo), "Occhiali in arrivo dal laboratorio", "Quando il pacco arriva, tocca «Occhiale arrivato»: il cliente viene avvisato", 'data-vai="sit:arrivo"', true);
     f(n(SIT_P.lab), "Montature da inviare al laboratorio", "Mettile da parte con la «Scheda per il laboratorio»: passa il corriere", 'data-vai="sit:lab"', true);
     f(n(c => c.stato === STATI.PRONTO), "Occhiali pronti da consegnare", "Quando il cliente li ritira, segna «consegnato»", `data-vai="stato:${STATI.PRONTO}"`);
     f(n(c => c.daRitirare), "Occhiali da ritirare dal cliente", "Fine abbonamento, recesso o rinnovo", 'data-vai="sit:ritiro"', l.some(c => c.ritiroInRitardo));
@@ -630,7 +631,7 @@ function traccia(u){
   const od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato === STATI.VERIFICA ? STATI.PAGAMENTO : u.stato), m = od.montatura, lab = u.lab;
   const fatte = u.stato === STATI.CONSEGNATO ? TAPPE.length : i + 1;
   const dettaglio = k => k === 1 && m ? `${esc(m.modello)} ${esc(m.colore)}` : k === 3 && od.pagamento && od.pagamento.attivatoIl ? dt(od.pagamento.attivatoIl)
-    : k === 4 && u.stato === STATI.ATTIVO && lab ? (lab.stato === "IN LAVORAZIONE" ? "Il laboratorio sta montando le lenti" : lab.fonte !== "LAB" && !lab.ritirata ? "Il laboratorio sta prendendo la montatura" : "In coda in laboratorio")
+    : k === 4 && u.stato === STATI.ATTIVO && lab ? (lab.stato === "SPEDITO" ? "Pronti: in viaggio verso l'ottica" : lab.stato === "PRONTO" ? "Pronti in laboratorio: stanno per partire verso l'ottica" : lab.stato === "IN LAVORAZIONE" ? "Il laboratorio sta montando le lenti" : lab.fonte !== "LAB" && !lab.ritirata ? "Il laboratorio sta prendendo la montatura" : "In coda in laboratorio")
     : k === 4 && u.prontoIl ? dt(u.prontoIl) : k === 5 && u.consegnatoIl ? dt(u.consegnatoIl) : "";
   const pct = Math.round(Math.min(fatte, TAPPE.length) / TAPPE.length * 100);
   return `<div class="barra-av" aria-hidden="true"><i style="width:${pct}%"></i></div><ol class="traccia">${TAPPE.map(([t, prossima], k) => `<li class="${k < fatte ? "fatto" : k === fatte ? "ora" : ""}"><span class="pt">${k < fatte ? "✓" : k + 1}</span><span class="tt">${k < fatte ? t : prossima}${dettaglio(k) && k <= fatte ? `<small>${dettaglio(k)}</small>` : ""}</span></li>`).join("")}</ol>`;
@@ -999,9 +1000,11 @@ const SIT_P = {
   ultimati: c => c.periodo && c.periodo.scaduto, consegnati: c => !!c.consegnatoIl || c.stato === STATI.CONSEGNATO, avvisi: c => !!c.avviso,
   attivi: c => c.attivatoIl && !c.chiuso, inattesa: c => !c.attivatoIl && !c.esito, mese: c => String(c.creato).slice(0, 7) === new Date().toISOString().slice(0, 7),
   fermi: c => c.stato === STATI.REGISTRATO && giorniDa(c.creato) > 3, ritiro: c => !!c.daRitirare, rinnovabili: c => c.rinnovabile && FINITO(c.stato) && !c.bloccato,
-  lab: c => c.lab && c.lab.fonte === "OTTICA" && !c.lab.ritirata && !["PRONTO", "DA VERIFICARE"].includes(c.lab.stato)
+  lab: c => c.lab && c.lab.fonte === "OTTICA" && !c.lab.ritirata && !c.lab.spedita && c.lab.stato === "ATTESA MONTATURA",
+  arrivo: c => c.stato === STATI.ATTIVO && c.lab && ["SPEDITO", "PRONTO"].includes(c.lab.stato)
 };
-const STATO_LAB = {"DA VERIFICARE": "il laboratorio controlla se ha la montatura", "ATTESA MONTATURA": "aspetta la montatura dall'ottica", "DA FARE": "in attesa di lavorazione", "IN LAVORAZIONE": "in lavorazione"};
+const STATO_LAB = {"DA VERIFICARE": "il laboratorio controlla se ha la montatura", "ATTESA MONTATURA": "aspetta la montatura dall'ottica", "DA FARE": "in attesa di lavorazione", "IN LAVORAZIONE": "in lavorazione",
+  "PRONTO": "occhiale pronto in laboratorio, da spedire", "SPEDITO": "occhiale in arrivo dal laboratorio", "ARRIVATO": "arrivato in ottica"};
 // scheda da mettere con la montatura per il corriere
 function stampaSchedaLab(c){
   const lb = labInfo || {}, m = c.montaturaCodice || "";
@@ -1061,7 +1064,9 @@ function disegnaClienti(){
     const az = c.bloccato ? linkBtn(c) : isOtt
       ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
         + (c.stato === STATI.ATTIVO && !c.lab ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
-        + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-azione="consegnato" data-u="${esc(c.univoco)}">Segna consegnato</button>` : "")
+        + (SIT_P.arrivo(c) ? `<button type="button" class="verde" data-azione="arrivato" data-u="${esc(c.univoco)}">Occhiale arrivato</button>` : "")
+        + (SIT_P.lab(c) ? `<button type="button" data-azione="montaturaSpedita" data-u="${esc(c.univoco)}">Montatura consegnata al corriere</button>` : "")
+        + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-consegna="${esc(c.univoco)}">Segna consegnato</button>` : "")
         + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
         + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
         + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "")
@@ -1107,11 +1112,20 @@ $("clientiLista").addEventListener("click", async e => {
   if (av){ post("api/clienti", {univoco: av.dataset.avvisato}).then(() => setTimeout(apriClienti, av.tagName === "A" ? 1500 : 100)); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.ord){ open("ordinePopup"); resetOrdine(); $("ordineCodice").value = b.dataset.ord; caricaOrdine(b.dataset.ord); return; }
+  // consegna: prima il controllo del codice del cliente (tessera o ultime 4 cifre)
+  if (b.dataset.consegna){
+    const uv = b.dataset.consegna, box = document.createElement("div"); box.className = "avviso-cli"; box.id = "boxCons";
+    box.innerHTML = `<b>Chi ritira?</b> Scansiona la tessera del cliente o scrivi le ultime 4 cifre del suo codice.<br><input id="codCons" autocomplete="off" inputmode="text" placeholder="es. ${esc(uv.slice(-4).replace(/./g, "•"))}" style="max-width:200px;margin:6px 0"> <button type="button" class="verde" data-azione="consegnato" data-u="${esc(uv)}">Conferma consegna</button>`;
+    const vecchio = $("boxCons"); if (vecchio) vecchio.remove(); b.closest(".az, div").after(box); $("codCons").focus(); return;
+  }
   if (b.dataset.azione){
-    b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.u, azione: b.dataset.azione}); if (scaduta(r)) return;
-    if (!r.ok) alertBox(r.data.errore);
+    b.disabled = true; const corpo = {univoco: b.dataset.u, azione: b.dataset.azione}; if (b.dataset.azione === "consegnato" && $("codCons")) corpo.codice = $("codCons").value;
+    const r = await post("api/ordine", corpo); if (scaduta(r)) return;
+    if (!r.ok){ b.disabled = false; alertBox(r.data.errore); if (r.data.codice && $("codCons")){ $("codCons").value = ""; $("codCons").focus(); } return; }
     await apriClienti();
-    if (r.ok && r.data.avviso) avvisoCliente(r.data.avviso, "Occhiali segnati come pronti.");
+    if (r.ok && r.data.avviso) avvisoCliente(r.data.avviso, b.dataset.azione === "arrivato" ? "Occhiale arrivato: il cliente è invitato al ritiro." : "Occhiali segnati come pronti.");
+    if (r.ok && b.dataset.azione === "montaturaSpedita") alertBox("Fatto: il laboratorio sa che la montatura è in viaggio.");
+    if (r.ok && b.dataset.azione === "consegnato") alertBox("Consegna registrata.");
     if (r.ok && b.dataset.azione === "ritirato") alertBox(r.data.rinnovo ? "Occhiale vecchio ritirato: il cambio è completo, l'abbonamento continua con quello nuovo."
       : r.data.chiuso ? `Occhiale restituito registrato: l'abbonamento era già chiuso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`
       : `Occhiale restituito registrato: l'abbonamento si chiude da solo alla fine del mese in corso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`);

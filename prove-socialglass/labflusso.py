@@ -79,13 +79,17 @@ async def main():
         sc = await pp.value; await sc.wait_for_timeout(800); await sc.set_viewport_size({"width": 800, "height": 1100}); await sc.screenshot(path="lf3_scheda.png", full_page=True); print("   scheda:", t(await sc.inner_text("body"))[:300]); await sc.close()
         # 7. laboratorio: montatura arrivata → ricetta → pronto
         await l.reload(); await l.wait_for_timeout(1200); await l.locator("[data-f=arrivo]").first.click(); await l.wait_for_timeout(300)
-        riga = l.locator(f"details[data-u={COD}]"); await riga.locator("button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
+        riga = l.locator(f"details[data-u={COD}]"); await riga.locator("button[data-arrivo]").first.click(); await l.wait_for_timeout(500)
+        await l.fill("#codMont", "SG-9999"); await riga.locator("button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1000); print("   codice sbagliato:", "non corrisponde" in await l.inner_text("body"))
+        await l.locator(f"details[data-u={COD}] button[data-arrivo]").first.click(); await l.wait_for_timeout(500); await l.fill("#codMont", "sg 1043"); await l.locator(f"details[data-u={COD}] button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
         print("7 LAB dopo arrivo:", t(await l.inner_text("body"))[:400]); await l.screenshot(path="lf4_lab_ricetta.png", full_page=True)
         riga = l.locator(f"details[data-u={COD}]")
         for i in range(5):
             bt = riga.locator("summary button")
             if not await bt.count(): break
             print("   clic:", await bt.first.inner_text()); await bt.first.click(); await l.wait_for_timeout(900)
-        await c.reload(); await c.wait_for_timeout(2200); print("8 TEL:", t(await c.inner_text("#mpTitolo")))
+        await c.reload(); await c.wait_for_timeout(2200); print("8 TEL prima dell'arrivo in ottica:", " ".join((await c.inner_text("body")).split())[:400])
+        from aiuti_ottica import arrivo_e_consegna
+        print("9 ottica:", await arrivo_e_consegna(o, COD)); await c.reload(); await c.wait_for_timeout(2200); print("10 TEL dopo la consegna:", " ".join((await c.inner_text("body")).split())[:400])
         print("errori:", E); await b.close()
 asyncio.run(main())

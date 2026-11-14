@@ -1,3 +1,4 @@
+from aiuti_ottica import arrivo_e_consegna
 import asyncio, json, re, sys, urllib.request
 from playwright.async_api import async_playwright
 B = "http://localhost:8823/"
@@ -86,7 +87,8 @@ async def main():
         sc = await pp.value; await sc.wait_for_timeout(800); await sc.set_viewport_size({"width": 800, "height": 1100}); await foto(sc, "STAMPA_scheda_per_il_laboratorio"); print("   scheda:", t(await sc.inner_text("body"))[:300]); await sc.close()
         # 7. laboratorio: montatura arrivata → ricetta → pronto
         await l.reload(); await l.wait_for_timeout(1200); await l.locator("[data-f=arrivo]").first.click(); await l.wait_for_timeout(300)
-        riga = l.locator(f"details[data-u={COD}]"); await riga.locator("button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
+        riga = l.locator(f"details[data-u={COD}]"); await riga.locator("button[data-arrivo]").first.click(); await l.wait_for_timeout(500)
+        await l.fill("#codMont", "SG-1043"); await foto(l, "PC_LAB_controllo_codice_montatura_arrivata"); await l.locator(f"details[data-u={COD}] button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
         print("7 LAB dopo arrivo:", t(await l.inner_text("body"))[:400]); await foto(l, "PC_LAB_montatura_arrivata_ricetta")
         riga = l.locator(f"details[data-u={COD}]")
         for i in range(5):
@@ -95,14 +97,7 @@ async def main():
             print("   clic:", await bt.first.inner_text()); await bt.first.click(); await l.wait_for_timeout(900)
         await c.reload(); await c.wait_for_timeout(2200); await foto(l, "PC_LAB_occhiale_pronto"); await foto(c, "TEL_cliente_occhiale_pronto"); print("8 TEL:", t(await c.inner_text("#mpTitolo")))
         # consegna in ottica e tempo che passa
-        await o.reload(); await o.wait_for_timeout(1200)
-        if await o.is_visible("#otticoPopup"): await o.fill("#codiceOttico", "OTT07"); await o.fill("#inputPasswordOttico", "demo"); await o.click("#otticoPopup button[type=submit]"); await o.wait_for_timeout(1500)
-        await foto(o, "TABLET_ottica_cruscotto_occhiale_pronto")
-        await o.locator("#cruOtt .fare button").filter(has_text="consegnare").click(); await o.wait_for_timeout(1200)
-        card = o.locator(f"#clientiLista details.cli[data-u={COD}]")
-        if not await card.get_attribute("open"): await card.locator("summary").click(); await o.wait_for_timeout(400)
-        cons = card.locator("button").filter(has_text="onsegnat"); await cons.first.click(); await o.wait_for_timeout(600)
-        if await cons.count() and re.search("onferm|di nuovo", await cons.first.inner_text()): await foto(o, "TABLET_ottica_conferma_consegna"); await cons.first.click(); await o.wait_for_timeout(1000)
+        print("consegna:", await arrivo_e_consegna(o, COD, foto))
         await c.reload(); await c.wait_for_timeout(2200); await foto(c, "TEL_cliente_occhiale_consegnato")
         await barra(c, "avanti", 7); await foto(c, "TEL_cliente_dopo_7_giorni_recensione")
         await barra(c, "avanti", 30); await barra(c, "insoluto", 0); await barra(c, "avanti", 7); await foto(c, "TEL_cliente_canone_non_pagato")
