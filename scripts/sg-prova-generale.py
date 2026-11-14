@@ -99,8 +99,13 @@ async def paga_stripe(ctx, uv, metodo="carta", iban=None, nome_pag="Prova Genera
                         (["input#billingLocality", "input[name=locality]", "input[autocomplete='address-level2']"], "Catania")]:
             c = await trova(pg, sels, 3)
             if c: await c.fill(v)
-    sp = await trova(pg, ["#enableStripePass", "input[name=enableStripePass]"], 2)
-    if sp and await sp.is_checked(): await sp.uncheck()
+    # paese Italia (il computer della prova è negli Stati Uniti: Stripe proporrebbe gli USA con il CAP) e niente «salva per Link»
+    pa = await trova(pg, ["select#billingCountry", "select[name=billingCountry]", "select[name=country]", "select[autocomplete=country]"], 5)
+    if pa: await pa.select_option("IT"); await pg.wait_for_timeout(800)
+    cap = await trova(pg, ["input#billingPostalCode", "input[name=postalCode]", "input[autocomplete=postal-code]"], 2)
+    if cap: await cap.fill("95124")
+    sp = await trova(pg, ["#enableStripePass", "input[name=enableStripePass]", "input[type=checkbox][id*=Link]", "input[type=checkbox][name*=save]"], 3)
+    if sp and await sp.is_checked(): await sp.uncheck(); await pg.wait_for_timeout(500)
     await pg.screenshot(path=f"{OUT}/stripe-{metodo}-compilato-{uv}.png")
     bt = await trova(pg, ["button[type=submit]", "button:has-text('Abbonati')"], 10); await bt.click()
     try: await pg.wait_for_url(lambda u: "checkout.stripe.com" not in u, timeout=90000)
