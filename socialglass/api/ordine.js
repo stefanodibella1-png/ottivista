@@ -27,9 +27,15 @@ module.exports = L.wrap(async (req, res) => {
       const r = await L.labMontatura(u, ord, b.azione); if (r.errore) return L.send(res, 409, r);
       ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return L.send(res, 200, r);
     }
-    if (lab.verifica && !lab.disponibile && ["ritirata", "inizia", "pronto"].includes(b.azione)) return L.send(res, 409, {errore: "Prima indica se la montatura è disponibile in laboratorio."});
+    if (lab.verifica && !lab.disponibile && ["ritirata", "pronto"].includes(b.azione)) return L.send(res, 409, {errore: "Prima indica se la montatura è disponibile in laboratorio."});
     if (b.azione === "ritirata"){ if (lab.fonte === "LAB") return L.send(res, 409, {errore: "La montatura è già in laboratorio."}); lab.ritirata = ora; }
-    else if (b.azione === "inizia"){ if (lab.stato === "PRONTO") return L.send(res, 409, {errore: "Già pronto."}); lab.stato = "IN LAVORAZIONE"; lab.iniziato = lab.iniziato || ora; }
+    else if (b.azione === "inizia"){
+      // lenti su misura avviate: da qui il cliente non può più annullare (anche se la montatura è ancora in viaggio)
+      lab.iniziato = lab.iniziato || ora; if (lab.stato === "DA FARE") lab.stato = "IN LAVORAZIONE";
+      ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+      try { await L.avvisa(u, `SocialGlass: ${L.nm(u.f.Nome)}, il laboratorio sta preparando le tue lenti su misura: da ora l'ordine non si può più annullare. Ti avvisiamo quando gli occhiali sono pronti.`); } catch(e){ console.error(e); }
+      return L.send(res, 200, {ok: true, stato: lab.stato});
+    }
     else if (b.azione === "nota"){ lab.note = String(b.nota || "").slice(0, 300); }
     else if (b.azione === "pronto"){
       if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
@@ -97,12 +103,14 @@ module.exports = L.wrap(async (req, res) => {
     if (L.inLavorazione(ord, u.f.Stato)) return L.send(res, 409, {errore: "Il laboratorio ha già iniziato le lenti su misura: l'annullamento non è più possibile."});
     if (L.CFG.stripeKey && pg.abbonamento){ try { await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`); } catch(e){ console.error(e); return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco."}); } }
     const ora = new Date().toISOString();
-    pg.chiuso = ora; pg.esito = "RECESSO PRIMA DELLA LAVORAZIONE: RIMBORSO TOTALE DA FARE DA STRIPE";
+    pg.chiuso = ora; pg.esito = "RECESSO PRIMA DELLA LAVORAZIONE: RIMBORSO TOTALE DA FARE DA STRIPE"; pg.rimborso = {daFare: ora};
+    let mont = ""; try { mont = await L.montaturaDopoRecesso(ord, u.f.Univoco); } catch(e){ console.error(e); }
+    if (ord.lab){ ord.lab.annullato = ora; if (mont) ord.lab.montaturaDopo = mont; }
     if (u.f.Stato === L.STATI.CONSEGNATO || u.f.Stato === L.STATI.PRONTO) ord.ritiro = {daRitirare: u.f.Stato === L.STATI.CONSEGNATO, dal: ora};
     ord.aggiornato = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     const av = await L.avvisa(u, `SocialGlass: ${L.nm(u.f.Nome)}, abbiamo registrato il recesso: l'abbonamento è chiuso e non ci saranno altri addebiti. Il rimborso arriva sul metodo di pagamento usato.${ord.ritiro && ord.ritiro.daRitirare ? " Riporta l'occhiale in ottica." : ""}`);
-    return L.send(res, 200, {ok: true, avviso: av});
+    return L.send(res, 200, {ok: true, avviso: av, montatura: mont});
   }
   if (b.azione === "ritirato"){
     if (!ord.ritiro || !ord.ritiro.daRitirare) return L.send(res, 409, {errore: "Non c'è un occhiale da ritirare."});

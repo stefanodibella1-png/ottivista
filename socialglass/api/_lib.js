@@ -560,9 +560,9 @@ const MAPPA = {
   disponibile:     {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["DA VERIFICARE", "ATTESA MONTATURA"]},
   richiedi:        {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["DA VERIFICARE"]},
   ritirata:        {ruoli: ["lab"], stati: [S_.ATTIVO]},
-  inizia:          {ruoli: ["lab"], stati: [S_.ATTIVO]},
+  inizia:          {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["DA FARE", "ATTESA MONTATURA"]},
   nota:            {ruoli: ["lab"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO, S_.CHIUSO]},
-  prontoLab:       {ruoli: ["lab"], stati: [S_.ATTIVO]},
+  prontoLab:       {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["IN LAVORAZIONE"]},
   pronto:          {ruoli: ["ottico"], stati: [S_.ATTIVO]},
   consegnato:      {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO]},
   recesso:         {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
@@ -581,7 +581,8 @@ function permesso(azione, ruolo, f){
   const m = MAPPA[azione]; if (!m) return {errore: "Operazione non prevista."};
   if (!m.ruoli.includes(ruolo)) return {errore: "Operazione non permessa per il tuo ruolo."};
   if (!m.stati.includes(f.Stato)) return {errore: PERCHE_STATO[f.Stato] || "Operazione non possibile in questo stato."};
-  if (m.lab){ const o = parseOrdine(f.Ordine), st = (o.lab && o.lab.stato) || ""; if (!m.lab.includes(st)) return {errore: st === "DA VERIFICARE" ? "Prima indica se la montatura è disponibile in laboratorio." : "La montatura è già stata gestita: aggiorna la pagina."}; }
+  if (m.lab){ const o = parseOrdine(f.Ordine), st = (o.lab && o.lab.stato) || ""; if (!m.lab.includes(st)) return {errore: st === "DA VERIFICARE" ? "Prima indica se la montatura è disponibile in laboratorio."
+    : azione === "prontoLab" ? (st === "PRONTO" ? "L'occhiale è già segnato pronto." : "Prima tocca «Inizio lavorazione».") : azione === "inizia" ? "La lavorazione è già iniziata." : "La montatura è già stata gestita: aggiorna la pagina."}; }
   return null;
 }
 
@@ -609,7 +610,8 @@ function residenza(r){
 // lenti su misura: dopo l'inizio della lavorazione l'annullamento (recesso) non è più possibile
 function inLavorazione(o, stato){
   const lab = o && o.lab;
-  return !!(lab && (lab.disponibile || lab.iniziato || lab.ritirata || lab.stato === "IN LAVORAZIONE" || lab.stato === "PRONTO")) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
+  // il cliente perde il diritto di annullare solo quando il laboratorio tocca «Inizio lavorazione» (lenti su misura)
+  return !!(lab && (lab.iniziato || lab.stato === "IN LAVORAZIONE" || lab.stato === "PRONTO")) || [STATI.PRONTO, STATI.CONSEGNATO].includes(stato);
 }
 function annullabile(o, stato){
   const pg = (o && o.pagamento) || {};
@@ -779,10 +781,21 @@ async function labMontatura(u, ord, azione){
       });
       Object.assign(lab, {fonte: "LAB", sede: LAB});
     } else lab.ritirata = ora;   // arrivata dall'ottica con il corriere
-    Object.assign(lab, {stato: "DA FARE", disponibile: ora});
+    // lenti già avviate mentre la montatura viaggiava: si va direttamente a «in lavorazione»
+    Object.assign(lab, {stato: lab.iniziato ? "IN LAVORAZIONE" : "DA FARE", disponibile: ora});
     return {ok: true};
   }
   return {errore: "Operazione non valida."};
+}
+// annullamento (recesso): la montatura torna dov'è fisicamente
+async function montaturaDopoRecesso(ord, univoco){
+  const lab = ord.lab, codice = ord.montatura && ord.montatura.codice; if (!codice) return "";
+  // ancora prenotata (laboratorio non ancora passato, o nessun laboratorio): torna disponibile dove era
+  if (!lab || lab.stato === "DA VERIFICARE" || (!lab.verifica && !lab.ritirata && lab.fonte !== "LAB")){ await liberaMontatura(codice, univoco); return "montatura di nuovo disponibile"; }
+  // chiesta all'ottica ma non ancora arrivata: resta (o torna) in ottica
+  const dove = lab.stato === "ATTESA MONTATURA" ? (lab.sede || "") : LAB; if (!dove) return "";
+  await DB.tx("mont", codice, f => { const {g, r} = scorte(f); g[dove] = (g[dove] || 0) + 1; return campiScorte(f, g, r, {tipo: "rientro dopo annullamento", qta: 1, dove, cliente: univoco}); });
+  return dove === LAB ? "montatura rientrata nel magazzino del laboratorio" : "montatura di nuovo disponibile in ottica: non va più spedita";
 }
 // rilascia: il pezzo torna nella sede da cui era stato preso; scarica: esce dal magazzino (ordine pagato)
 async function liberaMontatura(codice, univoco, scarico){
@@ -1031,4 +1044,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

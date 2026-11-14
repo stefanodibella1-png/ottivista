@@ -26,6 +26,7 @@ mkdir -p npmqr && (cd npmqr && npm pack qrcodejs@1.0.0 >/dev/null && tar xzf qrc
 - `m1.py` modifiche UX · `m2.py` funzioni cliente · `m3.py` ottica, admin, listini, registro, importazione, copia, report · `m4.py` preventivo con lente nuova · `x1.py` servizi (amico, recensioni, tessera, dona).
 - Percorso completo cliente: `v1.py` … `v11.py` (con `srv-viaggio.js`, in ordine; i salti di tempo sono nei comandi curl).
 - Fine abbonamento: `crea_cliente.py` (crea una cliente consegnata via API) + `f1.py` scelta, `f2.py` pagina cliente, `f3.py` ritiro in ottica.
+- `rec6.py` inizio lavorazione e annullamento (modifica 6): pronto bloccato senza inizio, recesso con montatura rientrata, inizio mentre la montatura viaggia, rimborsi da fare.
 - `node prove-socialglass/usato5.cjs`: acquisto dell'usato (modifica 5) con Stripe simulato: richiesta unica, Stripe guasto e ripresa, pagamento riuscito, non pagato dopo 30 giorni, pagamento recuperato di notte.
 - `sepa4.py` pagamento con IBAN (modifica 4): carta, IBAN confermato, IBAN rifiutato e nuovo pagamento. `node prove-socialglass/notte3.cjs`: controllo notturno con Stripe simulato.
 - `pag3.py` pagamenti (modifica 3): avvisi Stripe ripetuti, fuori ordine, insoluto e sollecito una sola volta.

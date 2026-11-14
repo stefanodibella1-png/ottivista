@@ -182,6 +182,7 @@ function disegnaScheda(c){
       ${c.passi.slice().reverse().map(x => `<tr><td>${new Date(x.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"})}</td><td>${esc(x.chi || "")}</td><td>${esc(x.az || "")}</td><td>${esc(x.da || "")}</td><td>${esc(x.a || "")}</td></tr>`).join("")}
       </tbody></table></div></details>` : ""}
 
+    ${pg.rimborso && pg.rimborso.daFare && !pg.rimborso.fatto ? `<div class="esito err" style="display:block;margin-top:6px"><b>Rimborso da fare:</b> recesso del ${dt(pg.rimborso.daFare)}. Rimborsa il pagamento dalla dashboard Stripe (cliente ${esc(pg.cliente || "")}), poi tocca qui.<br><button type="button" class="verde" data-rimborsato="${esc(c.univoco)}" style="margin-top:6px">Rimborso fatto</button></div>` : pg.rimborso && pg.rimborso.fatto ? `<p class="hint">Rimborso del recesso fatto il ${dt(pg.rimborso.fatto)}.</p>` : ""}
     <div class="az" style="margin-top:6px"><button type="button" class="grigio" data-elimina="cliente" data-id="${esc(c.univoco)}" data-attivo="${pg.abbonamento && !pg.chiuso ? 1 : ""}">Elimina cliente</button></div>`;
 }
 function disegna(){
@@ -206,6 +207,7 @@ function disegna(){
     f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
     f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
     f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
+    { const rb = d.rimborsi || []; if (rb.length) fare.push(`<button type="button" data-scheda="${esc(rb[0].univoco)}" class="urg"><span class="n">${rb.length}</span><span>Rimborsi da fare (recesso)<small>${esc(rb.map(x => `${x.nome} ${euro(x.importo)}`).join(" · ").slice(0, 160))} · fai il rimborso da Stripe, poi «Rimborso fatto» nella scheda</small></span><span class="va">Apri ›</span></button>`); }
     { const ds = d.differenzeStripe || []; if (ds.length) fare.push(`<button type="button" data-scheda="${esc(ds[0].univoco)}" class="urg"><span class="n">${ds.length}</span><span>Differenze con Stripe da controllare<small>${esc(ds.map(x => x.univoco + ": " + x.testo).join(" · ").slice(0, 160))}</small></span><span class="va">Apri ›</span></button>`); }
     f((d.segnalazioni || []).length, "Segnalazioni dei clienti aperte", "Problemi con l'occhiale: le vede anche l'ottica", "numeri", true);
     const sv = d.servizio || {daDonare: [], recensioni: []};
@@ -363,6 +365,7 @@ async function clic(e){
   if (inv){ setTimeout(async () => { const r = await call("ordineFornitore", {op: "invia", id: inv.dataset.inviaOrd}); if (r.ok){ await carica(); msg("Ordine segnato come inviato. Se non l'hai spedito davvero, annullalo e ricrealo."); } }, 400); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; if (scheda === "solleciti") sollecitiAdm = null; disegna(); return; }
+  if (b.dataset.rimborsato){ const r = await call("rimborsato", {id: b.dataset.rimborsato}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); const s = await call("scheda", {id: b.dataset.rimborsato}); if (s.ok) schedaCli = s.data.cliente; msg("Rimborso segnato come fatto.", "ok"); disegna(); return; }
   if (b.dataset.scheda){ const r = await call("scheda", {id: b.dataset.scheda}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); schedaCli = r.data.cliente; disegna(); $("admCorpo").scrollTop = 0; b.blur(); const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); return; }
   if (b.hasAttribute("data-chiudi-scheda")){ schedaCli = null; disegna(); return; }
   if (b.dataset.modCaf){ riempi(document.querySelector('[data-f="salvaCaf"]'), dati.caf.find(x => x.ID === b.dataset.modCaf)); return; }

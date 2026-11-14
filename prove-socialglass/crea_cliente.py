@@ -17,7 +17,7 @@ def crea(base, nome, cognome, data, sesso, mont):
     A=call("api/admin",{"azione":"imposta","password":"passwordlunga1"}).get("token") or call("api/admin",{"azione":"accedi","password":"passwordlunga1"})["token"]
     call("api/admin",{"azione":"salvaLab","nome":"Lab Demo","attivo":True,"password":"laboratorio1"},A)
     Lb=call("api/login",{"ruolo":"lab","password":"laboratorio1"})["token"]
-    for az in ["ritirata","pronto"]: call("api/ordine",{"univoco":uv,"azione":az},Lb)
+    for az in ["ritirata","inizia","pronto"]: call("api/ordine",{"univoco":uv,"azione":az},Lb)
     print(call("api/ordine",{"univoco":uv,"azione":"consegnato"},T).get("stato"), uv)
     return uv
 if __name__=="__main__":

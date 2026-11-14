@@ -1121,7 +1121,7 @@ $("clientiLista").addEventListener("click", async e => {
     if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi il recesso? Tocca di nuovo"; b.className = "verde"; return; }
     b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.recesso, azione: "recesso"}); if (scaduta(r)) return;
     if (!r.ok){ b.disabled = false; alertBox(r.data.errore); return; }
-    await apriClienti(); avvisoCliente(r.data.avviso || {}, "Recesso registrato: abbonamento chiuso, niente altri addebiti. Fai il rimborso dalla dashboard Stripe (Pagamenti → rimborsa).");
+    await apriClienti(); avvisoCliente(r.data.avviso || {}, "Recesso registrato: abbonamento chiuso, niente altri addebiti. Il rimborso lo fa SocialGlass." + (r.data.montatura ? " " + r.data.montatura.charAt(0).toUpperCase() + r.data.montatura.slice(1) + "." : ""));
     return;
   }
   if (b.dataset.rinnovo || b.dataset.rinnovoUv){

@@ -184,6 +184,8 @@ module.exports = L.wrap(async (req, res) => {
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
       differenzeStripe: ((await L.DB.meta("differenze-stripe")) || {}).voci || [],
+      rimborsi: utenti.map(u => ({f: u.f, pg: L.parseOrdine(u.f.Ordine).pagamento || {}, o: L.parseOrdine(u.f.Ordine)})).filter(x => x.pg.rimborso && x.pg.rimborso.daFare && !x.pg.rimborso.fatto)
+        .map(x => ({univoco: x.f.Univoco, nome: `${L.nm(x.f.Nome)} ${L.nm(x.f.Cognome)}`, dal: x.pg.rimborso.daFare, importo: (x.pg.pagamenti || []).reduce((a, p) => a + (p.canone || 0) + (p.spedizione || 0), 0) || ((x.o.prezzi || {}).rata || 0) + ((x.o.prezzi || {}).spedizione || 0)})),
       segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))
         .sort((a, b) => String(b.il).localeCompare(String(a.il))),
       copie: (((await L.DB.meta("copie")) || {}).elenco) || [],
@@ -458,6 +460,17 @@ module.exports = L.wrap(async (req, res) => {
         stato: f.Stato || "", abbonamentoAttivo: !!(pg.abbonamento && !pg.chiuso), creato: f.Creato || "", moroso: si.moroso, bloccato: si.bloccato,
         scadenza: per && !per.chiuso ? per.scadenza : "", inScadenza: !!(per && !per.chiuso && per.aperto && !per.scaduto), chiuso: !!pg.chiuso, esito: pg.esito || ""}; })
       .sort((a, b) => String(b.creato).localeCompare(String(a.creato)))});
+  }
+  // rimborso del recesso fatto dalla dashboard Stripe: si segna qui (resta nello storico)
+  if (az === "rimborsato"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {};
+    if (!pg.rimborso || !pg.rimborso.daFare) return L.send(res, 409, {errore: "Per questo cliente non c'è un rimborso da fare."});
+    if (pg.rimborso.fatto) return L.send(res, 409, {errore: "Rimborso già segnato come fatto."});
+    pg.rimborso.fatto = new Date().toISOString(); pg.esito = "RECESSO PRIMA DELLA LAVORAZIONE: RIMBORSATO";
+    L.chi(null, "rimborso fatto"); await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+    await L.registra("amministratore", "rimborso del recesso fatto", u.f.Univoco, "");
+    return L.send(res, 200, {ok: true});
   }
   if (az === "scheda"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});

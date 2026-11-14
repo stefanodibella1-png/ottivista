@@ -82,7 +82,7 @@ async def main():
         riga = l.locator(f"details[data-u={COD}]"); await riga.locator("button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
         print("7 LAB dopo arrivo:", t(await l.inner_text("body"))[:400]); await l.screenshot(path="lf4_lab_ricetta.png", full_page=True)
         riga = l.locator(f"details[data-u={COD}]")
-        for i in range(3):
+        for i in range(5):
             bt = riga.locator("summary button")
             if not await bt.count(): break
             print("   clic:", await bt.first.inner_text()); await bt.first.click(); await l.wait_for_timeout(900)
