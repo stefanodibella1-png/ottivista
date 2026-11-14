@@ -63,7 +63,12 @@ async def paga_stripe(ctx, uv, metodo="carta", iban=None, nome_pag="Prova Genera
     for sel in ["#c1", "#c2", "#c3"]:
         if await pg.locator(sel).count(): await pg.check(sel)
     await pg.click("#mpPaga"); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000)
-    await pg.wait_for_selector("#email, #cardNumber, [data-testid=card-accordion-item-button], #payment-method-accordion-item-title-card", state="visible", timeout=45000); await pg.wait_for_timeout(1500)
+    try: await pg.wait_for_selector("#email, #cardNumber, [data-testid=card-accordion-item-button], #payment-method-accordion-item-title-card", state="visible", timeout=45000)
+    except Exception:
+        await pg.screenshot(path=f"{OUT}/stripe-non-pronto-{uv}.png", full_page=True)
+        ids = await pg.evaluate("() => [...document.querySelectorAll('input,button,[data-testid]')].slice(0, 60).map(e => (e.id || e.getAttribute('data-testid') || e.name || e.type) + ':' + (e.offsetWidth > 0))")
+        print("  campi della pagina Stripe:", ids); raise
+    await pg.wait_for_timeout(1500)
     await pg.screenshot(path=f"{OUT}/stripe-{metodo}-{uv}.png", full_page=True)
     if await pg.locator("#email").count() and await pg.locator("#email").is_editable(): await pg.fill("#email", f"prova.generale+{uv.lower()}@example.com")
     if metodo == "carta":
@@ -89,8 +94,11 @@ async def main():
         tel = await b.new_context(viewport={"width": 390, "height": 844}, locale="it-IT")
         tab = await b.new_context(viewport={"width": 820, "height": 1180}, locale="it-IT")
         pc = await b.new_context(viewport={"width": 1280, "height": 900}, locale="it-IT")
+        # pagina di Stripe: browser da computer, senza animazioni (in automatico il modulo a volte resta fuori schermo)
+        stp = await b.new_context(viewport={"width": 1280, "height": 1000}, locale="it-IT", reduced_motion="reduce",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
         ERR = []
-        for c in (tel, tab, pc): c.on("page", lambda pg: pg.on("pageerror", lambda e: ERR.append(str(e)[:200])))
+        for c in (tel, tab, pc, stp): c.on("page", lambda pg: pg.on("pageerror", lambda e: ERR.append(str(e)[:200])))
         # magazzino: 3 pezzi per montatura di prova in OTT07 (alla fine si rimette com'era)
         s, d = adm("dati"); prima = {m["Codice"]: dict(m.get("giacenze") or {}) for m in d.get("montature", []) if m["Codice"] in ("SG-1042", "SG-1043", "SG-1044")}
         for m in prima: adm("magazzino", codice=m, op="carico", qta=3, a="OTT07")
@@ -110,7 +118,7 @@ async def main():
             for k, v in {"OD_sf": "-1,25", "OD_cil": "-0,50", "OD_ax": "90", "OS_sf": "-1", "pd": "63"}.items(): await o.fill(f"#formOrdine [name={k}]", v)
             await o.screenshot(path=f"{OUT}/A3-tablet-preventivo.png", full_page=True); await o.click("#ordineInvia"); await o.wait_for_timeout(3000)
             c = stato(uvA); esito("A3 preventivo dal tablet dell'ottica", c.get("stato") == "IN ATTESA PAGAMENTO", (c.get("ordine") or {}).get("prezzi"))
-            await paga_stripe(tel, uvA, "carta")
+            await paga_stripe(stp, uvA, "carta")
             c = attendi(lambda: (lambda x: x if x.get("stato") == "ABBONAMENTO ATTIVO - IN LAVORAZIONE" else None)(stato(uvA)), 120)
             pgA = (c or {}).get("ordine", {}).get("pagamento", {}); esito("A4 pagamento con carta 4242 su Stripe → abbonamento attivo", bool(c), {k: pgA.get(k) for k in ("stato", "ratePagate", "abbonamento", "cliente")})
             if pgA.get("cliente"): CLIENTI_STRIPE.add(pgA["cliente"])
@@ -161,7 +169,7 @@ async def main():
             uvB = registra("PRVMRT71A41C351", "MARTA", "1971-01-01")
             call("api/benvenuto", {"azione": "consenso", "univoco": uvB, "si": True}); call("api/montatura", {"univoco": uvB, "codice": "SG-1044"})
             call("api/ordine", {"univoco": uvB, "lente": "mono", "trattamenti": [], "ricetta": RICETTA}, T)
-            await paga_stripe(tel, uvB, "carta")
+            await paga_stripe(stp, uvB, "carta")
             c = attendi(lambda: (lambda x: x if x.get("stato") == "ABBONAMENTO ATTIVO - IN LAVORAZIONE" else None)(stato(uvB)), 120); pgB = (c or {}).get("ordine", {}).get("pagamento", {})
             if pgB.get("cliente"): CLIENTI_STRIPE.add(pgB["cliente"])
             rr = call("api/ordine", {"univoco": uvB, "azione": "recesso"}, T)[1]
@@ -178,7 +186,7 @@ async def main():
             call("api/benvenuto", {"azione": "consenso", "univoco": uvC, "si": True}); call("api/montatura", {"univoco": uvC, "codice": "SG-1042"})
             call("api/ordine", {"univoco": uvC, "lente": "mono", "trattamenti": [], "ricetta": RICETTA}, T)
             try:
-                await paga_stripe(tel, uvC, "sepa", iban="DE89370400440532013000")
+                await paga_stripe(stp, uvC, "sepa", iban="DE89370400440532013000")
                 c = attendi(lambda: (lambda x: x if x.get("stato") in ("PAGAMENTO IN VERIFICA", "ABBONAMENTO ATTIVO - IN LAVORAZIONE") else None)(stato(uvC)), 120)
                 esito("D1 pagamento con IBAN → «pagamento in verifica»", bool(c), (c or {}).get("stato"))
                 if (c or {}).get("ordine", {}).get("pagamento", {}).get("cliente"): CLIENTI_STRIPE.add(c["ordine"]["pagamento"]["cliente"])
@@ -209,7 +217,7 @@ async def main():
         except Exception as e:
             esito("ERRORE INATTESO", False, f"{type(e).__name__}: {str(e)[:400]}"); traceback.print_exc()
             try:
-                for i, pgx in enumerate([x for c in (tel, tab, pc) for x in c.pages]): await pgx.screenshot(path=f"{OUT}/errore-{i}.png", full_page=True)
+                for i, pgx in enumerate([x for c in (tel, tab, pc, stp) for x in c.pages]): await pgx.screenshot(path=f"{OUT}/errore-{i}.png", full_page=True)
             except Exception: pass
         finally:
             # ===== pulizia: clienti di prova, abbonamenti e clienti Stripe di prova, prenotazioni, magazzino
