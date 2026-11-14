@@ -486,7 +486,7 @@ async function attiva(u, sessione){
     return false;
   }
   ord.pagamento = Object.assign({}, ord.pagamento, {stato: "ATTIVO", sessione: sessione.id, abbonamento: sessione.subscription || "", cliente: sessione.customer || "", attivatoIl: new Date().toISOString()});
-  if (!ord.pagamento.ratePagate && sessione.payment_status === "paid") ord.pagamento.ratePagate = 1;
+  if (!ord.pagamento.ratePagate && sessione.payment_status === "paid"){ ord.pagamento.ratePagate = 1; ord.pagamento.primaRata = true; }
   ord.aggiornato = ord.pagamento.attivatoIl;
   await DB.aggiorna(u, {Stato: STATI.ATTIVO, Ordine: JSON.stringify(ord)});
   try { await avviaLavorazione(u, ord); } catch(e){ console.error(e); }

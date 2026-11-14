@@ -206,6 +206,7 @@ function disegna(){
     f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
     f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
     f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
+    { const ds = d.differenzeStripe || []; if (ds.length) fare.push(`<button type="button" data-scheda="${esc(ds[0].univoco)}" class="urg"><span class="n">${ds.length}</span><span>Differenze con Stripe da controllare<small>${esc(ds.map(x => x.univoco + ": " + x.testo).join(" · ").slice(0, 160))}</small></span><span class="va">Apri ›</span></button>`); }
     f((d.segnalazioni || []).length, "Segnalazioni dei clienti aperte", "Problemi con l'occhiale: le vede anche l'ottica", "numeri", true);
     const sv = d.servizio || {daDonare: [], recensioni: []};
     if (sv.daLeggere) fare.push(`<button type="button" data-vai-servizio class="urg"><span class="n">${sv.daLeggere}</span><span>Recensioni da 1 a 3 stelle da leggere<small>Contatta il cliente prima che lo scriva altrove</small></span><span class="va">Apri ›</span></button>`);

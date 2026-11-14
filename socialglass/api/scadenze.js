@@ -150,6 +150,9 @@ async function controlla(u, ora, esiti){
   // chi non ha mai attivato: link valido 30 giorni dalla registrazione (poi archivio e, dopo altri 30, dati cancellati)
   try { const r = await linkInScadenza(u, ora); if (r !== undefined){ if (r) esiti.push({univoco: u.f.Univoco, esito: r}); return; } }
   catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); return; }
+  // confronto con Stripe: recupera pagamenti, canoni e insoluti il cui avviso non è arrivato
+  try { const r = await require("./_stripe").riconcilia(u); if (r) esiti.push(Object.assign({univoco: u.f.Univoco}, r)); }
+  catch(e){ esiti.push({univoco: u.f.Univoco, errore: "confronto con Stripe: " + String(e.message).slice(0, 180)}); }
   // montatura prenotata ma ordine mai confermato: promemoria a 14 giorni, a 30 la montatura torna disponibile
   if ([L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){
     try { const r = await attesa(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
@@ -192,6 +195,8 @@ const handler = L.wrap(async (req, res) => {
   const tutti = await L.DB.tutti();
   const esiti = [];
   for (const u of tutti) await controlla(u, ora, esiti);
+  // differenze con Stripe da far vedere all'amministratore (si rifanno ogni notte)
+  if (!url.searchParams.get("data")) try { await L.DB.meta("differenze-stripe", {il: ora, voci: esiti.filter(x => x.differenza).map(x => ({univoco: x.univoco, testo: x.differenza}))}); } catch(e){ console.error(e); }
   // riordino automatico per i fornitori che lo hanno attivo
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
   // fatture non ancora partite verso Aruba (errori di rete, credenziali arrivate dopo)

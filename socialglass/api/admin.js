@@ -183,6 +183,7 @@ module.exports = L.wrap(async (req, res) => {
       laboratorio: await (async () => { const l = (await L.DB.meta("laboratorio")) || {}; const lav = utenti.map(u => L.parseOrdine(u.f.Ordine).lab).filter(Boolean);
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
+      differenzeStripe: ((await L.DB.meta("differenze-stripe")) || {}).voci || [],
       segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))
         .sort((a, b) => String(b.il).localeCompare(String(a.il))),
       copie: (((await L.DB.meta("copie")) || {}).elenco) || [],
