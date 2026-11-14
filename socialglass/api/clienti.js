@@ -48,7 +48,7 @@ module.exports = L.wrap(async (req, res) => {
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
       rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || f.Creato || "",
       periodo: L.PREZZI.periodo(o), rinnovabile: L.PREZZI.rinnovabile(o), daRitirare: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato),
-      esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo,
+      esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo, consenso: !!(f.ConsensoSanitario && f.ConsensoSanitario.il), registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""),
       link: L.linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino),
       recedibile: L.annullabile(o, f.Stato),
       ritiroInRitardo: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && Date.now() - new Date(o.ritiro.dal) > 15*864e5),

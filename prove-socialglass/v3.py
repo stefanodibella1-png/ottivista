@@ -22,7 +22,7 @@ async def main():
         await pg.click("#extraPopup [data-close]"); await pg.wait_for_timeout(500)
         # in ottica: scansiona
         await pg.screenshot(path="v06_prima_scan.png", full_page=True)
-        await pg.click("#mpScan"); await pg.wait_for_timeout(1200); await pg.screenshot(path="v07_scanner.png")
+        await pg.check("#cSan"); await pg.click("#cSanOk"); await pg.wait_for_timeout(800); await pg.click("#mpScan"); await pg.wait_for_timeout(1200); await pg.screenshot(path="v07_scanner.png")
         print("scanner testo:", await pg.inner_text("#video-container"))
         man=pg.locator("#video-container input"); print("campo manuale:", await man.count())
         await man.fill("SG-1043"); await pg.locator("#video-container .manuale button").click(); await pg.wait_for_timeout(1500)

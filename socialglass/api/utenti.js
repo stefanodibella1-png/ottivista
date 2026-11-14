@@ -10,9 +10,10 @@ function wa(numero, testo){ return `https://wa.me/${String(numero).replace(/\D/g
 module.exports = L.wrap(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (req.method === "GET" && url.searchParams.get("ottici")){
-    // elenco ottiche convenzionate (solo per il CAF collegato)
-    if (!L.verify(req, "caf")) return L.send(res, 401, L.NOAUTH);
-    const list = (await L.DB.ottici()).filter(f => f.ID).sort((a, b) => parseInt(String(a.ID).replace(/\D/g, "") || 0) - parseInt(String(b.ID).replace(/\D/g, "") || 0))
+    // elenco ottiche convenzionate: il CAF le vede tutte, l'ottica solo sé stessa (registra i clienti per sé)
+    const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
+    if (!sc && !so) return L.send(res, 401, L.NOAUTH);
+    const list = (await L.DB.ottici()).filter(f => f.ID && (!so || f.ID === so.id)).sort((a, b) => parseInt(String(a.ID).replace(/\D/g, "") || 0) - parseInt(String(b.ID).replace(/\D/g, "") || 0))
       .map(f => ({id: f.ID, label: `${f.ID} - ${f.Intestatario || ""} - ${f.Indirizzo || ""}${f.Citta || ""}`, listino: f.Listino || ""}));
     return L.send(res, 200, {ottici: list});
   }
@@ -20,9 +21,16 @@ module.exports = L.wrap(async (req, res) => {
     const cf = (url.searchParams.get("cf") || "").toUpperCase().trim();
     const uv = (url.searchParams.get("univoco") || "").toUpperCase().trim();
     if (cf){
-      if (!L.verify(req, "caf")) return L.send(res, 401, L.NOAUTH);
+      const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
+      if (!sc && !so) return L.send(res, 401, L.NOAUTH);
       if (!L.CF.valido(cf)) return L.send(res, 200, {valido: false});
       const u = await L.DB.utente("Codice Fiscale", cf);
+      // all'ottica che registra basta sapere se il codice fiscale è libero: nome e codice solo per i suoi clienti
+      if (so){
+        const mio = u && String(u.f.Ottica1 || "").startsWith(so.id + " ");
+        return L.send(res, 200, {valido: true, stato: u ? (u.f.Archiviato ? null : u.f.Stato || "REGISTRATO") : null, nome: mio ? `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}` : null,
+          univoco: mio ? u.f.Univoco : null, ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: false, rinnovoDal: null, bloccato: false});
+      }
       const o = u ? L.parseOrdine(u.f.Ordine) : null, per = o ? L.PREZZI.periodo(o) : null;
       return L.send(res, 200, {valido: true, stato: u ? u.f.Stato || "REGISTRATO" : null, nome: u ? `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}` : null, univoco: u ? u.f.Univoco : null,
         ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: u ? [L.STATI.CONSEGNATO, L.STATI.CHIUSO].includes(u.f.Stato) && L.PREZZI.rinnovabile(o) : false,
@@ -61,7 +69,11 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, await L.rinnova(u, {otticoId, caf: sc ? sc.id : ""}));
   }
 
-  const s = L.verify(req, "caf"); if (!s) return L.send(res, 401, L.NOAUTH);
+  // registrazione: dal CAF (sceglie l'ottica) o dall'ottica stessa (il cliente è suo; nessun compenso CAF, decisione D8)
+  const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
+  if (!sc && !so) return L.send(res, 401, L.NOAUTH);
+  if (so) b.ottica = so.id;
+  const cafId = sc ? sc.id : "";
 
   const d = {cf: String(b.cf || "").toUpperCase().trim(), nome: String(b.nome || "").toUpperCase().trim(), cognome: String(b.cognome || "").toUpperCase().trim(),
     prefisso: String(b.prefisso || "+39"), cellulare: String(b.cellulare || "").replace(/\D/g, ""), nato: String(b.nato || "").toUpperCase().trim(),
@@ -81,11 +93,11 @@ module.exports = L.wrap(async (req, res) => {
   const amico = String(b.amico || "").toUpperCase().replace(/\s/g, "");
   if (amico){ const a = await L.DB.utente("Univoco", amico); if (!a) return L.send(res, 400, {errore: "Codice amico non trovato: controllalo o lascia il campo vuoto."}); if (a.f["Codice Fiscale"] === d.cf) return L.send(res, 400, {errore: "Il codice amico è dello stesso cliente."});
     if (!L.abbonamentoAttivo(a.f)) return L.send(res, 400, {errore: L.PREMIO_NON_ATTIVABILE + " Lascia vuoto il campo «Codice amico» per registrare il cliente."}); }
-  const fields = {"CAF": s.id, "Nome": d.nome, "Cognome": d.cognome, "Cellulare": d.cellulare, "Codice Fiscale": d.cf,
+  const fields = {"CAF": cafId, "RegistratoDa": sc ? "caf " + sc.id : "ottica " + so.id, "InformativaMostrata": new Date().toISOString(), "Nome": d.nome, "Cognome": d.cognome, "Cellulare": d.cellulare, "Codice Fiscale": d.cf,
     "Ottica1": `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`, "Nato a": d.nato, "Genere": d.sesso, "Data Nascita": d.data,
     "Listino": o.Listino || "", "Stato": L.STATI.REGISTRATO, "Residenza": res_, "LinkFino": new Date(Date.now() + L.GIORNI_LINK * 864e5).toISOString(), ...(amico ? {PresentatoDa: amico} : {})};
   const uv = await L.DB.creaUtente(fields);
-  const link = L.linkCliente(uv, o.ID, s.id, o.Listino);
+  const link = L.linkCliente(uv, o.ID, cafId, o.Listino);
   const testo = messaggio(d.nome, o.Intestatario, link);
   L.send(res, 200, {univoco: uv, link, smsInviato: await sendSms(d.prefisso + d.cellulare, testo), whatsapp: wa(d.prefisso + d.cellulare, testo), ottica: o.Intestatario});
 });

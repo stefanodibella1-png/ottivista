@@ -8,7 +8,7 @@ A=post("api/admin",{"azione":"imposta","password":"passwordlunga1"}).get("token"
 d=post("api/admin",{"azione":"dati"},A); mont=[m["Codice"] for m in d["montature"]]; print("montature", mont)
 conv=d["convenzioni"]["A"]
 print("salva listino:", post("api/admin",{"azione":"salvaListino","id":"A","montatura":conv["montatura"],"lenti":[dict(id=k,**v) for k,v in conv["lenti"].items()]+[{"nome":"Progressive premium","desc":"Campo ampio","prezzo":390}],"trattamenti":[dict(id=k,**v) for k,v in conv["trattamenti"].items()]},A).get("ok"))
-print("scelta montatura:", post("api/montatura",{"univoco":"SGNUOVO02","codice":mont[0]}))
+print("scelta montatura:", post("api/montatura",{"univoco":"SGNUOVO02","codice":mont[0]})); post("api/benvenuto",{"azione":"consenso","univoco":"SGNUOVO02","si":True})
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":390,"height":844}); e=[]; pg.on("pageerror", lambda x: e.append(str(x)))

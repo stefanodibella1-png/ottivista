@@ -7,7 +7,7 @@ def ev(id_, tipo, obj):
     return call("api/stripe-webhook",None,None,p,{"Stripe-Signature":f"t={t},v1={s}"})[0]
 def fino_al_preventivo(base, nome, mont):
     s,r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
-    uv=r["univoco"]; call("api/montatura",{"univoco":uv,"codice":mont})
+    uv=r["univoco"]; call("api/montatura",{"univoco":uv,"codice":mont}); call("api/benvenuto",{"azione":"consenso","univoco":uv,"si":True})
     call("api/ordine",{"univoco":uv,"lente":"mono","trattamenti":["ar"],"ricetta":{"OD":{"sf":-1},"OS":{"sf":-1},"pd":63}},T); return uv
 def sess(uv, stato, n): return {"id":f"cs_{uv}_{n}","client_reference_id":uv,"payment_status":stato,"status":"complete","subscription":f"sub_{uv}","customer":"cus_1"}
 def busta(uv): s,l=call("api/clienti",None,Lb); return [b for b in l.get("buste",[]) if b["univoco"]==uv]

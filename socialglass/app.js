@@ -380,7 +380,8 @@ function disegnaCruscotto(isOtt, d){
     f(n(c => c.stato === STATI.PAGAMENTO), "Clienti che devono attivare l'abbonamento", "Preventivo inviato: ricordaglielo", `data-vai="stato:${STATI.PAGAMENTO}"`);
     f(n(c => c.rinnovabile && FINITO(c.stato) && !c.bloccato), "Clienti che possono rinnovare", "Proponi l'occhiale nuovo", 'data-vai="sit:rinnovabili"');
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
-    tess = tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
+    f(n(c => c.stato === STATI.MONTATURA && !c.consenso), "Clienti senza consenso per la ricetta", "Fagli mettere la spunta dal suo link, anche sul tuo tablet", `data-vai="stato:${STATI.MONTATURA}"`);
+    tess = tessera("nuovo", "Nuovo cliente", "Registralo tu e invia il suo link", 'data-open="popupForm" data-reset-form') + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
       + tessera("agenda", "Appuntamenti", `${(d.appuntamenti || []).length} in agenda · orari`, "data-agenda")
       + tessera("esposte", "Montature esposte", "Cosa hai in negozio", "data-esposte") + tessera("listino", "Listino e canoni", "Calcola il canone al cliente", "data-listino")
       + tessera("cerca", "Assistenza cliente", "Cerca per codice", 'data-open="popupAssistenza"') + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti")
@@ -866,13 +867,21 @@ function resetForm(){
   campi.forEach(id => $(id).disabled = true); $("listinoTextBox").value = ""; $("inviaLink").disabled = true;
   $("cfEsito").hidden = true; $("formErr").hidden = true; cambiaBandiera();
 }
-let otticiCaricati = false;
+let otticiCaricati = "";
+// l'ottica che registra un cliente lo registra per sé: la sua ottica è già scelta e non si cambia
+const daOttica = () => sessionStorage.getItem("sg_ruolo") === "ottico";
+function fissaOttica(){
+  const sel = $("ottica"); if (!daOttica() || sel.options.length < 2) return;
+  sel.selectedIndex = 1; sel.disabled = true; sel.dispatchEvent(new Event("change"));
+}
 async function loadOttici(){
-  if (otticiCaricati) return;
+  const chi = (sessionStorage.getItem("sg_ruolo") || "") + ":" + (sessionStorage.getItem("sg_id") || "");
+  $("popupForm").querySelector("h2").textContent = daOttica() ? "Nuovo cliente della tua ottica:" : "Inserisci i dati del cliente:";
+  if (otticiCaricati === chi){ fissaOttica(); return; }
   const r = await api("api/utenti?ottici=1"); if (scaduta(r) || !r.ok) return;
-  const sel = $("ottica");
+  const sel = $("ottica"); while (sel.options.length > 1) sel.remove(1);
   for (const o of r.data.ottici){ const op = document.createElement("option"); op.value = o.id; op.textContent = o.label; op.dataset.listino = o.listino; sel.appendChild(op); }
-  otticiCaricati = true;
+  otticiCaricati = chi; fissaOttica();
 }
 $("ottica").addEventListener("change", e => { const op = e.target.selectedOptions[0]; $("listinoTextBox").value = op && op.dataset.listino ? "Convenzione " + op.dataset.listino : ""; });
 function cambiaBandiera(){ const s = $("prefisso"), f = s.selectedOptions[0].dataset.flag; s.style.backgroundImage = `url('https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/flags/4x3/${f}.svg')`; }
@@ -884,7 +893,7 @@ $("attivaCodiceFiscale").addEventListener("click", async () => {
   const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
   if (r.ok && r.data.stato){ esito($("cfEsito"), `Questo cliente è già registrato${r.data.nome ? " (" + r.data.nome + ")" : ""}${r.data.univoco ? ", codice " + r.data.univoco : ""}. Stato: ${r.data.stato.toLowerCase()}. Per un occhiale nuovo usa RINNOVO OCCHIALE.`, "err"); return; }
   esito($("cfEsito"), "", ""); $("attivaCodiceFiscale").hidden = true; $("segnoDiSpunta").hidden = false; $("codiceFiscale").disabled = true;
-  campi.forEach(id => $(id).disabled = false); $("inviaLink").disabled = false; $("nome").focus();
+  campi.forEach(id => $(id).disabled = false); fissaOttica(); $("inviaLink").disabled = false; $("nome").focus();
   // data di nascita e sesso si leggono dal codice fiscale (restano modificabili)
   const dc = CF.dati(cf); if (dc){ if (!$("datanascita").value) $("datanascita").value = dc.data; if (!$("sesso").value) $("sesso").value = dc.sesso; }
 });
@@ -910,7 +919,7 @@ $("formCliente").addEventListener("submit", async e => {
     residenza: {indirizzo: v("residenza"), cap: v("cap"), comune: v("comune").toUpperCase(), provincia: v("provincia").toUpperCase()}};
   const manca = [["nome","Nome"],["cognome","Cognome"],["nato","Luogo di nascita"],["datanascita","Data di nascita"],["sesso","Sesso"],["cellulare","Cellulare"],["ottica","Ottica"]].filter(([k]) => !d[k]).map(([, n]) => n)
     .concat(residenzaMancante(d.residenza));
-  if (manca.length || !d.gdpr){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : "Serve il consenso GDPR del cliente.", "err"); return; }
+  if (manca.length || !d.gdpr){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : "Metti la spunta: hai mostrato l'informativa privacy al cliente.", "err"); return; }
   if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)){ esito($("formErr"), "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso: controlla i dati.", "err"); return; }
   $("inviaLink").disabled = true;
   const r = await post("api/utenti", d);
@@ -1177,6 +1186,13 @@ async function caricaOrdine(cod){
     esito($("ordineEsito"), `${d.nome} ${d.cognome} · ${d.stato}. ` + (!m ? "Il cliente deve prima scegliere la montatura con il QR (pulsante «Ho scelto la montatura» sul suo link)." : "L'ordine è già confermato."), m ? "ok" : "info");
     return;
   }
+  // senza il consenso del cliente la ricetta non si inserisce: lo dà lui dal suo link, anche sul tablet dell'ottica
+  if (!d.consenso){
+    const e = $("ordineEsito"); e.hidden = false; e.className = "esito info"; e.removeAttribute("role");
+    e.innerHTML = `<b>${esc(d.nome)} ${esc(d.cognome)}</b>: manca il consenso per la ricetta. Fai aprire al cliente il suo link (anche sul tuo tablet) e fagli mettere la spunta «Acconsento» in alto. Poi tocca qui sotto.<br><button type="button" class="grigio" id="ricontrollaConsenso">Ricontrolla</button>`;
+    $("ricontrollaConsenso").onclick = () => caricaOrdine(cod);
+    return;
+  }
   $("ordineCliente").innerHTML = `<b>${esc(d.nome)} ${esc(d.cognome)}</b> · ${chip(d.stato)}<br>Montatura: <b>${esc(m.modello)} ${esc(m.colore)}</b> · calibro ${esc(m.calibro)}-${esc(m.asse)} · cod. ${esc(m.codice)}`;
   const L = d.listino;
   // i prezzi arrivano dal server (listini aggiornati dall'amministratore): il calcolo qui usa gli stessi
@@ -1399,8 +1415,23 @@ function disegnaMio(){
   a += `<p class="piede-cli"><a href="privacy.html" target="_blank" rel="noopener">Informativa privacy</a></p>`;
   if (o && o.telefono) a += `<p class="piede-cli">Domande? <a href="tel:+${esc(String(o.telefono).replace(/\D/g, ""))}">Chiama ${esc(o.nome)}</a></p>`;
   // link valido 30 giorni dalla registrazione finché non si attiva l'abbonamento
-  if (u.scadeLink) a = `<div class="esito info" style="margin-bottom:10px">⏳ Il tuo link vale fino al <b>${new Date(u.scadeLink).toLocaleDateString("it-IT", {day: "numeric", month: "long"})}</b>: attiva l'abbonamento entro quella data, poi per ripartire dovrai registrarti di nuovo al CAF.</div>` + a;
+  if (u.scadeLink) a = `<div class="esito info" style="margin-bottom:10px">⏳ Il tuo link vale fino al <b>${new Date(u.scadeLink).toLocaleDateString("it-IT", {day: "numeric", month: "long"})}</b>: attiva l'abbonamento entro quella data, poi per ripartire dovrai registrarti di nuovo (al CAF o in ottica).</div>` + a;
+  // consenso per la ricetta (dato sanitario): lo dà il cliente qui, prima che l'ottico inserisca lenti e ricetta
+  const chiediConsenso = !u.consensoSanitario && [STATI.REGISTRATO, STATI.MONTATURA].includes(u.stato) && !u.chiuso;
+  if (chiediConsenso) a = `<div class="scheda" id="mpConsenso" style="border:2px solid #1f6feb;margin-bottom:12px"><b>Prima di tutto: la tua ricetta</b>
+    <p style="margin:6px 0 8px">Per preparare i tuoi occhiali l'ottico deve inserire la tua ricetta, che è un dato sulla salute. Ci serve il tuo permesso. Leggi l'<a href="privacy.html" target="_blank" rel="noopener">informativa privacy</a>.</p>
+    <label class="consenso" for="cSan"><input type="checkbox" id="cSan"><span>Acconsento all'uso della mia ricetta per preparare i miei occhiali.</span></label>
+    <div class="esito err" id="cSanErr" hidden></div>
+    <button type="button" class="verde full" id="cSanOk">Conferma</button></div>` + a;
   $("mpAzione").innerHTML = a;
+  if (chiediConsenso) $("cSanOk").onclick = async () => {
+    const e = $("cSanErr"); e.hidden = true;
+    if (!$("cSan").checked){ e.textContent = "Metti la spunta per dare il consenso."; e.hidden = false; return; }
+    const b = $("cSanOk"); b.disabled = true; b.textContent = "Salvataggio…";
+    const r = await post("api/benvenuto", {azione: "consenso", univoco: UNIVOCO, si: true});
+    if (!r.ok){ b.disabled = false; b.textContent = "Conferma"; e.textContent = (r.data && r.data.errore) || "Non riuscito, riprova."; e.hidden = false; return; }
+    mio.consensoSanitario = r.data.consenso; disegnaMio();
+  };
   const sc = $("mpScan"); if (sc) sc.onclick = startScan;
   const on = (id, f) => { const el = $(id); if (el) el.onclick = f; };
   on("mpApp", attivaApp); on("mpTessera", apriTessera); on("mpAmico", amico); on("mpAnno", mioAnno);

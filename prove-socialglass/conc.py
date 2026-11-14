@@ -15,7 +15,7 @@ Lb=call("api/login",{"ruolo":"lab","codice":"LAB","password":"laboratorio1"})[1]
 def nuovo(base, nome, mont):
     s,r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01" if nome!="LUCIA" else "1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
     assert s==200, r
-    uv=r["univoco"]; print(" scelta:", call("api/montatura",{"univoco":uv,"codice":mont})[0])
+    uv=r["univoco"]; print(" scelta:", call("api/montatura",{"univoco":uv,"codice":mont})[0]); call("api/benvenuto",{"azione":"consenso","univoco":uv,"si":True})
     print(" preventivo:", call("api/ordine",{"univoco":uv,"lente":"mono","trattamenti":["ar"],"ricetta":{"OD":{"sf":-1},"OS":{"sf":-1},"pd":63}},T)[0])
     print(" pagamento:", call("api/pagamento",{"univoco":uv,"consensoContratto":True,"consensoAddebito":True,"consensoSuMisura":True})[0])
     return uv

@@ -42,7 +42,7 @@ async def main():
         r=post("api/utenti",{"cf":"RSSGNN80A01C351H","nome":"GIANNI","cognome":"ROSSI","nato":"CATANIA","datanascita":"1980-01-01","sesso":"M","prefisso":"+39","cellulare":"3331231234","ottica":"OTT07","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"},"amico":"sg8ba2115"},C)
         uv=r.get("univoco"); print("nuovo:", uv, r.get("errore"))
         O=post("api/login",{"ruolo":"ottico","codice":"OTT07","password":"demo"})["token"]
-        print(post("api/montatura",{"univoco":uv,"codice":"SG-1043"}).get("errore"))
+        print(post("api/montatura",{"univoco":uv,"codice":"SG-1043"}).get("errore")); post("api/benvenuto",{"azione":"consenso","univoco":uv,"si":True})
         print(post("api/ordine",{"univoco":uv,"lente":"mono","ricetta":{"OD":{"sf":"-1"},"OS":{"sf":"-1"},"pd":63}},O).get("errore"))
         print(post("api/pagamento",{"univoco":uv,"consensoContratto":True,"consensoAddebito":True,"consensoSuMisura":True}))
         print("amici del referente:", get("api/benvenuto?univoco=SG8BA2115&espositore=")["amici"])

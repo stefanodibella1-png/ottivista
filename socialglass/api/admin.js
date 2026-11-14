@@ -68,7 +68,7 @@ module.exports = L.wrap(async (req, res) => {
     const mese = /^\d{4}-\d{2}$/.test(b.mese || "") ? b.mese : new Date(Date.now() - 15*864e5).toISOString().slice(0, 7), nel = d => String(d || "").slice(0, 7) === mese;
     const utenti = await L.DB.tutti(), r = {mese, nuovi: 0, attivati: 0, consegnati: 0, chiusi: 0, incassi: 0, canoni: 0, spedizioni: 0, riscatti: 0, morosi: 0, voti: [], amici: 0, donati: 0, perCaf: {}, perOttica: {}};
     for (const u of utenti){ const f = u.f, o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, ott = String(f.Ottica1 || "").split(" - ")[0];
-      if (nel(f.Creato)){ r.nuovi++; r.perCaf[f.CAF || "—"] = (r.perCaf[f.CAF || "—"] || 0) + 1; }
+      if (nel(f.Creato)){ r.nuovi++; { const kc = f.CAF || (String(f.RegistratoDa || "").startsWith("ottica") ? "dall'ottica" : "—"); r.perCaf[kc] = (r.perCaf[kc] || 0) + 1; } }
       if (nel(pg.attivatoIl)){ r.attivati++; r.perOttica[ott || "—"] = (r.perOttica[ott || "—"] || 0) + 1; }
       if (nel(o.consegnatoIl)) r.consegnati++; if (nel(pg.chiuso)) r.chiusi++;
       if (L.situazione(f).bloccato || pg.insoluto) r.morosi++;
@@ -476,7 +476,7 @@ module.exports = L.wrap(async (req, res) => {
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
     const f = u.f, o = L.parseOrdine(f.Ordine), ott = String(f.Ottica1 || "").split(" - ")[0];
     return L.send(res, 200, {cliente: {passi: Array.isArray(f.Passi) ? f.Passi : [], versione: L.versioneDi(f), presentatoDa: f.PresentatoDa || "", amicoPremiato: f.AmicoPremiato || "", notifiche: (f.Push || []).length, univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
-      genere: f.Genere || "", caf: f.CAF || "", ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
+      genere: f.Genere || "", caf: f.CAF || "", registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""), consensoSanitario: f.ConsensoSanitario || null, ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
       situazione: L.situazione(f), link: L.linkCliente(f.Univoco, ott, f.CAF, f.Listino)}});
   }
   if (az === "blocco"){

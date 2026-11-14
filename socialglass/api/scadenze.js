@@ -170,7 +170,7 @@ async function linkInScadenza(u, ora){
   const resta = Math.ceil((new Date(sc) - new Date(ora)) / 864e5), fino = L.giornoIt(sc), da = new Date(ora) - new Date(u.f.Creato), av = o.avvisi || {};
   const link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino), nome = L.nm(u.f.Nome);
   let chiave = "", testo = "";
-  if (resta <= 5 && !av.link5){ chiave = "link5"; testo = `SocialGlass: ${nome}, ultimi giorni: il tuo link scade il ${fino}. Dopo dovrai registrarti di nuovo al CAF. ${link}`; }
+  if (resta <= 5 && !av.link5){ chiave = "link5"; testo = `SocialGlass: ${nome}, ultimi giorni: il tuo link scade il ${fino}. Dopo dovrai registrarti di nuovo (al CAF o in ottica). ${link}`; }
   else if (resta <= 16 && !av.link14 && !av.link5){ chiave = "link14";
     testo = u.f.Stato === L.STATI.PAGAMENTO ? `SocialGlass: ${nome}, il preventivo del tuo occhiale ti aspetta: attiva l'abbonamento entro il ${fino}, poi il link scade. ${link}`
       : u.f.Stato === L.STATI.MONTATURA ? `SocialGlass: ${nome}, la montatura che hai scelto è prenotata per te fino al ${fino}: passa in ottica per lenti e ricetta. ${link}`

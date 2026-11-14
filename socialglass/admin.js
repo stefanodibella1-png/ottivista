@@ -149,7 +149,8 @@ function disegnaScheda(c){
     <div class="scheda"><div class="top" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:17px">${esc(c.nome)} ${esc(c.cognome)}</b><span class="chip">${esc(c.stato)}</span></div>
     ${si.bloccato ? '<span class="chip s3">ANAGRAFICA BLOCCATA</span> ' : ""}${si.moroso ? '<span class="chip s3">MOROSO</span>' : ""}
     <dl class="dl">${riga("Codice cliente", esc(c.univoco))}${riga("Codice fiscale", esc(c.cf))}${riga("Cellulare", esc(c.cellulare))}${riga("Nato a", esc(c.natoA))}${riga("Data di nascita", c.dataNascita ? dt(c.dataNascita) : "")}${riga("Registrato il", dt(c.creato))}
-      ${riga("CAF", esc(c.caf))}${riga("Ottica", esc(c.ottica))}${riga("Listino", esc(c.listino))}
+      ${riga("CAF", c.caf ? esc(c.caf) : /^ottica/.test(c.registratoDa || "") ? "nessuno · registrato dall'ottica (nessun compenso CAF)" : "—")}${riga("Ottica", esc(c.ottica))}
+      ${riga("Consenso ricetta", c.consensoSanitario ? `dato il ${new Date(c.consensoSanitario.il).toLocaleString("it-IT")} · informativa ${esc(c.consensoSanitario.versione || "")}` : "manca")}${riga("Listino", esc(c.listino))}
       ${riga("Presentato da", c.presentatoDa ? esc(c.presentatoDa) + (c.amicoPremiato ? " · mese gratis dato il " + dt(c.amicoPremiato) : "") : "")}${riga("Amici portati", (o.amici || []).length ? o.amici.map(a => `${esc(a.nome)} (${esc(a.stato)})`).join(", ") : "")}
       ${riga("Notifiche sul telefono", c.notifiche ? "attive" : "")}${riga("Recensione", o.recensione ? "★".repeat(o.recensione.voto) + (o.recensione.testo ? " «" + esc(o.recensione.testo) + "»" : "") : "")}${riga("Occhiale da donare", o.dona && o.dona.si ? (o.dona.donato ? "donato il " + dt(o.dona.donato) : o.dona.daDonare ? "ritirato, da donare" : "sì, alla restituzione") : "")}</dl>
     <a class="btn-link" target="_blank" rel="noopener" href="${esc(c.link)}" style="display:inline-block">Apri la pagina del cliente</a></div>

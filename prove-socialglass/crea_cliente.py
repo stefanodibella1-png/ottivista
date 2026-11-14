@@ -10,7 +10,7 @@ def cf(b): return b+chr(65+sum(O[c] if i%2==0 else E[c] for i,c in enumerate(b))
 def crea(base, nome, cognome, data, sesso, mont):
     C=call("api/login",{"ruolo":"caf","codice":"CAF001","password":"demo"})["token"]
     r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":cognome,"nato":"CATANIA","datanascita":data,"sesso":sesso,"prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
-    uv=r["univoco"]; call("api/montatura",{"univoco":uv,"codice":mont})
+    uv=r["univoco"]; call("api/montatura",{"univoco":uv,"codice":mont}); call("api/benvenuto",{"azione":"consenso","univoco":uv,"si":True})
     T=call("api/login",{"ruolo":"ottico","codice":"OTT07","password":"demo"})["token"]
     call("api/ordine",{"univoco":uv,"lente":"mono","trattamenti":["ar"],"ricetta":{"OD":{"sf":-1,"cil":None,"ax":None,"add":None},"OS":{"sf":-1,"cil":None,"ax":None,"add":None},"pd":63}},T)
     call("api/pagamento",{"univoco":uv,"consensoContratto":True,"consensoAddebito":True,"consensoSuMisura":True})

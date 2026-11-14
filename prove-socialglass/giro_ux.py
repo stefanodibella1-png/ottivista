@@ -53,7 +53,7 @@ async def main():
         c = await nuovo(b, "tel"); await c.goto(f"{B}?Univoco={COD}&espositore=OTT07&promotore=CAF001&listino=A"); await c.wait_for_timeout(2500)
         print("2 TEL barra visibile:", await c.is_visible("#sgTempo"), "|", t(await c.inner_text("#mpTitolo")))
         await foto(c, "TEL_cliente_apre_link")
-        await c.click("#mpScan"); await c.wait_for_timeout(900); await c.locator("#video-container input").fill("SG-1043"); await c.locator("#video-container .manuale button").click(); await c.wait_for_timeout(1300); await foto(c, "TEL_cliente_montatura_scansionata")
+        await c.check("#cSan"); await c.click("#cSanOk"); await c.wait_for_timeout(800); await c.click("#mpScan"); await c.wait_for_timeout(900); await c.locator("#video-container input").fill("SG-1043"); await c.locator("#video-container .manuale button").click(); await c.wait_for_timeout(1300); await foto(c, "TEL_cliente_montatura_scansionata")
         await c.get_by_role("button", name="Scelgo questa montatura").click(); await c.wait_for_timeout(1500)
         await foto(c, "TEL_cliente_dopo_scelta"); print("   montatura scelta:", t(await c.inner_text("#mpTitolo")))
         # 3. tablet — l'ottica inserisce lenti e ricetta
