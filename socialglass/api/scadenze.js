@@ -173,7 +173,7 @@ async function archivia(u, ora){
   const o = L.parseOrdine(u.f.Ordine);
   if (o.montatura) try { await L.liberaMontatura(o.montatura.codice, u.f.Univoco); } catch(e){ console.error(e); }
   o.archiviato = {il: ora, stato: u.f.Stato, montatura: o.montatura ? `${o.montatura.codice} ${o.montatura.modello || ""}`.trim() : ""};
-  await annota(u, o, "linkScaduto", `SocialGlass: ${L.nm(u.f.Nome)}, il tuo link è scaduto perché sono passati 30 giorni senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF: ti registriamo di nuovo in un minuto.`);
+  await annota(u, o, "linkScaduto", `SocialGlass: ${L.nm(u.f.Nome)}, il tuo link è scaduto perché sono passati 30 giorni senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF o in ottica: ti registriamo di nuovo in un minuto.`);
   o.aggiornato = ora;
   await L.DB.aggiorna(u, {Stato: L.STATI.SCADUTO, Archiviato: ora, Ordine: JSON.stringify(o)});
   await L.registra("controllo giornaliero", "link scaduto (30 giorni)", u.f.Univoco, o.archiviato.stato);

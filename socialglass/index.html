@@ -372,6 +372,10 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 .manuale button{margin:0}
 .demo-nota{position:fixed;left:max(10px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:6;background:#fff8d6;color:#5b4a00;border:1px solid #f2d96b;border-radius:8px;font-size:12px;line-height:1.4;padding:6px 10px;max-width:min(92vw,520px)}
 @media (max-width:768px){ .demo-nota{bottom:calc(env(safe-area-inset-bottom,0px) + 74px);left:10px;right:10px} }
+/* accessibilità: bersagli da toccare di almeno 24 px (caselle, link-pulsante, titoli che si aprono) */
+input[type=checkbox],input[type=radio]{min-width:24px;min-height:24px;accent-color:var(--blu)}
+.linkbtn{min-height:24px;padding:3px 0}
+summary{min-height:24px}
 </style>
 </head>
 <body>
@@ -684,9 +688,9 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1798200000"></script>
-<script src="listini.js?v=1798200000"></script>
-<script src="app.js?v=1798200000"></script>
-<script src="prove-tempo.js?v=1798200000"></script>
+<script src="cf.js?v=1798300000"></script>
+<script src="listini.js?v=1798300000"></script>
+<script src="app.js?v=1798300000"></script>
+<script src="prove-tempo.js?v=1798300000"></script>
 </body>
 </html>

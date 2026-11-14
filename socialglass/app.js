@@ -161,7 +161,7 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-clienti]")){ apriClienti({}); return; }
   if (e.target.classList && e.target.classList.contains("popup") && !e.target.classList.contains("pagina")){ e.target.hidden = true; storia = []; scarica(nStati); }
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeAll(); stopScan(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape"){ if (!$("video-container").hidden && scanDopo){ stopScan(); return; } closeAll(); stopScan(); } });
 function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.setAttribute("role", kind === "err" ? "alert" : "status"); el.hidden = !txt; }
 
 /* ---------- stati ---------- */
@@ -376,7 +376,7 @@ function disegnaCruscotto(isOtt, d){
     f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
     f(n(c => c.stato === STATI.MONTATURA), "Preventivi da inserire", "Il cliente ha scelto la montatura: inserisci lenti e ricetta", `data-vai="stato:${STATI.MONTATURA}"`);
     f(n(SIT_P.arrivo), "Occhiali in arrivo dal laboratorio", "Quando il pacco arriva, tocca «Occhiale arrivato»: il cliente viene avvisato", 'data-vai="sit:arrivo"', true);
-    f(n(SIT_P.lab), "Montature da inviare al laboratorio", "Mettile da parte con la «Scheda per il laboratorio»: passa il corriere", 'data-vai="sit:lab"', true);
+    f(n(SIT_P.lab), "Montature da inviare al laboratorio", "Mettile da parte con la «Stampa scheda per il laboratorio»: passa il corriere", 'data-vai="sit:lab"', true);
     f(n(c => c.stato === STATI.PRONTO), "Occhiali pronti da consegnare", "Quando il cliente li ritira, segna «consegnato»", `data-vai="stato:${STATI.PRONTO}"`);
     f(n(c => c.daRitirare), "Occhiali da ritirare dal cliente", "Fine abbonamento, recesso o rinnovo", 'data-vai="sit:ritiro"', l.some(c => c.ritiroInRitardo));
     f(n(c => c.stato === STATI.PAGAMENTO), "Clienti che devono attivare l'abbonamento", "Preventivo inviato: ricordaglielo", `data-vai="stato:${STATI.PAGAMENTO}"`);
@@ -558,7 +558,7 @@ $("hoCodice").addEventListener("click", () => open("codicePopup"));
 $("formCodice").addEventListener("submit", async e => {
   e.preventDefault(); const c = $("codiceCliente").value.trim().toUpperCase(); if (!c) return;
   const r = await api(`api/benvenuto?univoco=${encodeURIComponent(c)}&espositore=`);
-  if (!r.ok) return esito($("codiceErr"), "Codice non trovato. Controlla il messaggio che hai ricevuto dal CAF.", "err");
+  if (!r.ok) return esito($("codiceErr"), "Codice non trovato. Controlla il messaggio con il tuo link (te lo ha mandato il CAF o la tua ottica).", "err");
   location.href = `${location.pathname.replace(/\/(caf|ottico|admin)\/?$/, "/")}?Univoco=${encodeURIComponent(c)}`;
 });
 
@@ -1112,7 +1112,7 @@ function disegnaClienti(){
       ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
         : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
       <div class="az">${az}${azBlocco}<button type="button" class="grigio" data-stampa-cli="${esc(c.univoco)}">Stampa scheda</button></div></div></details>`;
-  }).join("") : `<div class="vuoto">${clienti.length ? "Nessun cliente con questi filtri." : `Nessun cliente${isOtt ? " assegnato a questa ottica. Il cliente vede l'ottica scelta dal CAF nella sua pagina: se è un'altra, accedi con quel codice ottico." : "."}`}</div>`;
+  }).join("") : `<div class="vuoto">${clienti.length ? "Nessun cliente con questi filtri." : `Nessun cliente${isOtt ? " assegnato a questa ottica. Per registrarne uno tocca «Nuovo cliente» nel cruscotto." : "."}`}</div>`;
 }
 $("filtroClienti").addEventListener("input", disegnaClienti);
 $("filtroStato").addEventListener("change", disegnaClienti);
@@ -1149,9 +1149,15 @@ $("clientiLista").addEventListener("click", async e => {
     await apriClienti(); alertBox(r.data.dove === "laboratorio" ? "Segnato da rifare: il laboratorio rifà le lenti e ti avvisa quando l'occhiale riparte." : "Segnato da rifare: ritira l'occhiale dal cliente e spediscilo al laboratorio con la scheda (lo trovi in «Montature da inviare al laboratorio»)."); return;
   }
   // consegna: prima il controllo del codice del cliente (tessera o ultime 4 cifre)
+  // tessera del cliente letta con la fotocamera: il codice va nel campo e la consegna si conferma da sola
+  if (b.hasAttribute("data-scan-cons")){
+    startScan({testo: "Inquadra il QR sulla tessera del cliente (anche dal suo telefono)", etichetta: "Oppure scrivi le ultime 4 cifre del codice del cliente", segnaposto: "es. 1A2B",
+      onCodice: t => { const i = $("codCons"); if (!i) return; i.value = t; const ok = $("boxCons") && $("boxCons").querySelector("[data-azione=consegnato]"); if (ok) ok.click(); }});
+    return;
+  }
   if (b.dataset.consegna){
     const uv = b.dataset.consegna, box = document.createElement("div"); box.className = "avviso-cli"; box.id = "boxCons";
-    box.innerHTML = `<b>Chi ritira?</b> Scansiona la tessera del cliente o scrivi le ultime 4 cifre del suo codice.<br><input id="codCons" autocomplete="off" inputmode="text" placeholder="es. ${esc(uv.slice(-4).replace(/./g, "•"))}" style="max-width:200px;margin:6px 0"> <button type="button" class="verde" data-azione="consegnato" data-u="${esc(uv)}">Conferma consegna</button>`;
+    box.innerHTML = `<b>Chi ritira?</b> Scansiona la tessera del cliente o scrivi le ultime 4 cifre del suo codice.<br><input id="codCons" autocomplete="off" inputmode="text" placeholder="es. ${esc(uv.slice(-4).replace(/./g, "•"))}" style="max-width:200px;margin:6px 0" aria-label="Codice del cliente: ultime 4 cifre o QR della tessera"> <button type="button" class="grigio" data-scan-cons aria-label="Inquadra con la fotocamera il QR della tessera">📷 Inquadra la tessera</button> <button type="button" class="verde" data-azione="consegnato" data-u="${esc(uv)}">Conferma consegna</button>`;
     const vecchio = $("boxCons"); if (vecchio) vecchio.remove(); b.closest(".az, div").after(box); $("codCons").focus(); return;
   }
   // restituzione: l'ottica indica com'è l'occhiale (se non è integro lo controlla l'amministratore)
@@ -1586,11 +1592,16 @@ if (UNIVOCO){
 }
 
 /* ---------- scanner QR ---------- */
-let stream = null, scanning = false, detector = null;
-async function startScan(){
-  closeAll(); $("video-container").hidden = false; $("video-container").querySelector("p").textContent = "Inquadra il quadratino QR sul cartellino della montatura";
+let stream = null, scanning = false, detector = null, scanDopo = null;
+// opz (facoltativo): {testo, etichetta, segnaposto, onCodice} → lettura per un campo (tessera alla consegna): le finestre aperte restano sotto
+async function startScan(opz){
+  scanDopo = opz && opz.onCodice ? opz : null;
+  if (!scanDopo) closeAll();
+  $("video-container").hidden = false; $("video-container").querySelector("p").textContent = scanDopo ? scanDopo.testo : "Inquadra il quadratino QR sul cartellino della montatura";
+  $("video-container").querySelector("label[for=codiceManuale]").textContent = scanDopo ? scanDopo.etichetta : "Oppure scrivi il codice della montatura (es. SG-1042)";
+  $("codiceManuale").placeholder = scanDopo ? scanDopo.segnaposto || "" : "SG-…"; $("codiceManuale").value = "";
   try { stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false}); }
-  catch(e){ $("video-container").classList.add("senza-video"); $("video-container").querySelector(".mirino").hidden = true; $("preview").hidden = true; $("video-container").querySelector("p").textContent = "Fotocamera non disponibile: scrivi il codice che trovi sull'etichetta della montatura."; return; }
+  catch(e){ $("video-container").classList.add("senza-video"); $("video-container").querySelector(".mirino").hidden = true; $("preview").hidden = true; $("video-container").querySelector("p").textContent = scanDopo ? "Fotocamera non disponibile: scrivi il codice qui sotto." : "Fotocamera non disponibile: scrivi il codice che trovi sull'etichetta della montatura."; return; }
   $("video-container").classList.remove("senza-video"); $("video-container").querySelector(".mirino").hidden = false; $("preview").hidden = false;
   const v = $("preview"); v.srcObject = stream; await v.play();
   if ("BarcodeDetector" in window){ try { detector = new BarcodeDetector({formats: ["qr_code"]}); } catch(e){ detector = null; } }
@@ -1607,11 +1618,11 @@ async function loop(){
       if (detector){ const r = await detector.detect(v); if (r.length) txt = r[0].rawValue; }
       else if (window.jsQR){ const w = 480, h = Math.round(w*v.videoHeight/v.videoWidth); cvs.width = w; cvs.height = h; cx.drawImage(v, 0, 0, w, h); const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h); if (r) txt = r.data; }
     } catch(e){}
-    if (txt){ if (navigator.vibrate) navigator.vibrate(60); stopScan(); return verificaQR(txt); }
+    if (txt){ if (navigator.vibrate) navigator.vibrate(60); const d = scanDopo; stopScan(); return d ? d.onCodice(txt) : verificaQR(txt); }
   }
   setTimeout(loop, 120);
 }
-function stopScan(){ scanning = false; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("video-container").hidden = true; }
+function stopScan(){ scanDopo = null; scanning = false; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("video-container").hidden = true; }
 function codiceDa(txt){ try { const u = new URL(txt); return u.searchParams.get("id") || u.searchParams.get("codice") || u.pathname.split("/").pop(); } catch(e){ return String(txt).trim(); } }
 async function verificaQR(raw){
   const codice = codiceDa(raw), r = await api(`api/montatura?codice=${encodeURIComponent(codice)}${UNIVOCO ? "&univoco=" + encodeURIComponent(UNIVOCO) : ""}`);
@@ -1630,10 +1641,10 @@ async function verificaQR(raw){
   open("popup");
 }
 $("scan-btn").addEventListener("click", startScan);
-$("close-video-btn").addEventListener("click", () => { stopScan(); if (mio) open("miaPagina"); });
+$("close-video-btn").addEventListener("click", () => { const d = scanDopo; stopScan(); if (!d && mio) open("miaPagina"); });
 $("qr-riprova").addEventListener("click", () => { $("popup").hidden = true; startScan(); });
 // indirizzi diretti: /caf, /ottico e /admin aprono subito l'accesso giusto
 { const m = location.pathname.match(/\/(caf|ottico|admin)\/?$/);
   if (m && !UNIVOCO) ready.finally(() => m[1] === "admin" ? apriAdmin() : entra(m[1])); }
-$("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; stopScan(); verificaQR(c); });
+$("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; const d = scanDopo; stopScan(); d ? d.onCodice(c) : verificaQR(c); });
 })();

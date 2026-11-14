@@ -63,7 +63,7 @@ module.exports = L.wrap(async (req, res) => {
   if (s.ruolo === "lab"){
     if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
     const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
-    if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
+    if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo (dal CAF o con «Nuovo cliente» in ottica)."});
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
     if (b.azione === "annulla"){ L.registraEsito(res, "laboratorio", "ultimo passaggio annullato", u.f.Univoco); const r = await L.annullaUltimo(u); return L.send(res, r.errore ? 409 : 200, r); }
@@ -133,7 +133,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
-  if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
+  if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo (dal CAF o con «Nuovo cliente» in ottica)."});
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
   L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", arrivato: "occhiale arrivato in ottica", montaturaSpedita: "montatura spedita al laboratorio", preventivo: "preventivo inserito", riscatto: "riscatto", rifare: "occhiale da rifare", annulla: "ultimo passaggio annullato", ricetta: "ricetta corretta"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco, b.motivo ? String(b.motivo).slice(0, 200) : "");
   const ord = L.parseOrdine(u.f.Ordine);

@@ -12,6 +12,6 @@ async def main():
         await pg.route("**/*", lambda r: r.continue_() if r.request.url.startswith("http://localhost") else r.abort())
         await pg.goto("http://localhost:8823/laboratorio"); await pg.wait_for_timeout(500)
         await pg.fill("#pw","laboratorio1"); await pg.click("#fLogin button"); await pg.wait_for_timeout(1000)
-        print("righe:", await pg.locator("details[data-u]").count(), "| pulsanti passo:", await pg.locator("details[data-u] summary button").count())
+        print("righe:", await pg.locator("details[data-u]").count(), "| pulsanti passo:", await pg.locator("details[data-u] .busta-az button").count())
         await pg.screenshot(path="r_lab.png", full_page=True); print(errs); await b.close()
 asyncio.run(main())

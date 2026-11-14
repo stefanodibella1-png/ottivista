@@ -15,11 +15,11 @@ async def main():
         b=await p.chromium.launch(); e=[]
         ctx=await b.new_context(viewport={"width":390,"height":844}); pg=await ctx.new_page(); pg.on("pageerror", lambda x: e.append(str(x))); await ctx.route("**/*", rt)
         await pg.goto("http://localhost:8823/laboratorio"); await pg.wait_for_timeout(600); await pg.fill("#pw","laboratorio1"); await pg.click("#fLogin button"); await pg.wait_for_timeout(1200)
-        riga=pg.locator(f"details[data-u={COD}]"); print("busta presente:", await riga.count())
-        await riga.locator("summary").click(); await pg.wait_for_timeout(400); await pg.screenshot(path="v15_lab.png", full_page=True)
+        riga=pg.locator(f".busta-w[data-u={COD}]"); print("busta presente:", await riga.count())
+        await riga.locator("summary b").click(); await pg.wait_for_timeout(400); await pg.screenshot(path="v15_lab.png", full_page=True)
         print("BUSTA:", (await riga.inner_text()).replace("\n"," | ")[:600])
         for i in range(3):
-            bt=riga.locator("summary button")
+            bt=riga.locator(".busta-az button")
             if not await bt.count(): break
             print("passo:", await bt.inner_text()); await bt.click(); await pg.wait_for_timeout(900)
         print("msg lab:", await pg.locator(".msg").first.inner_text() if await pg.locator(".msg").count() else "")

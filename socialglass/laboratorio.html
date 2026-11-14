@@ -32,6 +32,9 @@ label{display:block;font-size:13px;color:var(--grigio);margin:8px 0 3px}
 .c-dafare{background:#fff4e0;color:#8a5a00}.c-lav{background:#e7f0ff;color:#0b4fb3}.c-pronto{background:#e8f5e9;color:#1e5e24}.c-rit{background:#fdecea;color:#b3261e}
 details.busta{background:#fff;border:1px solid var(--bordo);border-radius:16px;margin:8px 0;box-shadow:var(--ombra);transition:box-shadow .18s,border-color .18s}details.busta:hover{border-color:#c5d3ea}
 details.busta>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.busta-w{position:relative;margin:8px 0}.busta-w>details.busta{margin:0}.busta-w>details.busta>summary{padding-left:46px}
+.busta-sel{position:absolute;left:16px;top:22px;z-index:1;width:18px;height:18px;margin:0}
+.busta-az{position:absolute;right:14px;top:10px;z-index:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:64%}
 details.busta>summary::-webkit-details-marker{display:none}details.busta[open]>summary{border-bottom:1px solid var(--bordo)}
 .cod{font-family:"Courier New",monospace;color:#555;font-size:13px}
 .corpo{padding:12px 14px 14px;display:grid;gap:10px}
@@ -47,11 +50,14 @@ table.rx{border-collapse:collapse;font-size:15px}table.rx th,table.rx td{border:
 .giro{background:#fff;border:1px solid var(--bordo);border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:var(--ombra)}.giro h4{margin:0 0 4px;color:var(--notte)}.giro ul{margin:6px 0 0;padding-left:18px}
 @media (max-width:600px){.barra{grid-template-columns:1fr}table.rx th,table.rx td{padding:4px 6px;font-size:14px}main{padding:10px 10px 30px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* accessibilità: bersagli di almeno 24 px */
+input[type=checkbox]{min-width:24px;min-height:24px}.busta-sel{width:24px;height:24px;top:19px}
+button.link{min-height:24px;padding:3px 0}
 </style>
 </head>
 <body>
 <header><div><b>SocialGlass</b> <span>Laboratorio</span></div><div id="chi"></div></header>
 <main id="app"></main>
-<script src="lab.js?v=1798200000"></script>
+<script src="lab.js?v=1798300000"></script>
 </body>
 </html>

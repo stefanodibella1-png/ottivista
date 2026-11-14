@@ -98,7 +98,7 @@
   function dove(b){
     const m = b.montatura || {};
     if (daVerificare(b)) return `<div class="dove ott">Controlla se hai in magazzino la montatura <b>${esc(m.codice)}</b> ${esc(m.modello)} ${esc(m.colore)}. ${b.lab.labHa ? "Secondo il magazzino ne hai una copia." : "Il magazzino non registra copie in laboratorio."} Se c'è, tocca «Montatura disponibile»; se non c'è, «Ritira la montatura dall'ottico».</div>`;
-    if (inArrivo(b)) return `<div class="dove ott">Montatura richiesta il ${dt(b.lab.richiesta)} all'ottica ${esc(b.ottica.id)} ${esc(b.ottica.nome)}${b.ottica.telefono ? ` · tel. <a href="tel:${esc(b.ottica.telefono)}">${esc(b.ottica.telefono)}</a>` : ""}: arriva con il corriere, insieme alla scheda del cliente. Quando la ricevi tocca «Montatura arrivata: disponibile».</div>`;
+    if (inArrivo(b)) return `<div class="dove ott">Montatura richiesta il ${dt(b.lab.richiesta)} all'ottica ${esc(b.ottica.id)} ${esc(b.ottica.nome)}${b.ottica.telefono ? ` · tel. <a href="tel:${esc(b.ottica.telefono)}">${esc(b.ottica.telefono)}</a>` : ""}: arriva con il corriere, insieme alla scheda del cliente. Quando la ricevi tocca «Montatura arrivata: controlla il codice».</div>`;
     if (b.lab.verifica && b.lab.fonte !== "LAB" && b.lab.ritirata) return `<div class="dove lab">Montatura arrivata dall'ottica il ${dt(b.lab.ritirata)}.</div>`;
     if (b.lab.fonte === "LAB") return `<div class="dove lab">Montatura: usa la copia del laboratorio.</div>`;
     const da = b.lab.fonte === "MAG" ? "dal magazzino SocialGlass" : `presso l'ottica ${esc(b.ottica.id)} ${esc(b.ottica.nome)}${b.ottica.indirizzo ? ", " + esc(b.ottica.indirizzo) : ""}${b.ottica.telefono ? ` · tel. <a href="tel:${esc(b.ottica.telefono)}">${esc(b.ottica.telefono)}</a>` : ""}`;
@@ -134,7 +134,7 @@
     const q = cerca.trim().toUpperCase();
     const conta = k => buste.filter(FILTRI[k][1]).length;
     const l = buste.filter(FILTRI[filtro][1]).filter(b => !q || `${b.univoco} ${b.nome} ${b.cognome} ${b.ottica.id} ${b.ottica.nome} ${b.montatura && b.montatura.codice}`.toUpperCase().includes(q));
-    const aperti = new Set([...document.querySelectorAll("details.busta[open]")].map(d => d.dataset.u)); if (apri) aperti.add(apri);
+    const aperti = new Set([...document.querySelectorAll(".busta-w")].filter(w => w.querySelector("details[open]")).map(w => w.dataset.u)); if (apri) aperti.add(apri);
     document.title = (conta("verifica") ? `(${conta("verifica")}) ` : "") + "Laboratorio · SocialGlass";
     const kp = (k, v, t, cl) => `<button type="button" data-f="${k}" class="${filtro === k ? "on " : ""}${cl || ""}"><b>${v}</b>${t}</button>`;
     app.innerHTML = `${messaggio ? `<div class="msg ${messaggio[1]}" role="status">${esc(messaggio[0])}</div>` : ""}
@@ -143,19 +143,20 @@
         <div class="az"><button type="button" class="grigio" id="aggiorna">Aggiorna</button><button type="button" id="stampaSel" ${sel.size ? "" : "disabled"}>Stampa buste selezionate (${sel.size})</button></div></div>
       ${l.length ? `<p style="margin:4px 0;color:#666;font-size:13px">${l.length} buste · <button type="button" class="link" id="selTutte">${l.every(b => sel.has(b.univoco)) ? "deseleziona" : "seleziona"} tutte</button></p>` : ""}
       ${filtro === "ritiro" && l.length ? giroRitiri(l) : ""}
-      ${l.map(b => `<details class="busta" data-u="${esc(b.univoco)}" ${aperti.has(b.univoco) ? "open" : ""}><summary>
-          <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}">
-            <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${statoChip(b)}${prossimo(b)}${b.annulla ? `<button type="button" class="grigio" data-annulla="${esc(b.univoco)}" title="Annulla l'ultimo passaggio (entro le ${ora(b.annulla.fino)})">↶ Annulla «${esc(b.annulla.testo)}»</button>` : ""}</div></summary>
+      ${l.map(b => `<div class="busta-w" data-u="${esc(b.univoco)}"><input type="checkbox" class="sel busta-sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona la busta ${esc(b.univoco)} per la stampa">
+        <div class="busta-az">${statoChip(b)}${prossimo(b)}${b.annulla ? `<button type="button" class="grigio" data-annulla="${esc(b.univoco)}" title="Annulla l'ultimo passaggio (entro le ${ora(b.annulla.fino)})">↶ Annulla «${esc(b.annulla.testo)}»</button>` : ""}</div>
+        <details class="busta" ${aperti.has(b.univoco) ? "open" : ""}><summary>
+            <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></summary>
         <div class="corpo">${chiediCodice === b.univoco && inArrivo(b) ? `<div class="box" style="border:2px solid #2e7d32"><h4>Montatura arrivata: controllo</h4><p style="margin:0 0 6px">Scansiona il QR sulla montatura o scrivi il codice (atteso: <b>${esc((b.montatura || {}).codice || "")}</b>).</p>
-            <input id="codMont" autocomplete="off" placeholder="Codice montatura (es. SG-1042)" style="width:100%;max-width:280px"> <button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Conferma arrivo</button></div>` : ""}${corpoBusta(b)}
+            <input id="codMont" autocomplete="off" placeholder="Codice montatura (es. SG-1042)" aria-label="Codice della montatura arrivata" style="width:100%;max-width:280px"> <button type="button" class="grigio" data-scan-mont="${esc(b.univoco)}" aria-label="Inquadra con la fotocamera il QR della montatura">📷 Inquadra il QR</button> <button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Conferma arrivo</button></div>` : ""}${corpoBusta(b)}
           ${!b.chiuso && !b.lab.iniziato && !finito(b) && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">Tocca «Inizio lavorazione» quando ordini o prepari le lenti: da quel momento il cliente non può più annullare l'ordine.</p>` : ""}
           ${!b.chiuso && !finito(b) && b.inLavorazione && !inAttesa(b) ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Pronto e spedito all'ottica» l'ottica riceve l'avviso che l'occhiale sta arrivando; il cliente lo avvisa l'ottica quando lo riceve.</p>` : ""}
           <div class="az">${!b.chiuso && daRitirare(b) ? `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>` : ""}
             ${!b.chiuso && !spedito(b) && b.inLavorazione && !inAttesa(b) && !daRitirare(b) ? prossimo(b) : ""}
             <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button>
-            ${puoRifare(b) ? `<button type="button" class="grigio" data-rifare="${esc(b.univoco)}">Da rifare</button>` : ""}</div></div></details>`).join("")
+            ${puoRifare(b) ? `<button type="button" class="grigio" data-rifare="${esc(b.univoco)}">Da rifare</button>` : ""}</div></div></details></div>`).join("")
         || `<div class="vuoto">Nessuna busta in «${FILTRI[filtro][0]}».</div>`}`;
+    app.querySelectorAll(".busta-w").forEach(w => { const az = w.querySelector(".busta-az"), sm = w.querySelector("summary"); if (az && sm){ sm.style.paddingRight = (az.offsetWidth + 28) + "px"; sm.style.minHeight = (az.offsetHeight + 4) + "px"; } });
     const c = $("cerca"); c.oninput = () => { cerca = c.value; const p = c.selectionStart; disegna(); const n = $("cerca"); n.focus(); try { n.setSelectionRange(p, p); } catch(_){} };
     $("aggiorna").onclick = () => location.reload();
     $("stampaSel").onclick = () => stampa(buste.filter(b => sel.has(b.univoco)));
@@ -188,6 +189,7 @@
       if (r.ok) filtro = r.data.dove === "laboratorio" ? "dafare" : "arrivo";
       return carica();
     }
+    if (b.dataset.scanMont){ const u = b.dataset.scanMont; scansiona(t => { const i = $("codMont"); if (!i) return; i.value = t; const ok = app.querySelector(`[data-az=disponibile][data-u="${u}"]`); if (ok) ok.click(); }); return; }
     if (b.dataset.arrivo){ chiediCodice = apri = b.dataset.arrivo; messaggio = null; disegna(); const i = $("codMont"); if (i) i.focus(); return; }
     if (b.dataset.az){
       if (b.dataset.az === "pronto" && b.dataset.spedisci && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? L'ottica viene avvisata che arriva: tocca di nuovo"; return; }
@@ -202,13 +204,39 @@
       if (r.ok && b.dataset.az === "disponibile"){ apri = b.dataset.u; filtro = "dafare"; }
       messaggio = r.ok ? [{ritirata: "Montatura segnata come ritirata.", inizia: "Lavorazione iniziata: il cliente è stato avvisato che da ora l'ordine non si può più annullare.",
         disponibile: "Montatura disponibile: qui sotto trovi la ricetta, procedi con la lavorazione.",
-        richiedi: "L'ottica è stata avvisata: mette da parte la montatura con la scheda per il corriere. Quando arriva tocca «Montatura arrivata: disponibile».",
+        richiedi: "L'ottica è stata avvisata: mette da parte la montatura con la scheda per il corriere. Quando arriva tocca «Montatura arrivata: controlla il codice».",
         pronto: b.dataset.spedisci ? "Occhiale pronto e spedito: l'ottica è avvisata che sta arrivando. Il cliente lo avvisa l'ottica quando lo riceve." : "Occhiale pronto. Quando lo spedisci tocca «Spedito all'ottica».",
         spedito: "Occhiale spedito: l'ottica è avvisata che sta arrivando."}[b.dataset.az], "ok"] : [r.data.errore || "Errore", "err"];
       return carica();
     }
   });
 
+  // lettura del QR con la fotocamera (webcam del PC o telefono): stesso metodo della pagina del cliente
+  async function scansiona(onCodice){
+    const ov = document.createElement("div"); ov.id = "scanLab"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Lettura del QR");
+    ov.style.cssText = "position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:16px";
+    ov.innerHTML = `<div style="width:min(420px,92vw);text-align:center;color:#fff"><video playsinline muted style="width:100%;border-radius:14px;background:#000"></video>
+      <p id="scanLabT" style="margin:10px 0">Inquadra il QR sul cartellino della montatura</p><button type="button" class="grigio" id="scanLabX">Chiudi</button></div>`;
+    document.body.appendChild(ov);
+    let st = null, attivo = true, det = null;
+    const fine = () => { attivo = false; if (st) st.getTracks().forEach(t => t.stop()); ov.remove(); document.removeEventListener("keydown", esc_); };
+    const esc_ = e => { if (e.key === "Escape") fine(); };
+    document.addEventListener("keydown", esc_); $("scanLabX").onclick = fine; $("scanLabX").focus();
+    try { st = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false}); }
+    catch(e){ $("scanLabT").textContent = "Fotocamera non disponibile: scrivi il codice nel campo."; return; }
+    const v = ov.querySelector("video"); v.srcObject = st; await v.play();
+    if ("BarcodeDetector" in window){ try { det = new BarcodeDetector({formats: ["qr_code"]}); } catch(_){ det = null; } }
+    if (!det && !window.jsQR) await new Promise(r => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; sc.onload = r; sc.onerror = r; document.head.appendChild(sc); });
+    const cv = document.createElement("canvas"), cx = cv.getContext("2d", {willReadFrequently: true});
+    const giro = async () => {
+      if (!attivo) return; let txt = null;
+      try { if (v.readyState >= 2){ if (det){ const r = await det.detect(v); if (r.length) txt = r[0].rawValue; }
+        else if (window.jsQR){ const w = 480, h = Math.round(w * v.videoHeight / v.videoWidth); cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h); const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h); if (r) txt = r.data; } } } catch(_){}
+      if (txt){ fine(); return onCodice(txt); }
+      setTimeout(giro, 120);
+    };
+    giro();
+  }
   // busta di lavoro stampabile (una per pagina)
   function stampa(l){
     if (!l.length) return;

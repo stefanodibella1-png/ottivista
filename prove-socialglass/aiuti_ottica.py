@@ -19,11 +19,11 @@ async def arrivo_e_consegna(o, COD, foto=None, codice=None):
     card = await apri_scheda(o, COD, "consegnare")
     if not card: return "nessun occhiale da consegnare"
     await card.locator("[data-consegna]").click(); await o.wait_for_timeout(400)
-    await o.fill("#codCons", "0000"); await o.locator("#boxCons button").click(); await o.wait_for_timeout(900)
+    await o.fill("#codCons", "0000"); await o.locator("#boxCons [data-azione=consegnato]").click(); await o.wait_for_timeout(900)
     errore = (await o.inner_text("body")).count("non corrisponde") > 0
     await o.reload(); await o.wait_for_timeout(1200); await accedi_ottica(o)
     card = await apri_scheda(o, COD, "consegnare")
     await card.locator("[data-consegna]").click(); await o.wait_for_timeout(400)
     if foto: await foto(o, "TABLET_ottica_controllo_codice_consegna")
-    await o.fill("#codCons", codice or COD[-4:]); await o.locator("#boxCons button").click(); await o.wait_for_timeout(1200)
+    await o.fill("#codCons", codice or COD[-4:]); await o.locator("#boxCons [data-azione=consegnato]").click(); await o.wait_for_timeout(1200)
     return f"codice sbagliato rifiutato: {errore}"

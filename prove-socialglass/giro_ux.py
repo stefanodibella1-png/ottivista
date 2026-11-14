@@ -70,8 +70,8 @@ async def main():
         # 5. laboratorio: nuovo ordine da verificare → chiede la montatura all'ottica
         l = await nuovo(b, "pc"); await l.goto(B + "laboratorio"); await l.wait_for_timeout(600); await l.fill("#pw", "laboratorio1"); await l.click("#fLogin button"); await l.wait_for_timeout(1200)
         print("5 LAB titolo:", await l.title(), "| kpi:", t(await l.inner_text(".kpi")))
-        riga = l.locator(f"details[data-u={COD}]"); print("   busta:", t(await riga.inner_text())[:300])
-        await riga.locator("summary").click(); await l.wait_for_timeout(300); print("   ricetta chiusa:", "si apre quando" in await riga.inner_text())
+        riga = l.locator(f".busta-w[data-u={COD}]"); print("   busta:", t(await riga.inner_text())[:300])
+        await riga.locator("summary b").click(); await l.wait_for_timeout(300); print("   ricetta chiusa:", "si apre quando" in await riga.inner_text())
         await foto(l, "PC_LAB_nuovo_ordine_da_verificare")
         rq = riga.locator("button[data-az=richiedi]"); await rq.click(); await l.wait_for_timeout(300); await rq.click(); await l.wait_for_timeout(1200)
         await foto(l, "PC_LAB_montatura_richiesta_all_ottica"); print("   dopo richiesta:", t(await l.inner_text("body"))[:300])
@@ -87,12 +87,12 @@ async def main():
         sc = await pp.value; await sc.wait_for_timeout(800); await sc.set_viewport_size({"width": 800, "height": 1100}); await foto(sc, "STAMPA_scheda_per_il_laboratorio"); print("   scheda:", t(await sc.inner_text("body"))[:300]); await sc.close()
         # 7. laboratorio: montatura arrivata → ricetta → pronto
         await l.reload(); await l.wait_for_timeout(1200); await l.locator("[data-f=arrivo]").first.click(); await l.wait_for_timeout(300)
-        riga = l.locator(f"details[data-u={COD}]"); await riga.locator("button[data-arrivo]").first.click(); await l.wait_for_timeout(500)
-        await l.fill("#codMont", "SG-1043"); await foto(l, "PC_LAB_controllo_codice_montatura_arrivata"); await l.locator(f"details[data-u={COD}] button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
+        riga = l.locator(f".busta-w[data-u={COD}]"); await riga.locator("button[data-arrivo]").first.click(); await l.wait_for_timeout(500)
+        await l.fill("#codMont", "SG-1043"); await foto(l, "PC_LAB_controllo_codice_montatura_arrivata"); await l.locator(f".busta-w[data-u={COD}] button[data-az=disponibile]").first.click(); await l.wait_for_timeout(1200)
         print("7 LAB dopo arrivo:", t(await l.inner_text("body"))[:400]); await foto(l, "PC_LAB_montatura_arrivata_ricetta")
-        riga = l.locator(f"details[data-u={COD}]")
+        riga = l.locator(f".busta-w[data-u={COD}]")
         for i in range(5):
-            bt = riga.locator("summary button")
+            bt = riga.locator(".busta-az button")
             if not await bt.count(): break
             print("   clic:", await bt.first.inner_text()); await bt.first.click(); await l.wait_for_timeout(900)
         await c.reload(); await c.wait_for_timeout(2200); await foto(l, "PC_LAB_occhiale_pronto"); await foto(c, "TEL_cliente_occhiale_pronto"); print("8 TEL:", t(await c.inner_text("#mpTitolo")))

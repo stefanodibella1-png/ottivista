@@ -250,7 +250,7 @@ function disegna(){
     f(n.sottoScorta, "Montature sotto scorta o esaurite", "Controlla il magazzino e riordina", "magazzino", true);
     f(bozze, "Ordini ai fornitori da inviare", "Bozze pronte: controlla e invia", "fornitori");
     f(daRiord, "Fornitori con articoli da riordinare", "Crea la bozza d'ordine", "fornitori");
-    f(inviati, "Ordini inviati in attesa della merce", "Quando arriva, segna «merce arrivata»", "fornitori");
+    f(inviati, "Ordini inviati in attesa della merce", "Quando arriva, tocca «Merce arrivata»", "fornitori");
     f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
     f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
     f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
@@ -272,7 +272,7 @@ function disegna(){
         <p style="margin:6px 0">${esc(x.testo)}</p>${x.foto ? `<img src="${esc(x.foto)}" alt="Foto del cliente" style="max-width:260px;width:100%;border-radius:10px">` : ""}
         <div class="riga" style="margin-top:6px"><input data-risp placeholder="Risposta al cliente (facoltativa: gli arriva come notifica)" maxlength="300" style="flex:1;margin:0"><button type="button" class="verde" data-segn-ok="${esc(x.id)}" style="margin:0">Risolta</button></div></div>`).join("")}</div>` : ""}
       <div class="cru-box" style="margin-top:14px"><h3>Report del mese</h3><p class="hint" style="margin:0 0 8px">Incassi, nuovi clienti, attivazioni, morosi e recensioni del mese, pronto da stampare.</p>
-        <div class="riga"><input type="month" id="repMese" value="${new Date(Date.now() - 15*864e5).toISOString().slice(0, 7)}" style="margin:0;max-width:200px"><button type="button" data-report style="margin:0">Apri il report</button></div></div>
+        <div class="riga"><input type="month" id="repMese" aria-label="Mese del report" value="${new Date(Date.now() - 15*864e5).toISOString().slice(0, 7)}" style="margin:0;max-width:200px"><button type="button" data-report style="margin:0">Apri il report</button></div></div>
       <div class="cru-box" id="admServizio" style="margin-top:14px"><h3>Clienti contenti</h3>
         <div class="cru-kpi" style="margin-bottom:8px"><div class="kpi-f"><b>${sv.totRecensioni ? "★ " + String(sv.media).replace(".", ",") : "—"}</b>${sv.totRecensioni} ${sv.totRecensioni === 1 ? "recensione" : "recensioni"}</div><div class="kpi-f"><b>${sv.amici || 0}</b>clienti portati da amici</div><div class="kpi-f"><b>${sv.donati || 0}</b>occhiali donati</div><div class="kpi-f"><b>${sv.notifiche || 0}</b>clienti con le notifiche attive</div></div>
         ${sv.recensioni.length ? `<div class="lista" style="max-height:300px">${sv.recensioni.slice(0, 20).map(r => `<div class="riga-cli" style="cursor:default;align-items:flex-start"><span><span class="nome" style="color:#F5B301">${"★".repeat(r.voto)}<span style="color:#cfd6e2">${"★".repeat(5 - r.voto)}</span></span> ${esc(r.nome)} · ${esc(r.ottica)} · ${dt(r.il)}${r.testo ? `<span class="cod" style="font-family:inherit;white-space:normal">«${esc(r.testo)}»</span>` : ""}</span>

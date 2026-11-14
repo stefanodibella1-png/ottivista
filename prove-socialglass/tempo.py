@@ -61,9 +61,9 @@ async def main():
         await c.get_by_role("button", name="Abbonati").click(); await c.wait_for_timeout(2500); print("4 TEL attivato:", t(await c.inner_text("#mpTitolo")))
         # 5. laboratorio (telefono del laboratorio)
         l = await nuovo(b, "tel"); await l.goto(B + "laboratorio"); await l.wait_for_timeout(600); await l.fill("#pw", "laboratorio1"); await l.click("#fLogin button"); await l.wait_for_timeout(1200)
-        riga = l.locator(f"details[data-u={COD}]"); await riga.locator("summary").click(); await l.wait_for_timeout(400)
+        riga = l.locator(f".busta-w[data-u={COD}]"); await riga.locator("summary b").click(); await l.wait_for_timeout(400)
         for i in range(5):
-            bt = riga.locator("summary button")
+            bt = riga.locator(".busta-az button")
             if not await bt.count(): break
             await bt.first.click(); await l.wait_for_timeout(900)
         await c.reload(); await c.wait_for_timeout(2200); print("5 LAB → TEL:", t(await c.inner_text("#mpTitolo")))

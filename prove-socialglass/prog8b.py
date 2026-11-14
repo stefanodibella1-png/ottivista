@@ -7,6 +7,6 @@ async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(); l=await b.new_page(viewport={"width":1280,"height":900})
         await l.goto("http://localhost:8823/laboratorio"); await l.wait_for_timeout(700); await l.fill("#pw","laboratorio1"); await l.click("#fLogin button"); await l.wait_for_timeout(1200)
-        r=l.locator(f"details[data-u={uv}]"); await r.locator("summary").click(); await l.wait_for_timeout(300)
+        r=l.locator(f".busta-w[data-u={uv}]"); await r.locator("summary b").click(); await l.wait_for_timeout(300)
         t=" ".join((await r.inner_text()).split()); i=t.find("Distanza pupillare"); print("busta del laboratorio:", t[i:i+150]); await b.close()
 asyncio.run(main())
