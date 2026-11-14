@@ -47,7 +47,7 @@ module.exports = L.wrap(async (req, res) => {
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
     salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
     salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", sollecito: "sollecito inviato", legale: "pratica legale",
-    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
+    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
     [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
 
@@ -184,6 +184,8 @@ module.exports = L.wrap(async (req, res) => {
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
       differenzeStripe: ((await L.DB.meta("differenze-stripe")) || {}).voci || [],
+      coda: L.codaEccezioni(utenti, await L.DB.lista("segn"), await L.DB.meta("differenze-stripe"), cfgS),
+      addebitoUsato: ((cfgS || {}).addebitoUsato) || "",
       rimborsi: utenti.map(u => ({f: u.f, pg: L.parseOrdine(u.f.Ordine).pagamento || {}, o: L.parseOrdine(u.f.Ordine)})).filter(x => x.pg.rimborso && x.pg.rimborso.daFare && !x.pg.rimborso.fatto)
         .map(x => ({univoco: x.f.Univoco, nome: `${L.nm(x.f.Nome)} ${L.nm(x.f.Cognome)}`, dal: x.pg.rimborso.daFare, importo: (x.pg.pagamenti || []).reduce((a, p) => a + (p.canone || 0) + (p.spedizione || 0), 0) || ((x.o.prezzi || {}).rata || 0) + ((x.o.prezzi || {}).spedizione || 0)})),
       segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))
@@ -462,6 +464,39 @@ module.exports = L.wrap(async (req, res) => {
       .sort((a, b) => String(b.creato).localeCompare(String(a.creato)))});
   }
   // rimborso del recesso fatto dalla dashboard Stripe: si segna qui (resta nello storico)
+  // rimborso del recesso fatto da qui dopo il controllo (D2): si rimborsano i pagamenti Stripe del contratto
+  if (az === "rimborsa"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {};
+    if (!pg.rimborso || !pg.rimborso.daFare) return L.send(res, 409, {errore: "Per questo cliente non c'è un rimborso da fare."});
+    if (pg.rimborso.fatto) return L.send(res, 409, {errore: "Rimborso già fatto."});
+    const ora = new Date().toISOString(); let totale = 0, voci = [];
+    if (L.CFG.stripeKey && pg.cliente && pg.stato !== "SIMULATO"){
+      // pagamenti del cliente da quando ha attivato (il recesso è entro 14 giorni: sono tutti di questo contratto)
+      const dal = Math.floor(new Date(pg.attivatoIl || pg.rimborso.daFare).getTime() / 1000) - 3600;
+      let ch; try { ch = ((await L.stripeApi("GET", "charges", {customer: pg.cliente, limit: 100, "created[gte]": dal})).data || []); } catch(e){ return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco."}); }
+      for (const c of ch.filter(c => c.paid && c.status === "succeeded" && c.amount > (c.amount_refunded || 0))){
+        try { const r = await L.stripeApi("POST", "refunds", {charge: c.id, reason: "requested_by_customer", metadata: {univoco: u.f.Univoco, tipo: "recesso"}}, `rimborso-${c.id}`);
+          voci.push({id: r.id, pagamento: c.id, importo: r.amount / 100, stato: r.status}); totale += r.amount / 100; }
+        catch(e){ voci.push({pagamento: c.id, errore: String(e.message).slice(0, 160)}); }
+      }
+      if (voci.some(v => v.errore)){ pg.rimborso.tentativi = (pg.rimborso.tentativi || []).concat({il: ora, voci}).slice(-5); await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); return L.send(res, 502, {errore: "Una parte del rimborso non è riuscita: controlla nella dashboard Stripe.", voci}); }
+    } else { totale = (pg.pagamenti || []).reduce((a, p) => a + (p.canone || 0) + (p.spedizione || 0), 0) || ((o.prezzi || {}).rata || 0) + ((o.prezzi || {}).spedizione || 0); voci = [{simulato: true, importo: totale}]; }
+    Object.assign(pg.rimborso, {fatto: ora, importo: Math.round(totale * 100) / 100, voci, da: "stripe"}); pg.esito = "RECESSO PRIMA DELLA LAVORAZIONE: RIMBORSATO";
+    L.chi(null, "rimborso fatto"); await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+    let av = null; try { av = await L.avvisa(u, `SocialGlass: ${L.nm(u.f.Nome)}, abbiamo fatto il rimborso di ${totale.toFixed(2).replace(".", ",")} €: arriva sul metodo di pagamento usato in pochi giorni lavorativi.`); } catch(e){ console.error(e); }
+    return L.send(res, 200, {ok: true, importo: pg.rimborso.importo, voci, avviso: av});
+  }
+  // occhiale restituito rovinato o incompleto: l'amministratore lo controlla e scrive cosa ha deciso
+  if (az === "verificaRestituzione"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const o = L.parseOrdine(u.f.Ordine); if (!o.ritiro || !o.ritiro.ritirato || !o.ritiro.condizione) return L.send(res, 409, {errore: "Non c'è un occhiale restituito da controllare."});
+    if (!pulito(b.nota, 300)) return L.send(res, 400, {errore: "Scrivi cosa hai deciso (es. riparabile, nessun addebito)."});
+    o.ritiro.verificato = {il: new Date().toISOString(), nota: pulito(b.nota, 300)}; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
+    return L.send(res, 200, {ok: true});
+  }
+  // addebito automatico dell'usato per restituzione mancata (D3): si accende solo dopo il via dell'avvocato sulla clausola
+  if (az === "addebitoUsato"){ await L.DB.meta("config", {addebitoUsato: b.attivo ? new Date().toISOString() : ""}); return L.send(res, 200, {ok: true}); }
   if (az === "rimborsato"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
     const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {};

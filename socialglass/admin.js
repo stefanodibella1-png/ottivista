@@ -186,7 +186,10 @@ function disegnaScheda(c){
       ${riga("Lenti", o.lenti ? esc(o.lenti.nome) : "")}${riga("Trattamenti", (o.trattamenti || []).map(t => esc(t.nome)).join(", "))}
       ${o.lab ? riga("Laboratorio", `${esc(o.lab.stato)} · montatura ${o.lab.fonte === "LAB" ? "copia del laboratorio" : o.lab.fonte === "MAG" ? "dal magazzino" : "da ritirare in ottica"}${o.lab.fonte !== "LAB" ? (o.lab.ritirata ? " (ritirata il " + dt(o.lab.ritirata) + ")" : " (non ancora ritirata)") : ""}`) : ""}
       ${riga("Pronto il", o.prontoIl ? dt(o.prontoIl) : "")}${riga("Consegnato il", o.consegnatoIl ? dt(o.consegnatoIl) : "")}
-      ${o.ritiro && o.ritiro.daRitirare ? riga("Da restituire", o.ritiro.ritirato ? "restituito il " + dt(o.ritiro.ritirato) : "sì, dal " + dt(o.ritiro.dal)) : ""}</dl>
+      ${o.ritiro && o.ritiro.daRitirare ? riga("Da restituire", o.ritiro.ritirato ? "restituito il " + dt(o.ritiro.ritirato) + (o.ritiro.condizione ? ` · ${esc(o.ritiro.condizione)}${o.ritiro.nota ? ": " + esc(o.ritiro.nota) : ""}` : "") : "sì, dal " + dt(o.ritiro.dal)) : ""}
+      ${o.ritiro && o.ritiro.verificato ? riga("Controllo restituzione", `${dt(o.ritiro.verificato.il)} · ${esc(o.ritiro.verificato.nota)}`) : ""}</dl>
+      ${o.ritiro && o.ritiro.ritirato && o.ritiro.condizione && o.ritiro.condizione !== "integro" && !o.ritiro.verificato ? `<form data-f="verificaRestituzione" data-id="${esc(c.univoco)}" class="esito err" style="display:block"><b>Occhiale restituito ${esc(o.ritiro.condizione)}.</b> Controllalo e scrivi cosa decidi.
+        <input name="nota" maxlength="300" placeholder="es. riparabile in laboratorio, nessun addebito" style="width:100%;margin:6px 0"><button type="submit" class="verde">Controllato</button></form>` : ""}
       ${o.ricetta ? "<b>Ricetta</b>" + ricettaHtml(o.ricetta) : ""}</div>
 
     <div class="scheda"><b>Abbonamento e pagamenti</b><dl class="dl">
@@ -202,7 +205,7 @@ function disegnaScheda(c){
       ${c.passi.slice().reverse().map(x => `<tr><td>${new Date(x.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"})}</td><td>${esc(x.chi || "")}</td><td>${esc(x.az || "")}</td><td>${esc(x.da || "")}</td><td>${esc(x.a || "")}</td></tr>`).join("")}
       </tbody></table></div></details>` : ""}
 
-    ${pg.rimborso && pg.rimborso.daFare && !pg.rimborso.fatto ? `<div class="esito err" style="display:block;margin-top:6px"><b>Rimborso da fare:</b> recesso del ${dt(pg.rimborso.daFare)}. Rimborsa il pagamento dalla dashboard Stripe (cliente ${esc(pg.cliente || "")}), poi tocca qui.<br><button type="button" class="verde" data-rimborsato="${esc(c.univoco)}" style="margin-top:6px">Rimborso fatto</button></div>` : pg.rimborso && pg.rimborso.fatto ? `<p class="hint">Rimborso del recesso fatto il ${dt(pg.rimborso.fatto)}.</p>` : ""}
+    ${pg.rimborso && pg.rimborso.daFare && !pg.rimborso.fatto ? `<div class="esito err" style="display:block;margin-top:6px"><b>Rimborso da fare:</b> recesso del ${dt(pg.rimborso.daFare)}. Controlla il caso, poi rimborsa da qui: rimborsiamo con Stripe tutti i pagamenti del contratto e avvisiamo il cliente.<br><button type="button" class="verde" data-rimborsa="${esc(c.univoco)}" style="margin-top:6px">Rimborsa con Stripe</button> <button type="button" class="grigio" data-rimborsato="${esc(c.univoco)}" style="margin-top:6px">L'ho già rimborsato a mano</button></div>` : pg.rimborso && pg.rimborso.fatto ? `<p class="hint">Rimborso del recesso fatto il ${dt(pg.rimborso.fatto)}.</p>` : ""}
     <div class="az" style="margin-top:6px"><button type="button" class="grigio" data-elimina="cliente" data-id="${esc(c.univoco)}" data-attivo="${pg.abbonamento && !pg.chiuso ? 1 : ""}">Elimina cliente</button></div>`;
 }
 function disegna(){
@@ -227,9 +230,7 @@ function disegna(){
     f(daLiq.length, `Compensi da liquidare: ${euro(totLiq)}`, "CAF e ottiche con un saldo a credito", "conteggi");
     f(lb.attivo ? lb.daRitirare : 0, "Montature che il laboratorio deve ritirare", "Sono ancora esposte in ottica", "clienti");
     f(senza, "CAF o ottiche senza accordo economico", "Imposta il compenso nella loro scheda", "conteggi");
-    { const rb = d.rimborsi || []; if (rb.length) fare.push(`<button type="button" data-scheda="${esc(rb[0].univoco)}" class="urg"><span class="n">${rb.length}</span><span>Rimborsi da fare (recesso)<small>${esc(rb.map(x => `${x.nome} ${euro(x.importo)}`).join(" · ").slice(0, 160))} · fai il rimborso da Stripe, poi «Rimborso fatto» nella scheda</small></span><span class="va">Apri ›</span></button>`); }
-    { const ds = d.differenzeStripe || []; if (ds.length) fare.push(`<button type="button" data-scheda="${esc(ds[0].univoco)}" class="urg"><span class="n">${ds.length}</span><span>Differenze con Stripe da controllare<small>${esc(ds.map(x => x.univoco + ": " + x.testo).join(" · ").slice(0, 160))}</small></span><span class="va">Apri ›</span></button>`); }
-    f((d.segnalazioni || []).length, "Segnalazioni dei clienti aperte", "Problemi con l'occhiale: le vede anche l'ottica", "numeri", true);
+    { const cd = d.coda || [], sc = cd.filter(x => x.scaduto).length; if (cd.length) fare.push(`<button type="button" data-vai-coda${sc ? ' class="urg"' : ""}><span class="n">${cd.length}</span><span>Casi da risolvere${sc ? ` · ${sc} in ritardo` : ""}<small>Rimborsi, insoluti, restituzioni, segnalazioni, rifacimenti, Stripe</small></span><span class="va">Apri ›</span></button>`); }
     const sv = d.servizio || {daDonare: [], recensioni: []};
     if (sv.daLeggere) fare.push(`<button type="button" data-vai-servizio class="urg"><span class="n">${sv.daLeggere}</span><span>Recensioni da 1 a 3 stelle da leggere<small>Contatta il cliente prima che lo scriva altrove</small></span><span class="va">Apri ›</span></button>`);
     if (sv.daDonare.length) fare.push(`<button type="button" data-vai-servizio><span class="n">${sv.daDonare.length}</span><span>Occhiali restituiti da rigenerare e donare<small>Da rigenerare e consegnare a un'associazione benefica</small></span><span class="va">Apri ›</span></button>`);
@@ -239,6 +240,9 @@ function disegna(){
         <button type="button" data-tab="conteggi"><b>${euro(n.canoniMensili)}</b>Canoni al mese</button></div>
       <div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: niente in sospeso.</div>'}</div>
         <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
+      ${(d.coda || []).length ? `<div class="cru-box" id="admCoda" style="margin-top:14px"><h3>Da risolvere</h3><p class="hint" style="margin:0 0 8px">In ordine di scadenza. In rosso quelli oltre la scadenza. Tocca un caso per aprire la scheda del cliente.</p>
+        ${d.coda.map(x => `<button type="button" class="riga-cli" ${x.tipo === "segnalazione" ? "data-vai-segn" : `data-scheda="${esc(x.univoco)}"`} style="width:100%;text-align:left"><span><span class="nome">${esc(x.titolo)} · ${esc(x.nome || x.univoco)}</span><span class="cod">${esc(x.univoco)}${x.ottica ? " · " + esc(x.ottica) : ""} · ${esc(x.dettaglio || "")}</span></span>
+          <span class="bad"><span class="chip ${x.scaduto ? "s3" : "s2"}">${x.scaduto ? "SCADUTO IL" : "ENTRO IL"} ${dt(x.scadenza)}</span></span></button>`).join("")}</div>` : ""}
       ${(d.segnalazioni || []).length ? `<div class="cru-box" id="admSegn" style="margin-top:14px"><h3>Segnalazioni dei clienti</h3>${d.segnalazioni.map(x => `<div class="scheda" data-sg="${esc(x.id)}"><small>${dt(x.il)} · <b>${esc(x.univoco)}</b> ${esc(x.nome)} · ottica ${esc(x.ottica)}${x.cellulare ? ` · <a href="tel:+39${esc(String(x.cellulare).replace(/\D/g, ""))}">${esc(x.cellulare)}</a>` : ""}</small>
         <p style="margin:6px 0">${esc(x.testo)}</p>${x.foto ? `<img src="${esc(x.foto)}" alt="Foto del cliente" style="max-width:260px;width:100%;border-radius:10px">` : ""}
         <div class="riga" style="margin-top:6px"><input data-risp placeholder="Risposta al cliente (facoltativa: gli arriva come notifica)" maxlength="300" style="flex:1;margin:0"><button type="button" class="verde" data-segn-ok="${esc(x.id)}" style="margin:0">Risolta</button></div></div>`).join("")}</div>` : ""}
@@ -371,6 +375,8 @@ ${o.disattivato ? `<div class="esito err" style="display:block;margin:6px 0">Dis
       <form data-f="cambiaPassword" class="scheda"><b>Cambia la password del pannello</b>
       <label class="lbl" for="aNp">Nuova password (almeno 10 caratteri)</label><input id="aNp" name="nuova" type="password" autocomplete="new-password" required>
       <button type="submit" class="full">Cambia password</button></form>
+      <div class="scheda"><b>Occhiale non restituito: addebito dell'usato</b><p style="margin:6px 0">Se l'occhiale non torna entro 30 giorni, 7 giorni prima il cliente riceve un avviso e poi gli addebitiamo il prezzo dell'usato (una volta sola). Vale solo per i contratti firmati con la clausola 5-bis (dal 15/11/2026). <b>Accendilo solo dopo che l'avvocato ha approvato la clausola.</b> Spento: i casi arrivano in «Da risolvere» e decidi tu.</p>
+      <label class="gdpr"><input type="checkbox" data-addebito-usato ${d.addebitoUsato ? "checked" : ""}> ${d.addebitoUsato ? "Addebito automatico acceso dal " + dt(d.addebitoUsato) : "Addebito automatico spento"}</label></div>
       <div class="scheda"><b>Verifica legale</b><p style="margin:6px 0">Spunta quando un consulente ha controllato condizioni dell'abbonamento e informativa privacy.</p>
       <label class="gdpr"><input type="checkbox" data-legale ${d.pronto.find(x => /consulente/.test(x[0]))[1] ? "checked" : ""}> Verificate</label></div>
       <div class="scheda"><b>Dati di prova</b><p style="margin:6px 0">Rimuove gli accessi CAF001, OTT07, OTT12, le ottiche e montature di prova libere e i clienti creati con quegli accessi. Da fare prima di aprire il servizio al pubblico.</p>
@@ -384,6 +390,7 @@ function inCima(){ const t = $("admTit"); if (t) t.scrollIntoView({block: "start
 function valoreCompenso(sel){ const v = sel.form && sel.form.elements.CompensoValore; if (!v) return; v.disabled = sel.value === "rata"; v.placeholder = sel.value === "rata" ? "non serve" : sel.value === "percentuale" ? "es. 10" : "es. 3"; if (v.disabled) v.value = ""; }
 function riempi(f, o){ for (const [k, v] of Object.entries(o)) if (f.elements[k]) f.elements[k].value = v ?? ""; if (f.elements.CompensoTipo) valoreCompenso(f.elements.CompensoTipo); f.scrollIntoView({behavior: "smooth", block: "start"}); }
 document.addEventListener("change", e => { if (e.target.matches && e.target.matches("[data-compenso]")) valoreCompenso(e.target); });
+document.addEventListener("change", async e => { if (e.target.matches && e.target.matches("[data-addebito-usato]")){ const r = await call("addebitoUsato", {attivo: e.target.checked}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); msg(e.target.checked ? "Addebito automatico dell'usato attivo." : "Addebito automatico dell'usato spento."); } });
 document.addEventListener("change", async e => { if (e.target.matches && e.target.matches("[data-legale]")){ await call("legale", {valore: e.target.checked}); await carica(); msg("Salvato."); } });
 async function clic(e){
   const am = e.target.closest("[data-amano]");
@@ -393,8 +400,16 @@ async function clic(e){
   if (inv){ setTimeout(async () => { const r = await call("ordineFornitore", {op: "invia", id: inv.dataset.inviaOrd}); if (r.ok){ await carica(); msg("Ordine segnato come inviato. Se non l'hai spedito davvero, annullalo e ricrealo."); } }, 400); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; if (scheda === "solleciti") sollecitiAdm = null; disegna(); return; }
+  if (b.hasAttribute("data-vai-coda")){ const x = document.getElementById("admCoda"); if (x) x.scrollIntoView({behavior: "smooth"}); return; }
+  if (b.hasAttribute("data-vai-segn")){ const x = document.getElementById("admSegn"); if (x) x.scrollIntoView({behavior: "smooth"}); return; }
+  if (b.dataset.rimborsa){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi il rimborso con Stripe? Tocca di nuovo"; return; }
+    b.disabled = true; const r = await call("rimborsa", {id: b.dataset.rimborsa}); b.disabled = false; if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    const s = await call("scheda", {id: b.dataset.rimborsa}); if (s.ok) schedaCli = s.data.cliente; disegna();
+    return msg(`Rimborso fatto: ${euro(r.data.importo)}. ${r.data.avviso && r.data.avviso.inviato === false ? "Avvisa tu il cliente." : "Il cliente è avvisato."}`, "ok");
+  }
   if (b.dataset.rimborsato){ const r = await call("rimborsato", {id: b.dataset.rimborsato}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); const s = await call("scheda", {id: b.dataset.rimborsato}); if (s.ok) schedaCli = s.data.cliente; msg("Rimborso segnato come fatto.", "ok"); disegna(); return; }
-  if (b.dataset.scheda){ const r = await call("scheda", {id: b.dataset.scheda}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); schedaCli = r.data.cliente; disegna(); $("admCorpo").scrollTop = 0; b.blur(); const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); return; }
+  if (b.dataset.scheda){ const r = await call("scheda", {id: b.dataset.scheda}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); if (scheda !== "clienti"){ scheda = "clienti"; clientiAdm = null; } schedaCli = r.data.cliente; disegna(); $("admCorpo").scrollTop = 0; b.blur(); const t = $("admTit"); if (t) t.scrollIntoView({block: "start"}); return; }
   if (b.hasAttribute("data-chiudi-scheda")){ schedaCli = null; disegna(); return; }
   if (b.dataset.modCaf){ riempi(document.querySelector('[data-f="salvaCaf"]'), dati.caf.find(x => x.ID === b.dataset.modCaf)); return; }
   if (b.dataset.modOtt){ riempi(document.querySelector('[data-f="salvaOttico"]'), dati.ottici.find(x => x.ID === b.dataset.modOtt)); return; }
@@ -579,6 +594,10 @@ async function invio(e){
     const x = await call("scheda", {id: f.dataset.id}); if (x.ok) schedaCli = x.data.cliente; clientiAdm = clientiAdm && (await call("clienti")).data.clienti; disegna();
     return msg(k === "correggiDati" ? (r.data.cambiati.length ? "Dati corretti: " + r.data.cambiati.join(", ") + "." : "Nessun dato cambiato.")
       : `Ottica cambiata.${r.data.ripartito ? " Il cliente sceglie di nuovo la montatura nella nuova ottica" + (r.data.montaturaLiberata ? ` (la ${r.data.montaturaLiberata} è di nuovo disponibile nella vecchia)` : "") + "." : ""}${r.data.avviso && r.data.avviso.inviato === false ? " Il cliente non è stato avvisato in automatico: mandagli tu il nuovo link." : " Cliente avvisato."}`);
+  }
+  if (k === "verificaRestituzione"){
+    const r = await call(k, {id: f.dataset.id, nota: v.nota}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    const x = await call("scheda", {id: f.dataset.id}); if (x.ok) schedaCli = x.data.cliente; disegna(); return msg("Restituzione controllata.");
   }
   if (k === "attivaPartner"){
     const r = await call(k, {tipo: f.dataset.tipo, id: f.dataset.id, attivo: f.dataset.attivo === "1", motivo: v.motivo}); if (!r.ok) return msg(r.data.errore || "Errore", "err");

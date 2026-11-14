@@ -634,6 +634,39 @@ function permesso(azione, ruolo, f){
    Alla scadenza la pratica va in archivio (montatura liberata, link non più valido); i dati personali restano
    in archivio altri 30 giorni e poi si cancellano (resta una traccia anonima). Non vale per chi ha già avuto un abbonamento. */
 const GIORNI_LINK = 30, GIORNI_ARCHIVIO = 30;
+// versione delle condizioni del contratto: dalla 2026-11-15 c'è la clausola dell'addebito dell'usato se l'occhiale non torna (D3)
+const CONDIZIONI_VERSIONE = "2026-11-15";
+const GIORNI_RESTITUZIONE = 30;
+// coda dei casi da risolvere per l'amministratore, con la scadenza di ognuno (la più vicina prima)
+function codaEccezioni(utenti, segn, diff, cfg, ora){
+  const now = ora ? new Date(ora) : new Date(), coda = [], piu = (d, g) => new Date(new Date(d).getTime() + g * 864e5).toISOString();
+  const add = (x) => coda.push(Object.assign(x, {scaduto: x.scadenza < now.toISOString()}));
+  const d3 = !!(cfg && cfg.addebitoUsato);
+  for (const {f} of utenti){
+    if (f.Archiviato) continue;
+    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, nome = `${nm(f.Nome)} ${nm(f.Cognome)}`.trim(), base = {univoco: f.Univoco, nome, ottica: String(f.Ottica1 || "").split(" - ")[0]};
+    if (pg.rimborso && pg.rimborso.daFare && !pg.rimborso.fatto) add(Object.assign({tipo: "rimborso", titolo: "Rimborso del recesso da controllare e fare", dal: pg.rimborso.daFare, scadenza: piu(pg.rimborso.daFare, 14), dettaglio: "Per legge entro 14 giorni dal recesso."}, base));
+    if (pg.insoluto && (!pg.chiuso || pg.insoluto.tipo === "riscatto")) add(Object.assign({tipo: "insoluto", titolo: pg.insoluto.tipo === "riscatto" ? "Acquisto dell'usato non pagato" : "Canone non pagato", dal: pg.insoluto.dal, scadenza: piu(pg.insoluto.dal, 30),
+      dettaglio: `${Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ",")} € · ${pg.insoluto.tipo === "riscatto" ? "dopo 30 giorni l'occhiale va restituito" : "dopo 30 giorni l'abbonamento si chiude da solo; i canoni restanti non si chiedono in automatico (D4)"}`}, base));
+    const rt = o.ritiro;
+    if (rt && rt.daRitirare && !rt.ritirato){
+      const giorni = Math.floor((now - new Date(rt.dal)) / 864e5);
+      if (giorni >= 15){
+        const clausola = !rt.rinnovo && (o.consensi || {}).versione >= CONDIZIONI_VERSIONE && Number((o.prezzi || {}).riscatto) > 0;
+        add(Object.assign({tipo: giorni >= GIORNI_RESTITUZIONE ? "nonRestituito" : "restituzione", titolo: giorni >= GIORNI_RESTITUZIONE ? "Occhiale non restituito" : "Occhiale da restituire in ritardo", dal: rt.dal, scadenza: piu(rt.dal, GIORNI_RESTITUZIONE),
+          dettaglio: `${giorni} giorni · ${rt.rinnovo ? "occhiale vecchio di un rinnovo: contatta il cliente" : !clausola ? "contratto senza clausola di addebito: contatta il cliente" : d3 ? "addebito dell'usato automatico dopo 30 giorni (con avviso 7 giorni prima)" : "addebito dell'usato spento: decidi tu"}${pg.riscatto && pg.riscatto.restituzioneMancata ? " · addebito già richiesto" : ""}`}, base));
+      }
+    }
+    if (rt && rt.ritirato && rt.condizione && rt.condizione !== "integro" && !rt.verificato) add(Object.assign({tipo: "condizione", titolo: `Occhiale restituito ${rt.condizione}`, dal: rt.ritirato, scadenza: piu(rt.ritirato, 7), dettaglio: rt.nota || "Nessuna nota dell'ottica."}, base));
+    const lab = o.lab;
+    if (lab && lab.rifacimento && !["PRONTO", "SPEDITO", "ARRIVATO"].includes(lab.stato) && !pg.chiuso) add(Object.assign({tipo: "rifacimento", titolo: "Occhiale in rifacimento", dal: lab.rifacimento.il, scadenza: piu(lab.rifacimento.il, 10), dettaglio: `${lab.rifacimento.da}: ${lab.rifacimento.motivo}`}, base));
+  }
+  for (const x of segn || []) if (x.stato === "aperta") add({tipo: "segnalazione", titolo: "Segnalazione del cliente", univoco: x.univoco, nome: x.nome || "", ottica: x.ottica || "", dal: x.il, scadenza: piu(x.il, 3), dettaglio: String(x.testo || "").slice(0, 120), id: x.ID || x._id});
+  for (const x of (diff && diff.voci) || []) add({tipo: "stripe", titolo: "Differenza con Stripe", univoco: x.univoco, nome: "", dal: diff.il, scadenza: piu(diff.il, 1), dettaglio: x.testo});
+  return coda.sort((a, b) => String(a.scadenza).localeCompare(String(b.scadenza)));
+}
+// segnalazioni aperte del cliente: finché non sono risolte il rinnovo aspetta
+const segnalazioniAperte = f => (parseOrdine(f.Ordine).segnalazioni || []).filter(x => x.stato === "aperta");
 // versione dell'informativa privacy (privacy.html): si salva con il consenso del cliente; cambiarla se cambia il testo
 const INFORMATIVA_VERSIONE = "2026-11-14";
 const LINK_SCADUTO = "Il link è scaduto: sono passati 30 giorni dalla registrazione senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF o in ottica: ti registriamo di nuovo in un minuto.";
@@ -1097,4 +1130,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {INFORMATIVA_VERSIONE, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

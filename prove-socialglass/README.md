@@ -26,6 +26,7 @@ mkdir -p npmqr && (cd npmqr && npm pack qrcodejs@1.0.0 >/dev/null && tar xzf qrc
 - `m1.py` modifiche UX · `m2.py` funzioni cliente · `m3.py` ottica, admin, listini, registro, importazione, copia, report · `m4.py` preventivo con lente nuova · `x1.py` servizi (amico, recensioni, tessera, dona).
 - Percorso completo cliente: `v1.py` … `v11.py` (con `srv-viaggio.js`, in ordine; i salti di tempo sono nei comandi curl).
 - Fine abbonamento: `crea_cliente.py` (crea una cliente consegnata via API) + `f1.py` scelta, `f2.py` pagina cliente, `f3.py` ritiro in ottica.
+- `casi11.py` coda «Da risolvere», rimborso del recesso, restituzione con stato e mancata (D3, con `srv-viaggio.js`), rinnovo bloccato da segnalazione; parte cliccata su tablet e pannello.
 - `corr10.py` (API) e `ui10.py` (cliccata) correzioni della modifica 10: annullo entro 30 minuti, rifacimento, correzione ricetta, correzioni e cambio ottica dal pannello, partner disattivato.
 - `cons9.py` consenso della ricetta dal cliente e registrazione dall'ottica (modifica 9): API, modulo sul tablet, riquadro sul telefono, blocco e «Ricontrolla».
 - `prog8.py`, `prog8b.py` ricetta delle progressive (modifica 8): altezza obbligatoria, valori fuori misura, modulo sul tablet, busta del laboratorio.

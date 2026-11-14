@@ -31,7 +31,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!u.f.Residenza || !u.f.Residenza.cap){ const r = L.residenza(b.residenza); if (r.errore) return L.send(res, 400, Object.assign(r, {residenza: true})); await L.DB.aggiorna(u, {Residenza: r}); }
   const ord = L.parseOrdine(u.f.Ordine), p = ord.prezzi;
   // le due conferme del cliente, con data e ora: finiscono nella copia del contratto
-  { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t, suMisura: t}; }
+  { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t, suMisura: t, versione: L.CONDIZIONI_VERSIONE}; }
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
   if (!L.CFG.stripeKey){
     // senza Stripe collegato: attivazione simulata (solo prova)

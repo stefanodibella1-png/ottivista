@@ -56,6 +56,7 @@ module.exports = L.wrap(async (req, res) => {
     // l'ottico può rinnovare per codice univoco solo i propri clienti; per un cliente di un'altra ottica serve il codice fiscale
     if (so && b.univoco && !String(u.f.Ottica1 || "").startsWith(so.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i tuoi clienti."});
     if (L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
+    { const ap = L.segnalazioniAperte(u.f); if (ap.length) return L.send(res, 409, {errore: `Il cliente ha una segnalazione aperta dal ${new Date(ap[0].il).toLocaleDateString("it-IT")} («${String(ap[0].testo || "").slice(0, 60)}»): prima risolvila, poi fai il rinnovo.`, segnalazione: true}); }
     const ord = L.parseOrdine(u.f.Ordine);
     if (ord.rinnovo && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato))
       return L.send(res, 409, {errore: `Rinnovo già avviato il ${new Date(ord.rinnovo.il).toLocaleDateString("it-IT")} (${ord.rinnovo.da}): il cliente deve solo scegliere la montatura dal suo link.`, univoco: u.f.Univoco});

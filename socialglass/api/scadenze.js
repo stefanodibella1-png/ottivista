@@ -26,6 +26,34 @@ async function richiediRiscatto(u, ord){
   ord.aggiornato = new Date().toISOString(); await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
   return inv.id;
 }
+// restituzione mancata (D3): solo se l'amministratore l'ha attivata e il contratto contiene la clausola.
+// 7 giorni prima: avviso; al 30° giorno: addebito del prezzo dell'usato una volta sola (mai ripetuto)
+async function restituzioneMancata(u, ora){
+  const ord = L.parseOrdine(u.f.Ordine), rt = ord.ritiro, pg = ord.pagamento || {}, imp = Number((ord.prezzi || {}).riscatto) || 0;
+  if (!rt || !rt.daRitirare || rt.ritirato || rt.rinnovo || !(imp > 0) || pg.riscatto) return null;
+  if (!((ord.consensi || {}).versione >= L.CONDIZIONI_VERSIONE)) return null;
+  const cfg = (await L.DB.meta("config")) || {}; if (!cfg.addebitoUsato) return null;
+  const giorni = (new Date(ora) - new Date(rt.dal)) / 864e5, euro = imp.toFixed(2).replace(".", ",");
+  if (giorni >= L.GIORNI_RESTITUZIONE - 7 && giorni < L.GIORNI_RESTITUZIONE && !(ord.avvisi && ord.avvisi.restituzioneMancata)){
+    await annota(u, ord, "restituzioneMancata", `SocialGlass: ${L.nm(u.f.Nome)}, l'occhiale non è ancora tornato in ottica. Se non lo riporti entro il ${gg(new Date(rt.dal).getTime() + L.GIORNI_RESTITUZIONE * 864e5)}, come previsto dal contratto ti addebiteremo il prezzo dell'usato (${euro} €) e l'occhiale diventerà tuo.`);
+    ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); return "avviso restituzione mancata";
+  }
+  if (giorni < L.GIORNI_RESTITUZIONE) return null;
+  L.chi("controllo notturno", "addebito per restituzione mancata");
+  const stripeOk = L.CFG.stripeKey && pg.cliente && pg.stato !== "SIMULATO";
+  if (!stripeOk){
+    pg.riscatto = {richiesto: ora, importo: imp, pagato: ora, simulato: true, restituzioneMancata: true};
+    pg.esito = "OCCHIALE NON RESTITUITO: ADDEBITATO L'USATO, L'OCCHIALE È DEL CLIENTE"; pg.chiuso = pg.chiuso || ora; delete ord.ritiro;
+  } else {
+    pg.riscatto = {richiesto: ora, importo: imp, chiave: `mancata-${u.f.Univoco}-${String(rt.dal).slice(0, 10)}`, restituzioneMancata: true, abbonamentoChiuso: pg.chiuso || ora};
+    pg.esito = "OCCHIALE NON RESTITUITO: ACQUISTO DELL'USATO IN ATTESA DI PAGAMENTO";
+    ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    await richiediRiscatto(u, ord);
+  }
+  await annota(u, ord, "addebitoUsato", `SocialGlass: ${L.nm(u.f.Nome)}, l'occhiale non è stato restituito entro ${L.GIORNI_RESTITUZIONE} giorni: come previsto dal contratto abbiamo ${stripeOk ? "richiesto il pagamento" : "addebitato"} del prezzo dell'usato (${euro} €). L'occhiale ora è tuo.`);
+  ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+  return "addebito per restituzione mancata";
+}
 async function esegui(u, ord, p, ora){
   const pg = ord.pagamento, fp = ord.finePeriodo, link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
   const stripeOk = L.CFG.stripeKey && pg.abbonamento;
@@ -69,6 +97,8 @@ async function esegui(u, ord, p, ora){
   if (!p.scaduto || (fp && fp.eseguita)) return null;
   const scelta = fp && fp.scelta;
   if (scelta === "rinnova"){
+    // con una segnalazione aperta il cambio occhiale aspetta (l'abbonamento intanto continua)
+    if (L.segnalazioniAperte(u.f).length) return null;
     fp.eseguita = ora; ord.aggiornato = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
     await L.rinnova(u, {otticoId: String(u.f.Ottica1 || "").split(" - ")[0], caf: u.f.CAF});
@@ -199,7 +229,8 @@ async function controlla(u, ora, esiti){
     if (o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && new Date(ora) - new Date(o.ritiro.dal) > 15*864e5 && !(o.avvisi && o.avvisi.ritardoRitiro)){
       await annota(u, o, "ritardoRitiro", `SocialGlass: ${L.nm(u.f.Nome)}, non abbiamo ancora ricevuto l'occhiale da restituire. Riportalo in ottica appena puoi, oppure chiedi all'ottico di comprarlo usato.`);
       await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); esiti.push({univoco: u.f.Univoco, esito: "sollecito restituzione"});
-    } }
+    }
+    try { const r = await restituzioneMancata(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: "restituzione mancata: " + String(e.message).slice(0, 180)}); } }
   if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) return;
   const ord = L.parseOrdine(u.f.Ordine), p = L.PREZZI.periodo(ord, ora);
   // 7 giorni dopo la consegna: «come ti trovi?» (notifica gratuita; la domanda compare anche nella sua pagina)

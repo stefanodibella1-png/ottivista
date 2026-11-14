@@ -1076,7 +1076,7 @@ function disegnaClienti(){
         + (SIT_P.arrivo(c) ? `<button type="button" class="verde" data-azione="arrivato" data-u="${esc(c.univoco)}">Occhiale arrivato</button>` : "")
         + (SIT_P.lab(c) ? `<button type="button" data-azione="montaturaSpedita" data-u="${esc(c.univoco)}">Montatura consegnata al corriere</button>` : "")
         + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-consegna="${esc(c.univoco)}">Segna consegnato</button>` : "")
-        + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
+        + (c.daRitirare ? `<button type="button" data-ritiro="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
         + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
         + (c.stato === STATI.ATTIVO && c.lab && !c.lab.iniziato && ["DA VERIFICARE", "ATTESA MONTATURA", "DA FARE"].includes(c.lab.stato) ? `<button type="button" class="grigio" data-ricetta="${esc(c.univoco)}">Correggi ricetta</button>` : "")
         + (c.lab && !c.esito && ["IN LAVORAZIONE", "PRONTO", "SPEDITO", "ARRIVATO"].includes(c.lab.stato) && [STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(c.stato) ? `<button type="button" class="grigio" data-rifare="${esc(c.univoco)}">Da rifare</button>` : "")
@@ -1085,7 +1085,7 @@ function disegnaClienti(){
         + linkBtn(c)
       : rinnovoBtn(c, `data-rinnovo="${esc(c.cf)}"`) + linkBtn(c);
     // ritiro e recesso restano possibili anche con l'anagrafica bloccata
-    const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "") : "";
+    const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-ritiro="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "") : "";
     return `<details class="cli" data-u="${esc(c.univoco)}" ${aperti.has(c.univoco) ? "open" : ""}><summary><div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>
         <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}${c.scadeLink ? `<span class="chip" title="Il link del cliente scade se non attiva l'abbonamento">link fino al ${new Date(c.scadeLink).toLocaleDateString("it-IT", {day: "2-digit", month: "2-digit"})}</span>` : ""}</div></div></summary>
       <div class="corpo">
@@ -1150,17 +1150,29 @@ $("clientiLista").addEventListener("click", async e => {
     box.innerHTML = `<b>Chi ritira?</b> Scansiona la tessera del cliente o scrivi le ultime 4 cifre del suo codice.<br><input id="codCons" autocomplete="off" inputmode="text" placeholder="es. ${esc(uv.slice(-4).replace(/./g, "•"))}" style="max-width:200px;margin:6px 0"> <button type="button" class="verde" data-azione="consegnato" data-u="${esc(uv)}">Conferma consegna</button>`;
     const vecchio = $("boxCons"); if (vecchio) vecchio.remove(); b.closest(".az, div").after(box); $("codCons").focus(); return;
   }
+  // restituzione: l'ottica indica com'è l'occhiale (se non è integro lo controlla l'amministratore)
+  if (b.dataset.ritiro){
+    const uv = b.dataset.ritiro, box = document.createElement("div"); box.className = "avviso-cli"; box.id = "boxRit";
+    box.innerHTML = `<b>Com'è l'occhiale restituito?</b><div class="scelte" style="margin:6px 0">${[["integro", "Integro"], ["rovinato", "Rovinato"], ["incompleto", "Incompleto"]].map(([v, t]) => `<label class="scelta"><input type="radio" name="condRit" value="${v}"><span class="t">${t}</span></label>`).join("")}</div>
+      <input id="notaRit" maxlength="300" autocomplete="off" placeholder="Cosa non va? (obbligatorio se rovinato o incompleto)" style="width:100%;margin:0 0 6px">
+      <button type="button" class="verde" data-azione="ritirato" data-u="${esc(uv)}">Conferma il ritiro</button>`;
+    const vecchio = $("boxRit"); if (vecchio) vecchio.remove(); b.closest(".az, div").after(box); return;
+  }
   if (b.dataset.azione){
+    if (b.dataset.azione === "ritirato"){ const c = document.querySelector("[name=condRit]:checked"), nt = ($("notaRit") || {}).value || "";
+      if (!c){ alertBox("Scegli com'è l'occhiale: integro, rovinato o incompleto."); return; }
+      if (c.value !== "integro" && nt.trim().length < 3){ alertBox("Scrivi cosa non va (es. lente rotta, manca un'asta)."); $("notaRit").focus(); return; } }
     b.disabled = true; const corpo = {univoco: b.dataset.u, azione: b.dataset.azione}; if (b.dataset.azione === "consegnato" && $("codCons")) corpo.codice = $("codCons").value;
+    if (b.dataset.azione === "ritirato"){ corpo.condizione = document.querySelector("[name=condRit]:checked").value; corpo.nota = $("notaRit").value; }
     const r = await post("api/ordine", corpo); if (scaduta(r)) return;
     if (!r.ok){ b.disabled = false; alertBox(r.data.errore); if (r.data.codice && $("codCons")){ $("codCons").value = ""; $("codCons").focus(); } return; }
     await apriClienti();
     if (r.ok && r.data.avviso) avvisoCliente(r.data.avviso, b.dataset.azione === "arrivato" ? "Occhiale arrivato: il cliente è invitato al ritiro." : "Occhiali segnati come pronti.");
     if (r.ok && b.dataset.azione === "montaturaSpedita") alertBox("Fatto: il laboratorio sa che la montatura è in viaggio.");
     if (r.ok && b.dataset.azione === "consegnato") alertBox("Consegna registrata.");
-    if (r.ok && b.dataset.azione === "ritirato") alertBox(r.data.rinnovo ? "Occhiale vecchio ritirato: il cambio è completo, l'abbonamento continua con quello nuovo."
+    if (r.ok && b.dataset.azione === "ritirato") alertBox((r.data.condizione && r.data.condizione !== "integro" ? `Segnato «${r.data.condizione}»: SocialGlass controlla e ti fa sapere. ` : "") + (r.data.rinnovo ? "Occhiale vecchio ritirato: il cambio è completo, l'abbonamento continua con quello nuovo."
       : r.data.chiuso ? `Occhiale restituito registrato: l'abbonamento era già chiuso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`
-      : `Occhiale restituito registrato: l'abbonamento si chiude da solo alla fine del mese in corso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`);
+      : `Occhiale restituito registrato: l'abbonamento si chiude da solo alla fine del mese in corso.${r.data.daDonare ? " Mettilo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica." : ""}`));
     return;
   }
   if (b.dataset.recesso){
@@ -1553,6 +1565,7 @@ function testoCondizioni(){
     <p><b>Rinnovo.</b> Lo puoi fare dal tuo ottico, da un altro ottico SocialGlass o dal CAF, a partire da 30 giorni prima della scadenza. L'abbonamento continua con il nuovo canone e, quando ritiri l'occhiale nuovo, riconsegni quello vecchio. Non si possono avere due abbonamenti insieme.</p>
     <p><b>4. Servizi inclusi.</b> Controllo della vista ogni anno, una sostituzione all'anno in caso di rottura (escluso smarrimento), cambio occhiale ogni ${p.mesi} mesi.</p>
     <p><b>5. Se un pagamento non riesce.</b> Ti avvisiamo e riproviamo in automatico per circa 2 settimane. Puoi pagare subito dal link che ricevi. Se il pagamento resta non saldato per oltre 30 giorni, l'abbonamento si chiude e l'occhiale va riportato in ottica (oppure lo puoi comprare usato).</p>
+    <p><b>5-bis. Se l'occhiale non torna.</b> Quando l'occhiale va restituito hai ${30} giorni per riportarlo in ottica. Se non lo riporti, 7 giorni prima ti avvisiamo con un messaggio; passati i ${30} giorni ti addebitiamo il prezzo dell'usato${p.riscatto ? ` (${euro(p.riscatto)})` : ""} sul metodo di pagamento registrato e l'occhiale diventa tuo.</p>
     <p><b>6. Annullamento.</b> Le lenti sono fatte su misura per te. Puoi annullare senza costi finché il laboratorio non ha iniziato la lavorazione: dillo al tuo ottico, che chiude subito l'abbonamento, e ti rimborsiamo tutto quello che hai pagato. Dopo l'inizio della lavorazione il diritto di recesso non si applica, perché l'occhiale è confezionato su misura (art. 59, comma 1, lett. c, Codice del consumo).</p>
     <p><b>Montatura prenotata.</b> La montatura che scegli resta prenotata per te 30 giorni: se in quel tempo non confermi l'ordine, torna disponibile e puoi sceglierne un'altra dal tuo link.</p>
     <p><b>7. Dati.</b> La ricetta è un dato sanitario: la vedono solo SocialGlass, l'ottica e il laboratorio per preparare l'occhiale. I dati di pagamento li gestisce Stripe. Leggi l'<a href="privacy.html" target="_blank" rel="noopener">informativa privacy</a>.</p>

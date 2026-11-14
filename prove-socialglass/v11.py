@@ -16,7 +16,7 @@ async def main():
         r=card.locator("button").filter(has_text="itirat")
         await r.first.click(); await o.wait_for_timeout(500)
         if await r.count(): t=await r.first.inner_text(); print("dopo tocco:", t); 
-        if await r.count() and "di nuovo" in (await r.first.inner_text()): await r.first.click(); await o.wait_for_timeout(1000)
+        await o.locator("#boxRit label", has_text="Integro").click(); await o.locator("#boxRit button", has_text="Conferma il ritiro").click(); await o.wait_for_timeout(1000)
         d=json.load(urllib.request.urlopen(f"http://localhost:8823/api/benvenuto?univoco={COD}&espositore="))
         print("DOPO RITIRO:", d["stato"], d["ordine"]["ritiro"], "| esito pagamento:", d["ordine"]["pagamento"].get("esito"))
         print("err", e); await b.close()

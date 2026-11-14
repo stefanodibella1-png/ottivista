@@ -197,14 +197,20 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (b.azione === "ritirato"){
     if (!ord.ritiro || !ord.ritiro.daRitirare) return L.send(res, 409, {errore: "Non c'è un occhiale da ritirare."});
+    // com'è l'occhiale che torna: se non è integro il caso va all'amministratore
+    const cond = ["integro", "rovinato", "incompleto"].includes(b.condizione) ? b.condizione : "", nota = String(b.nota || "").trim().slice(0, 300);
+    if (!cond) return L.send(res, 400, {errore: "Indica com'è l'occhiale: integro, rovinato o incompleto.", condizione: true});
+    if (cond !== "integro" && nota.length < 3) return L.send(res, 400, {errore: "Scrivi cosa non va (es. lente rotta, manca un'asta).", condizione: true});
     const ora = new Date().toISOString();
+    ord.ritiro.condizione = cond; if (nota) ord.ritiro.nota = nota;
     // occhiale vecchio di un rinnovo: l'abbonamento continua, non si chiude niente
     ord.ritiro.ritirato = ora; ord.aggiornato = ora;
     if (!ord.ritiro.rinnovo){ ord.pagamento = ord.pagamento || {}; ord.pagamento.esito = "OCCHIALE RESTITUITO"; }
     // ogni occhiale restituito viene rigenerato e donato a un'associazione benefica
     ord.dona = ord.dona || {}; if (!ord.dona.donato) ord.dona.daDonare = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.daDonare), rinnovo: !!ord.ritiro.rinnovo, chiuso: !!(ord.pagamento && ord.pagamento.chiuso)});
+    if (cond !== "integro") try { await L.registra("ottica " + s.id, "occhiale restituito " + cond, u.f.Univoco, nota); } catch(e){ console.error(e); }
+    return L.send(res, 200, {ok: true, daDonare: !!(ord.dona && ord.dona.daDonare), rinnovo: !!ord.ritiro.rinnovo, chiuso: !!(ord.pagamento && ord.pagamento.chiuso), condizione: cond});
   }
   if (b.azione === "pronto" && ord.lab) return L.send(res, 409, {errore: "L'occhiale lo segue il laboratorio: quando arriva in ottica tocca «Occhiale arrivato»."});
   if (b.azione === "pronto" || b.azione === "consegnato"){
