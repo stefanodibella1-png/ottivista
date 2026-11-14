@@ -638,7 +638,7 @@ const GIORNI_LINK = 30, GIORNI_ARCHIVIO = 30;
 const CONDIZIONI_VERSIONE = "2026-11-15";
 const GIORNI_RESTITUZIONE = 30;
 // coda dei casi da risolvere per l'amministratore, con la scadenza di ognuno (la più vicina prima)
-function codaEccezioni(utenti, segn, diff, cfg, ora){
+function codaEccezioni(utenti, segn, diff, cfg, ora, mont){
   const now = ora ? new Date(ora) : new Date(), coda = [], piu = (d, g) => new Date(new Date(d).getTime() + g * 864e5).toISOString();
   const add = (x) => coda.push(Object.assign(x, {scaduto: x.scadenza < now.toISOString()}));
   const d3 = !!(cfg && cfg.addebitoUsato);
@@ -662,6 +662,9 @@ function codaEccezioni(utenti, segn, diff, cfg, ora){
     if (lab && lab.rifacimento && !["PRONTO", "SPEDITO", "ARRIVATO"].includes(lab.stato) && !pg.chiuso) add(Object.assign({tipo: "rifacimento", titolo: "Occhiale in rifacimento", dal: lab.rifacimento.il, scadenza: piu(lab.rifacimento.il, 10), dettaglio: `${lab.rifacimento.da}: ${lab.rifacimento.motivo}`}, base));
   }
   for (const x of segn || []) if (x.stato === "aperta") add({tipo: "segnalazione", titolo: "Segnalazione del cliente", univoco: x.univoco, nome: x.nome || "", ottica: x.ottica || "", dal: x.il, scadenza: piu(x.il, 3), dettaglio: String(x.testo || "").slice(0, 120), id: x.ID || x._id});
+  for (const m of mont || []){ if (m.Eliminata) continue; const {r} = scorte(m);
+    for (const x of r.filter(x => x.mancante && !x.vista)) add({tipo: "giacenza", titolo: "Giacenza dell'ottica da correggere", univoco: x.univoco, nome: "", ottica: x.ottica, codice: m.Codice || m._id, dal: x.il, scadenza: piu(x.il, 7),
+      dettaglio: `${m.Codice || m._id} ${m.Modello || ""} ${m.Colore || ""}: prenotata in ${x.ottica}, dove il magazzino non registrava pezzi. Carica la giacenza giusta (Magazzino → rettifica).`}); }
   for (const x of (diff && diff.voci) || []) add({tipo: "stripe", titolo: "Differenza con Stripe", univoco: x.univoco, nome: "", dal: diff.il, scadenza: piu(diff.il, 1), dettaglio: x.testo});
   return coda.sort((a, b) => String(a.scadenza).localeCompare(String(b.scadenza)));
 }
@@ -798,16 +801,26 @@ function infoMont(f){
   const {g, r, tot} = scorte(f), min = Number(f.ScortaMinima) || 0;
   return {tot, giacenze: g, riservate: r, esaurita: !f.Eliminata && tot === 0, sottoScorta: !f.Eliminata && min > 0 && tot <= min, avviso: !!f.AvvisoScorta, archiviata: !!f.Eliminata};
 }
-function disponibile(f, ottica){ if (!f || f.Eliminata) return false; const {g, tot} = scorte(f); return ottica ? (g[ottica] > 0 || g[MAG] > 0) : tot > 0; }
+// modifica 12: il cliente scansiona il QR della montatura esposta nella sua ottica → il pezzo è lì.
+// Disponibile se l'ottica ne ha in giacenza, oppure (giacenza non caricata) se nessun altro cliente l'ha già prenotata in quell'ottica.
+function disponibile(f, ottica, univoco){
+  if (!f || f.Eliminata) return false; const {g, r, tot} = scorte(f);
+  if (!ottica) return tot > 0;
+  return g[ottica] > 0 || !r.some(x => x.ottica === ottica && x.univoco !== univoco);
+}
 async function riservaMontatura(codice, univoco, ottica){
   let ok = false, sotto = null;
   await DB.tx("mont", codice, f => {
     ok = false; if (f.Eliminata) return null;
     const {g, r} = scorte(f);
     if (r.some(x => x.univoco === univoco)){ ok = true; return null; }
-    const da = g[ottica] > 0 ? ottica : g[MAG] > 0 ? MAG : null; if (!da) return null;
-    g[da]--; r.push({univoco, ottica: da, il: new Date().toISOString()}); ok = true;
-    const out = campiScorte(f, g, r, {tipo: "prenotata", qta: -1, dove: da, cliente: univoco});
+    let da = null, mancante = false;
+    if (ottica){ if (g[ottica] > 0) da = ottica; else if (!r.some(x => x.ottica === ottica)){ da = ottica; mancante = true; } }
+    else da = g[MAG] > 0 ? MAG : null;
+    if (!da) return null;
+    if (!mancante) g[da]--;
+    r.push(Object.assign({univoco, ottica: da, il: new Date().toISOString()}, mancante ? {mancante: true} : {})); ok = true;
+    const out = campiScorte(f, g, r, {tipo: mancante ? "prenotata (giacenza dell'ottica non caricata: da correggere)" : "prenotata", qta: mancante ? 0 : -1, dove: da, cliente: univoco});
     sotto = !f.SottoScortaDal && out.SottoScortaDal ? Object.assign({}, f, out) : null;
     return out;
   });

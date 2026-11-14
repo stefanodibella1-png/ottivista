@@ -241,7 +241,7 @@ function disegna(){
       <div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: niente in sospeso.</div>'}</div>
         <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
       ${(d.coda || []).length ? `<div class="cru-box" id="admCoda" style="margin-top:14px"><h3>Da risolvere</h3><p class="hint" style="margin:0 0 8px">In ordine di scadenza. In rosso quelli oltre la scadenza. Tocca un caso per aprire la scheda del cliente.</p>
-        ${d.coda.map(x => `<button type="button" class="riga-cli" ${x.tipo === "segnalazione" ? "data-vai-segn" : `data-scheda="${esc(x.univoco)}"`} style="width:100%;text-align:left"><span><span class="nome">${esc(x.titolo)} · ${esc(x.nome || x.univoco)}</span><span class="cod">${esc(x.univoco)}${x.ottica ? " · " + esc(x.ottica) : ""} · ${esc(x.dettaglio || "")}</span></span>
+        ${d.coda.map(x => `<button type="button" class="riga-cli" ${x.tipo === "segnalazione" ? "data-vai-segn" : x.tipo === "giacenza" ? `data-giacenza="${esc(x.codice)}" data-u="${esc(x.univoco)}"` : `data-scheda="${esc(x.univoco)}"`} style="width:100%;text-align:left"><span><span class="nome">${esc(x.titolo)} · ${esc(x.nome || x.univoco)}</span><span class="cod">${esc(x.univoco)}${x.ottica ? " · " + esc(x.ottica) : ""} · ${esc(x.dettaglio || "")}</span></span>
           <span class="bad"><span class="chip ${x.scaduto ? "s3" : "s2"}">${x.scaduto ? "SCADUTO IL" : "ENTRO IL"} ${dt(x.scadenza)}</span></span></button>`).join("")}</div>` : ""}
       ${(d.segnalazioni || []).length ? `<div class="cru-box" id="admSegn" style="margin-top:14px"><h3>Segnalazioni dei clienti</h3>${d.segnalazioni.map(x => `<div class="scheda" data-sg="${esc(x.id)}"><small>${dt(x.il)} · <b>${esc(x.univoco)}</b> ${esc(x.nome)} · ottica ${esc(x.ottica)}${x.cellulare ? ` · <a href="tel:+39${esc(String(x.cellulare).replace(/\D/g, ""))}">${esc(x.cellulare)}</a>` : ""}</small>
         <p style="margin:6px 0">${esc(x.testo)}</p>${x.foto ? `<img src="${esc(x.foto)}" alt="Foto del cliente" style="max-width:260px;width:100%;border-radius:10px">` : ""}
@@ -401,6 +401,12 @@ async function clic(e){
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; if (scheda === "solleciti") sollecitiAdm = null; disegna(); return; }
   if (b.hasAttribute("data-vai-coda")){ const x = document.getElementById("admCoda"); if (x) x.scrollIntoView({behavior: "smooth"}); return; }
+  // giacenza da correggere: si apre il magazzino sull'articolo; con un secondo tocco si segna come controllata
+  if (b.dataset.giacenza){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; artAperto = b.dataset.giacenza; const sp = b.querySelector(".cod"); if (sp) sp.textContent = "Correggi la giacenza in Magazzino (si apre l'articolo con il tasto qui sotto), poi tocca di nuovo per segnarla controllata.";
+      b.insertAdjacentHTML("afterend", `<button type="button" class="grigio" data-tab="magazzino" style="margin:0 0 8px">Apri ${esc(b.dataset.giacenza)} in Magazzino</button>`); return; }
+    const r = await call("giacenzaVista", {codice: b.dataset.giacenza, id: b.dataset.u}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); return msg("Giacenza segnata come controllata.");
+  }
   if (b.hasAttribute("data-vai-segn")){ const x = document.getElementById("admSegn"); if (x) x.scrollIntoView({behavior: "smooth"}); return; }
   if (b.dataset.rimborsa){
     if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi il rimborso con Stripe? Tocca di nuovo"; return; }

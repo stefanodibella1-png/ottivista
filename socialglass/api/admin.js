@@ -47,7 +47,7 @@ module.exports = L.wrap(async (req, res) => {
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
     salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
     salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", sollecito: "sollecito inviato", legale: "pratica legale",
-    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
+    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", giacenzaVista: "giacenza ottica controllata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
     [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
 
@@ -184,7 +184,7 @@ module.exports = L.wrap(async (req, res) => {
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
       differenzeStripe: ((await L.DB.meta("differenze-stripe")) || {}).voci || [],
-      coda: L.codaEccezioni(utenti, await L.DB.lista("segn"), await L.DB.meta("differenze-stripe"), cfgS),
+      coda: L.codaEccezioni(utenti, await L.DB.lista("segn"), await L.DB.meta("differenze-stripe"), cfgS, null, mont),
       addebitoUsato: ((cfgS || {}).addebitoUsato) || "",
       rimborsi: utenti.map(u => ({f: u.f, pg: L.parseOrdine(u.f.Ordine).pagamento || {}, o: L.parseOrdine(u.f.Ordine)})).filter(x => x.pg.rimborso && x.pg.rimborso.daFare && !x.pg.rimborso.fatto)
         .map(x => ({univoco: x.f.Univoco, nome: `${L.nm(x.f.Nome)} ${L.nm(x.f.Cognome)}`, dal: x.pg.rimborso.daFare, importo: (x.pg.pagamenti || []).reduce((a, p) => a + (p.canone || 0) + (p.spedizione || 0), 0) || ((x.o.prezzi || {}).rata || 0) + ((x.o.prezzi || {}).spedizione || 0)})),
@@ -496,6 +496,12 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   // addebito automatico dell'usato per restituzione mancata (D3): si accende solo dopo il via dell'avvocato sulla clausola
+  // giacenza da correggere vista dall'amministratore (dopo la rettifica in magazzino)
+  if (az === "giacenzaVista"){
+    let ok = false;
+    await L.DB.tx("mont", pulito(b.codice, 40), f => { const {g, r} = L.scorte(f); const x = r.find(y => y.univoco === pulito(b.id, 20).toUpperCase() && y.mancante); if (!x) return null; x.vista = new Date().toISOString(); ok = true; return L.campiScorte(f, g, r, {tipo: "giacenza dell'ottica controllata", qta: 0, dove: x.ottica, cliente: x.univoco}); });
+    return L.send(res, ok ? 200 : 404, ok ? {ok: true} : {errore: "Caso non trovato."});
+  }
   if (az === "addebitoUsato"){ await L.DB.meta("config", {addebitoUsato: b.attivo ? new Date().toISOString() : ""}); return L.send(res, 200, {ok: true}); }
   if (az === "rimborsato"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});

@@ -10,7 +10,7 @@ module.exports = L.wrap(async (req, res) => {
     // con il codice cliente si guarda la disponibilità nell'ottica del cliente (o in magazzino)
     let ottica = ""; const uv = (url.searchParams.get("univoco") || "").trim();
     if (uv){ const u = await L.DB.utente("Univoco", uv); if (u) ottica = String(u.f.Ottica1 || "").split(" - ")[0]; }
-    if (!m || !L.disponibile(m.f, ottica)) return L.send(res, 200, {disponibile: false});
+    if (!m || !L.disponibile(m.f, ottica, uv)) return L.send(res, 200, {disponibile: false, motivo: m && !m.f.Eliminata && ottica ? "prenotata" : ""});
     return L.send(res, 200, {disponibile: true, codice, modello: m.f.Modello || "", colore: m.f.Colore || "", calibro: m.f.Calibro || "", asse: m.f.Asse || ""});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
@@ -22,7 +22,7 @@ module.exports = L.wrap(async (req, res) => {
   if (![L.STATI.REGISTRATO, L.STATI.MONTATURA].includes(u.f.Stato)) return L.send(res, 409, {errore: "La montatura è già confermata: per cambiarla parla con l'ottico."});
   const m = await L.DB.montatura(String(codice));
   const ottica = String(u.f.Ottica1 || "").split(" - ")[0];
-  if (!m || !(await L.riservaMontatura(m.id, u.f.Univoco, ottica))) return L.send(res, 409, {errore: "Montatura non più disponibile."});
+  if (!m || !(await L.riservaMontatura(m.id, u.f.Univoco, ottica))) return L.send(res, 409, {errore: m && !m.f.Eliminata ? "Questa montatura è già prenotata da un altro cliente in questa ottica: scegline un'altra, oppure chiedi all'ottico se ne ha una uguale." : "Montatura non più disponibile."});
   const ord = L.parseOrdine(u.f.Ordine);
   // se aveva già scelto un'altra montatura, il pezzo torna dove era
   if (ord.montatura && ord.montatura.codice !== (m.f.Codice || m.id)) await L.liberaMontatura(ord.montatura.codice, u.f.Univoco);

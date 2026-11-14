@@ -61,7 +61,8 @@ module.exports = L.wrap(async (req, res) => {
   // solo i propri conteggi (compensi secondo l'accordo e pagamenti ricevuti): gli incassi di SocialGlass non si mostrano
   // l'ottico vede anche le montature esposte nella sua ottica
   let esposte; if (isOtt) try { esposte = (await L.DB.lista("mont")).filter(m => !m.Eliminata).map(m => { const {g, r} = L.scorte(m);
-    return {codice: m.Codice || m._id, modello: m.Modello || "", colore: m.Colore || "", calibro: m.Calibro || "", asse: m.Asse || "", qta: g[s.id] || 0, prenotate: r.filter(x => x.ottica === s.id).length}; })
+    return {codice: m.Codice || m._id, modello: m.Modello || "", colore: m.Colore || "", calibro: m.Calibro || "", asse: m.Asse || "", qta: g[s.id] || 0, prenotate: r.filter(x => x.ottica === s.id).length,
+      perChi: r.filter(x => x.ottica === s.id).map(x => { const c = rows.find(y => y.f.Univoco === x.univoco); return {univoco: x.univoco, nome: c ? `${L.nm(c.f.Nome)} ${L.nm(c.f.Cognome)}`.trim() : ""}; })}; })
     .filter(m => m.qta || m.prenotate).sort((a, b) => a.codice.localeCompare(b.codice)); } catch(e){ console.error(e); }
   // ottica: appuntamenti dei clienti, orari prenotabili e segnalazioni ancora aperte
   let appuntamenti, orari, segnalazioni;

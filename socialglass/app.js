@@ -510,7 +510,8 @@ function apriEsposte(){
   const l = (cruDati && cruDati.esposte) || [];
   $("esposteCorpo").innerHTML = l.length ? `<p class="hint" style="margin:0 0 8px">${l.reduce((t, m) => t + m.qta, 0)} pezzi disponibili in ${l.length} modelli · <button type="button" class="linkbtn" id="stampaEsposte">Stampa elenco</button></p>
     <div class="lista">${l.map(m => `<div class="riga-cli" style="cursor:default"><span><span class="nome">${esc(m.codice)}</span> ${esc(m.modello)} ${esc(m.colore)}<span class="cod">${esc(m.calibro)}${m.asse ? "-" + esc(m.asse) : ""}</span></span>
-      <span class="bad">${m.prenotate ? `<span class="chip s2">PRENOTATE ${m.prenotate}</span>` : ""}<span class="chip ${m.qta ? "s4" : "s3"}">${m.qta ? "DISPONIBILI " + m.qta : "NESSUNA DISPONIBILE"}</span></span></div>`).join("")}</div>
+      <span class="bad">${m.prenotate ? `<span class="chip s2">PRENOTATE ${m.prenotate}</span>` : ""}<span class="chip ${m.qta ? "s4" : "s3"}">${m.qta ? "DISPONIBILI " + m.qta : "NESSUNA DISPONIBILE"}</span></span></div>
+      ${(m.perChi || []).map(x => `<div class="avviso-cli" style="margin:-4px 0 8px">🔒 <b>Prenotata per ${esc(x.nome || x.univoco)}</b> (${esc(x.univoco)}): non venderla e lasciala da parte.</div>`).join("")}`).join("")}</div>
     <p class="hint" style="margin-top:10px">Per avere altre montature o segnalarne una rotta o mancante, contatta SocialGlass.</p>`
     : `<div class="vuoto">${cruDati && cruDati.esposte ? "Non risultano montature esposte nella tua ottica. Se le hai in negozio, chiedi a SocialGlass di registrarle." : "Elenco non disponibile in questa anteprima."}</div>`;
   open("espostePopup");
