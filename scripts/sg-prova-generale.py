@@ -62,7 +62,8 @@ async def paga_stripe(ctx, uv, metodo="carta", iban=None, nome_pag="Prova Genera
     await pg.goto(f"{SITO}/?Univoco={uv}"); await pg.wait_for_timeout(2500)
     for sel in ["#c1", "#c2", "#c3"]:
         if await pg.locator(sel).count(): await pg.check(sel)
-    await pg.click("#mpPaga"); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000); await pg.wait_for_timeout(3000)
+    await pg.click("#mpPaga"); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000)
+    await pg.wait_for_selector("#email, #cardNumber, [data-testid=card-accordion-item-button], #payment-method-accordion-item-title-card", state="visible", timeout=45000); await pg.wait_for_timeout(1500)
     await pg.screenshot(path=f"{OUT}/stripe-{metodo}-{uv}.png", full_page=True)
     if await pg.locator("#email").count() and await pg.locator("#email").is_editable(): await pg.fill("#email", f"prova.generale+{uv.lower()}@example.com")
     if metodo == "carta":
@@ -206,7 +207,10 @@ async def main():
             await a.screenshot(path=f"{OUT}/F1-pc-scheda-cliente-prova.png", full_page=True)
             esito("F2 nessun errore nelle pagine aperte", not ERR, ERR[:5])
         except Exception as e:
-            esito("ERRORE INATTESO", False, traceback.format_exc()[-600:])
+            esito("ERRORE INATTESO", False, f"{type(e).__name__}: {str(e)[:400]}"); traceback.print_exc()
+            try:
+                for i, pgx in enumerate([x for c in (tel, tab, pc) for x in c.pages]): await pgx.screenshot(path=f"{OUT}/errore-{i}.png", full_page=True)
+            except Exception: pass
         finally:
             # ===== pulizia: clienti di prova, abbonamenti e clienti Stripe di prova, prenotazioni, magazzino
             for uv in CLIENTI:
@@ -224,7 +228,7 @@ async def main():
             s, d = adm("dati"); dopo = {m["Codice"]: m.get("giacenze") for m in d.get("montature", []) if m["Codice"] in prima}
             esito("Z pulizia: clienti di prova cancellati e magazzino com'era", all(stato(uv) == {} for uv in CLIENTI) and all((dopo.get(m) or {}) == {k: v for k, v in g.items() if v} for m, g in prima.items()), f"magazzino dopo: {dopo}")
             await b.close()
-    with open(f"{OUT}/resoconto.md", "w") as f:
+    with open(f"{OUT}/resoconto.md", "w", encoding="utf-8") as f:
         f.write("# Prova generale SocialGlass (Stripe test)\n\n" + "\n".join(f"- {'✅' if ok else '❌'} {p}{' — ' + d if d else ''}" for p, ok, d in RIS) + "\n")
     print("\n".join(f"{'✅' if ok else '❌'} {p}" for p, ok, d in RIS))
     sys.exit(0 if all(ok for _, ok, _ in RIS) else 1)

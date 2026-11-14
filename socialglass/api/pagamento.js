@@ -72,6 +72,8 @@ module.exports = L.wrap(async (req, res) => {
   const params = {
     mode: "subscription",
     locale: "it",
+    // sempre in euro: i prezzi del contratto sono in euro (niente conversione automatica di Stripe con commissione per chi paga da fuori)
+    adaptive_pricing: {enabled: false},
     client_reference_id: u.f.Univoco,
     success_url: `${back}&pagamento=ok`,
     cancel_url: `${back}&pagamento=annullato`,
