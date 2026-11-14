@@ -11,10 +11,11 @@ module.exports = L.wrap(async (req, res) => {
   const raw = await L.readRaw(req);
   if (!L.CFG.stripeWebhook || !valid(raw, req.headers["stripe-signature"], L.CFG.stripeWebhook)) return L.send(res, 400, {errore: "Firma non valida"});
   const ev = JSON.parse(raw);
-  if (ev.type === "checkout.session.completed"){
+  // pagamento completato (con IBAN: richiesta inviata, la banca conferma o rifiuta dopo qualche giorno)
+  if (["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed"].includes(ev.type)){
     const s = ev.data.object, uv = s.client_reference_id || (s.metadata || {}).univoco;
     const u = uv && await L.DB.utente("Univoco", uv);
-    if (u) await L.attiva(u, s);
+    if (u) await (ev.type === "checkout.session.async_payment_failed" ? L.rifiutato(u, s) : L.attiva(u, s));
   }
   // canoni, insoluti e chiusure: ogni avviso ha effetto una sola volta (vedi _stripe.js)
   if (["invoice.paid", "invoice.payment_failed", "customer.subscription.deleted"].includes(ev.type)){

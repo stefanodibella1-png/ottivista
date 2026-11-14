@@ -163,7 +163,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeAll();
 function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (kind || "info"); el.setAttribute("role", kind === "err" ? "alert" : "status"); el.hidden = !txt; }
 
 /* ---------- stati ---------- */
-const STATI = {REGISTRATO: "IN ATTESA SCELTA MONTATURA", MONTATURA: "MONTATURA SCELTA", PAGAMENTO: "IN ATTESA PAGAMENTO",
+const STATI = {REGISTRATO: "IN ATTESA SCELTA MONTATURA", MONTATURA: "MONTATURA SCELTA", PAGAMENTO: "IN ATTESA PAGAMENTO", VERIFICA: "PAGAMENTO IN VERIFICA",
   ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE", PRONTO: "PRONTO PER IL RITIRO", CONSEGNATO: "CONSEGNATO", CHIUSO: "CHIUSO"};
 const FINITO = s => s === STATI.CONSEGNATO || s === STATI.CHIUSO;   // occhiale consegnato o contratto chiuso: si può rinnovare
 const ORDINE_STATI = [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO, STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO];
@@ -627,7 +627,7 @@ function festeggia(u){
 }
 // tracciamento: le tappe del suo occhiale, con il laboratorio
 function traccia(u){
-  const od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato), m = od.montatura, lab = u.lab;
+  const od = u.ordine || {}, i = ORDINE_STATI.indexOf(u.stato === STATI.VERIFICA ? STATI.PAGAMENTO : u.stato), m = od.montatura, lab = u.lab;
   const fatte = u.stato === STATI.CONSEGNATO ? TAPPE.length : i + 1;
   const dettaglio = k => k === 1 && m ? `${esc(m.modello)} ${esc(m.colore)}` : k === 3 && od.pagamento && od.pagamento.attivatoIl ? dt(od.pagamento.attivatoIl)
     : k === 4 && u.stato === STATI.ATTIVO && lab ? (lab.stato === "IN LAVORAZIONE" ? "Il laboratorio sta montando le lenti" : lab.fonte !== "LAB" && !lab.ritirata ? "Il laboratorio sta prendendo la montatura" : "In coda in laboratorio")
@@ -1296,6 +1296,8 @@ function disegnaMio(){
       <button type="button" class="grigio full" id="mpScan">Ho cambiato idea: scansiona un'altra montatura</button>`;
   } else if (u.stato === STATI.PAGAMENTO && par("pagamento") === "ok" && od.pagamento && od.pagamento.stato === "IN CORSO"){
     a = `<div class="esito ok"><b>Pagamento inviato.</b> Stripe ci sta confermando l'attivazione: di solito bastano pochi secondi e questa pagina si aggiorna da sola. Non ripetere il pagamento.</div>`;
+  } else if (u.stato === STATI.VERIFICA){
+    a = `<div class="esito info"><b>Pagamento in verifica.</b> Hai pagato con l'IBAN: stiamo aspettando la conferma della tua banca, di solito pochi giorni lavorativi. Appena arriva, l'ottica prepara i tuoi occhiali e ti avvisiamo qui. Non serve pagare di nuovo.</div>${o ? `<div class="scheda">Ritiro presso ${dove}</div>` : ""}`;
   } else if (u.stato === STATI.PAGAMENTO && od.rinnovo && od.rinnovo.prosegue){
     const p = od.prezzi;
     a = `<div class="rata">Il tuo occhiale nuovo<b>${euro(p.rata)}/mese</b>l'abbonamento continua · nessun nuovo contratto</div>
@@ -1362,6 +1364,8 @@ function disegnaMio(){
   if ((u.stato === STATI.CONSEGNATO || u.stato === STATI.PRONTO) && !pgr.chiuso && !pgr.insoluto) a = boxRecensione(u) + a;
   a = boxAppuntamento(u) + a;
   a += boxDona(u);
+  // addebito con IBAN rifiutato dalla banca: messaggio chiaro sopra al modulo per riprovare
+  if (u.stato === STATI.PAGAMENTO && od.pagamento && od.pagamento.stato === "RIFIUTATO" && par("pagamento") !== "ok") a = `<div class="esito err"><b>La tua banca non ha confermato l'addebito con l'IBAN</b>, quindi l'abbonamento non è partito e non ti abbiamo addebitato niente. Puoi riprovare qui sotto: con la carta l'attivazione è immediata.</div>` + a;
   if (u.stato === STATI.PAGAMENTO && par("pagamento") === "annullato") a = `<div class="esito info">Pagamento annullato: non ti è stato addebitato nulla. Quando vuoi, riprova da qui.</div>` + a;
   const ins = od.pagamento && !od.pagamento.chiuso && od.pagamento.insoluto;
   if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento del riscatto non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}).

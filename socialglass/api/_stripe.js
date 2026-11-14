@@ -8,6 +8,9 @@ const canoniPagati = pg => Math.max((pg.pagamenti || []).filter(x => !x.riscatto
 
 async function elabora(u, ev){
   if (ev.id && (u.f.EventiStripe || []).includes(ev.id)) return {gia: true};
+  // ordine non ancora attivato: i rifiuti della banca li gestisce il passaggio «pagamento rifiutato», non i solleciti
+  const attivabili = [L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO, L.STATI.CHIUSO];
+  if (!attivabili.includes(u.f.Stato) && !(u.f.Stato === L.STATI.VERIFICA && ev.type === "invoice.paid")) return {ignorato: true};
   const o = ev.data.object, meta = metaDi(o);
   const ord = L.parseOrdine(u.f.Ordine); ord.pagamento = ord.pagamento || {};
   const pg = ord.pagamento, ora = new Date().toISOString(), giaPagata = (pg.pagamenti || []).some(x => x.id === o.id);
@@ -70,9 +73,13 @@ async function elabora(u, ev){
    Restituisce {esito} se ha recuperato qualcosa, {differenza} se c'è una differenza da guardare, null se tutto torna. */
 async function riconcilia(u){
   if (!L.CFG.stripeKey) return null;
-  if (u.f.Stato === L.STATI.PAGAMENTO){
+  if ([L.STATI.PAGAMENTO, L.STATI.VERIFICA].includes(u.f.Stato)){
     const pg = L.parseOrdine(u.f.Ordine).pagamento || {};
-    if (pg.stato === "IN CORSO" && pg.sessione && await L.verificaPagamento(u)) return {esito: "pagamento recuperato da Stripe: abbonamento attivato"};
+    if (!["IN CORSO", "IN VERIFICA"].includes(pg.stato) || !pg.sessione) return null;
+    const r = await L.verificaPagamento(u);
+    if (r === true) return {esito: "pagamento recuperato da Stripe: abbonamento attivato"};
+    if (r === "verifica") return {esito: "pagamento con IBAN registrato: in attesa della banca"};
+    if (pg.stato === "IN VERIFICA" && Date.now() - new Date(pg.inviatoIl || Date.now()) > 14 * 864e5) return {differenza: "pagamento con IBAN in verifica da più di 14 giorni: controlla su Stripe"};
     return null;
   }
   const ord = L.parseOrdine(u.f.Ordine), pg = ord.pagamento || {};

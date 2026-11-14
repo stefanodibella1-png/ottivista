@@ -111,12 +111,20 @@ jobs:
             # webhook già esistente e segreto già su Vercel: non lo si ricrea (così Stripe continua a riprovare gli eventi in sospeso)
             ESISTE=$(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log((JSON.parse(s).data||[]).some(w=>w.url==='$HOOK'&&w.status==='enabled')?1:0)})")
             HASW=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/env?$Q" | grep -c '"key":"STRIPE_WEBHOOK_SECRET"' || true)
-            if [ "$ESISTE" = 1 ] && [ "$HASW" != 0 ]; then echo "::notice title=Stripe::webhook già attivo, mantenuto"; else
+            EVENTI=(-d "enabled_events[]=checkout.session.completed" -d "enabled_events[]=checkout.session.async_payment_succeeded" -d "enabled_events[]=checkout.session.async_payment_failed" -d "enabled_events[]=invoice.paid" -d "enabled_events[]=invoice.payment_failed" -d "enabled_events[]=customer.subscription.deleted")
+            if [ "$ESISTE" = 1 ] && [ "$HASW" != 0 ]; then
+              # webhook mantenuto (stesso segreto): si aggiornano solo gli avvisi che Stripe deve mandare
+              WID=$(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const w=(JSON.parse(s).data||[]).find(w=>w.url==='$HOOK'&&w.status==='enabled');console.log(w?w.id:'')})")
+              [ -n "$WID" ] || { echo "::error::Webhook Stripe non trovato"; exit 1; }
+              N=$(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints/$WID" "${EVENTI[@]}" | node -p "(JSON.parse(require('fs').readFileSync(0)).enabled_events||[]).length")
+              [ "$N" = 6 ] || { echo "::error::Avvisi del webhook Stripe non aggiornati ($N)"; exit 1; }
+              echo "::notice title=Stripe::webhook già attivo, mantenuto (6 avvisi)"
+            else
             # un solo webhook per questo indirizzo: il vecchio viene sostituito (il segreto si legge solo alla creazione)
             for id in $(curl -s -u "$STRIPE_SECRET_KEY:" "https://api.stripe.com/v1/webhook_endpoints?limit=100" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const w of JSON.parse(s).data||[]) if(w.url==='$HOOK'||w.description==='SocialGlass') console.log(w.id)})"); do
               curl -s -o /dev/null -u "$STRIPE_SECRET_KEY:" -X DELETE "https://api.stripe.com/v1/webhook_endpoints/$id"; done
             WH=$(curl -s -u "$STRIPE_SECRET_KEY:" https://api.stripe.com/v1/webhook_endpoints -d url="$HOOK" -d description="SocialGlass" \
-              -d "enabled_events[]=checkout.session.completed" -d "enabled_events[]=invoice.paid" -d "enabled_events[]=invoice.payment_failed" -d "enabled_events[]=customer.subscription.deleted" \
+              "${EVENTI[@]}" \
               | node -p "const j=JSON.parse(require('fs').readFileSync(0));j.secret||''")
             [ -n "$WH" ] || { echo "::error::Webhook Stripe non creato: controlla la chiave"; exit 1; }
             setenv STRIPE_WEBHOOK_SECRET "$WH"

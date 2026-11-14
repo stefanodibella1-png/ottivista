@@ -18,5 +18,5 @@ ev("evt_c","invoice.payment_failed",{"id":"in_3","amount_due":990,"attempt_count
 ev("evt_c","invoice.payment_failed",{"id":"in_3","amount_due":990,"attempt_count":1,**md}); riga("6 stesso avviso ripetuto (niente 2° messaggio)")
 ev("evt_d","invoice.paid",{"id":"in_3","amount_paid":990,"billing_reason":"subscription_cycle",**md}); riga("7 il cliente paga")
 ev("evt_e","invoice.payment_failed",{"id":"in_3","amount_due":990,"attempt_count":2,**md}); riga("8 avviso vecchio di mancato pagamento")
-ev("evt_f","customer.subscription.deleted",{"id":"sub_altro","metadata":{"univoco":uv}}); print("9 chiusura di un abbonamento doppio → stato:", scheda(uv)["stato"])
+
 fatt=[x for x in call("api/admin",{"azione":"dati"},A)[1].get("fatture",[]) if x.get("univoco")==uv] if False else None

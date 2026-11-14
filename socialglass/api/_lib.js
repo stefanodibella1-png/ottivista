@@ -471,9 +471,21 @@ async function rinnova(u, {otticoId, caf} = {}){
 }
 
 /* ---------- attivazione dopo il pagamento Stripe (dal webhook o verificando la sessione) ---------- */
+// pagamento con IBAN (SEPA): Stripe conferma la richiesta ma la banca risponde dopo qualche giorno.
+// Finché non è pagato davvero l'ordine resta «PAGAMENTO IN VERIFICA» e il laboratorio non riceve niente.
+const pagato = s => s && (s.payment_status === "paid" || s.payment_status === "no_payment_required");
 async function attiva(u, sessione){
   const ord = parseOrdine(u.f.Ordine);
-  if (u.f.Stato !== STATI.PAGAMENTO){
+  if (u.f.Stato === STATI.PAGAMENTO && sessione && !pagato(sessione)){
+    const ora = new Date().toISOString();
+    ord.pagamento = Object.assign({}, ord.pagamento, {stato: "IN VERIFICA", sessione: sessione.id, abbonamento: sessione.subscription || "", cliente: sessione.customer || "", inviatoIl: ora});
+    ord.aggiornato = ora;
+    await DB.aggiorna(u, {Stato: STATI.VERIFICA, Ordine: JSON.stringify(ord)});
+    try { await pushCliente(u.f, `SocialGlass: ${nm(u.f.Nome)}, abbiamo ricevuto la tua richiesta di pagamento con l'IBAN. Aspettiamo la conferma della tua banca (di solito pochi giorni): poi l'ottica prepara i tuoi occhiali.`, "Pagamento in verifica"); } catch(e){}
+    return "verifica";
+  }
+  if (u.f.Stato === STATI.VERIFICA && !pagato(sessione)) return false;
+  if (u.f.Stato !== STATI.PAGAMENTO && u.f.Stato !== STATI.VERIFICA){
     // abbonamento in più (es. pagamento fatto due volte da due schede): si chiude subito e si avvisa
     const attuale = ord.pagamento && ord.pagamento.abbonamento;
     if (sessione.subscription && attuale && sessione.subscription !== attuale && CFG.stripeKey){
@@ -485,19 +497,36 @@ async function attiva(u, sessione){
     }
     return false;
   }
+  delete (ord.pagamento || {}).inviatoIl;
   ord.pagamento = Object.assign({}, ord.pagamento, {stato: "ATTIVO", sessione: sessione.id, abbonamento: sessione.subscription || "", cliente: sessione.customer || "", attivatoIl: new Date().toISOString()});
-  if (!ord.pagamento.ratePagate && sessione.payment_status === "paid"){ ord.pagamento.ratePagate = 1; ord.pagamento.primaRata = true; }
+  if (!ord.pagamento.ratePagate && pagato(sessione)){ ord.pagamento.ratePagate = 1; ord.pagamento.primaRata = true; }
   ord.aggiornato = ord.pagamento.attivatoIl;
   await DB.aggiorna(u, {Stato: STATI.ATTIVO, Ordine: JSON.stringify(ord)});
   try { await avviaLavorazione(u, ord); } catch(e){ console.error(e); }
   if (!(ord.storico || []).length) try { await premiaAmico(u, ord); } catch(e){ console.error(e); }
   return true;
 }
+// la banca ha rifiutato l'addebito con IBAN: l'abbonamento su Stripe si chiude e il cliente può pagare di nuovo
+async function rifiutato(u, sessione){
+  if (u.f.Stato !== STATI.VERIFICA) return false;
+  const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || {}, ora = new Date().toISOString();
+  if (sessione && pg.sessione && sessione.id !== pg.sessione) return false;
+  if (pg.abbonamento && CFG.stripeKey){ try { await stripeApi("DELETE", `subscriptions/${pg.abbonamento}`); } catch(e){ if (!/No such subscription/i.test(e.message)) throw e; } }
+  ord.pagamento = {stato: "RIFIUTATO", rifiutatoIl: ora, sessioneRifiutata: pg.sessione || "", abbonamentoChiuso: pg.abbonamento || ""};
+  const link = linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
+  const testo = `SocialGlass: ${nm(u.f.Nome)}, la tua banca non ha confermato l'addebito con l'IBAN, quindi l'abbonamento non è partito e non ti addebitiamo niente. Puoi riprovare dal tuo link, meglio con la carta: ${link}`;
+  ord.avvisi = ord.avvisi || {};
+  const av = await avvisa(u, testo);
+  ord.avvisi["iban" + ora.slice(0, 16)] = {il: ora, testo: `Pagamento con IBAN rifiutato dalla banca: l'ordine è tornato in attesa di pagamento. Avvisa il cliente.`, whatsapp: av.whatsapp, inviato: !!av.sms};
+  ord.aggiornato = ora;
+  await DB.aggiorna(u, {Stato: STATI.PAGAMENTO, Ordine: JSON.stringify(ord)});
+  return true;
+}
 // se la conferma di Stripe non è ancora arrivata, la si chiede direttamente a Stripe
 async function verificaPagamento(u){
-  if (u.f.Stato !== STATI.PAGAMENTO || !CFG.stripeKey) return false;
+  if (![STATI.PAGAMENTO, STATI.VERIFICA].includes(u.f.Stato) || !CFG.stripeKey) return false;
   const pg = parseOrdine(u.f.Ordine).pagamento;
-  if (!pg || pg.stato !== "IN CORSO" || !pg.sessione) return false;
+  if (!pg || !["IN CORSO", "IN VERIFICA"].includes(pg.stato) || !pg.sessione) return false;
   try { const s = await stripeApi("GET", `checkout/sessions/${pg.sessione}`); if (s.status === "complete") return await attiva(u, s); }
   catch(e){ console.error(e); }
   return false;
@@ -510,6 +539,7 @@ const STATI = {
   REGISTRATO: "IN ATTESA SCELTA MONTATURA",
   MONTATURA: "MONTATURA SCELTA",
   PAGAMENTO: "IN ATTESA PAGAMENTO",
+  VERIFICA: "PAGAMENTO IN VERIFICA",            // pagato con IBAN: si aspetta la conferma della banca
   ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE",
   PRONTO: "PRONTO PER IL RITIRO",
   CONSEGNATO: "CONSEGNATO",
@@ -538,7 +568,7 @@ const MAPPA = {
 };
 const PERCHE_STATO = {
   [S_.REGISTRATO]: "Il cliente non ha ancora scelto la montatura.", [S_.MONTATURA]: "L'ottica non ha ancora inviato il preventivo.",
-  [S_.PAGAMENTO]: "Il cliente non ha ancora attivato l'abbonamento.", [S_.ATTIVO]: "L'ordine è ancora in lavorazione.",
+  [S_.PAGAMENTO]: "Il cliente non ha ancora attivato l'abbonamento.", [S_.VERIFICA]: "Il pagamento con IBAN è in verifica: aspettiamo la conferma della banca.", [S_.ATTIVO]: "L'ordine è ancora in lavorazione.",
   [S_.PRONTO]: "L'occhiale è già pronto per il ritiro.", [S_.CONSEGNATO]: "L'occhiale è già stato consegnato.",
   [S_.CHIUSO]: "Il contratto di questo cliente è chiuso.", [S_.SCADUTO]: "Il link del cliente è scaduto.", [S_.ANONIMO]: "La pratica è archiviata."
 };
@@ -556,7 +586,7 @@ function permesso(azione, ruolo, f){
    in archivio altri 30 giorni e poi si cancellano (resta una traccia anonima). Non vale per chi ha già avuto un abbonamento. */
 const GIORNI_LINK = 30, GIORNI_ARCHIVIO = 30;
 const LINK_SCADUTO = "Il link è scaduto: sono passati 30 giorni dalla registrazione senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF: ti registriamo di nuovo in un minuto.";
-function maiAttivato(f){ const o = parseOrdine(f && f.Ordine), pg = o.pagamento || {}; return !pg.attivatoIl && !(o.storico || []).length && !o.rinnovo; }
+function maiAttivato(f){ const o = parseOrdine(f && f.Ordine), pg = o.pagamento || {}; return !pg.attivatoIl && pg.stato !== "IN VERIFICA" && !(o.storico || []).length && !o.rinnovo; }
 // chi si registra da ora ha la data scritta nella scheda (LinkFino); per chi era già registrato i 30 giorni partono dal 13/11/2026
 const INIZIO_REGOLA_LINK = "2026-11-13T00:00:00.000Z";
 function scadenzaLink(f){
@@ -997,4 +1027,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

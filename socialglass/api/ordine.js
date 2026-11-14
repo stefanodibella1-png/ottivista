@@ -128,6 +128,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true, stato: u.f.Stato, avviso: av});
   }
   if (L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
+  if (u.f.Stato === L.STATI.VERIFICA) return L.send(res, 409, L.permesso("preventivo", "ottico", u.f));
   if (![L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato) || !ord.montatura) return L.send(res, 409, {errore: "Il cliente deve prima scegliere la montatura con il QR."});
   const r = b.ricetta || {};
   // diottrie scritte senza virgola (es. -150 = -1,50): si riportano in diottrie

@@ -35,7 +35,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   const rows = (await L.DB.utenti(s.ruolo === "caf" ? {caf: s.id} : {ottico: s.id})).filter(r => !r.f.Archiviato);
-  for (const r of rows) if (r.f.Stato === L.STATI.PAGAMENTO) await L.verificaPagamento(r);
+  for (const r of rows) if ([L.STATI.PAGAMENTO, L.STATI.VERIFICA].includes(r.f.Stato)) await L.verificaPagamento(r);
   const isOtt = s.ruolo === "ottico";
   const list = rows.map(({f}) => {
     const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, m = o.montatura;
