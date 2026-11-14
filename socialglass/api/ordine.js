@@ -1,6 +1,53 @@
 // L'ottico inserisce lenti, trattamenti e ricetta; il prezzo si calcola dal listino della sua convenzione.
 const L = require("./_lib");
 const num = v => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) ? x : null; };
+// ricetta scritta dall'ottica: si leggono e si controllano i valori (preventivo e correzione)
+function leggiRicetta(r, progressive){
+  r = r || {};
+  // diottrie scritte senza virgola (es. -150 = -1,50): si riportano in diottrie
+  const dio = (v, max) => { const x = num(v); return x !== null && Math.abs(x) > max && Number.isInteger(x) ? x / 100 : x; };
+  const occhio = e => ({sf: dio(e && e.sf, 30), cil: dio(e && e.cil, 10), ax: num(e && e.ax), add: dio(e && e.add, 4)});
+  const ricetta = {OD: occhio(r.OD), OS: occhio(r.OS), pd: num(r.pd), note: String(r.note || "").slice(0, 300)};
+  // DP per occhio (facoltativa) e altezza di montaggio (obbligatoria per le progressive), in millimetri
+  const mm = v => { const x = num(v); return x === null ? null : Math.round(x * 2) / 2; };
+  const pdm = {OD: mm(r.pdm && r.pdm.OD), OS: mm(r.pdm && r.pdm.OS)}, alt = {OD: mm(r.h && r.h.OD), OS: mm(r.h && r.h.OS)};
+  if (pdm.OD !== null || pdm.OS !== null) ricetta.pdm = pdm;
+  if (alt.OD !== null || alt.OS !== null) ricetta.h = alt;
+  for (const x of [pdm.OD, pdm.OS]) if (x !== null && (x < 25 || x > 40)) return ({errore: "La distanza pupillare di un occhio deve essere tra 25 e 40 mm."});
+  for (const x of [alt.OD, alt.OS]) if (x !== null && (x < 10 || x > 40)) return ({errore: "L'altezza di montaggio deve essere tra 10 e 40 mm."});
+  if (ricetta.OD.sf === null && ricetta.OS.sf === null) return ({errore: "Inserisci almeno lo sfero di un occhio."});
+  for (const e of [ricetta.OD, ricetta.OS]){
+    for (const [k, max] of [["sf", 30], ["cil", 10], ["add", 4]]) if (e[k] !== null && (Math.abs(e[k]) > max || Math.abs(Math.round(e[k] * 4) - e[k] * 4) > 1e-6)) return ({errore: `Valore non valido (${k === "sf" ? "sfero" : k === "cil" ? "cilindro" : "addizione"} ${e[k]}): usa diottrie a passi di 0,25, es. -1,50.`});
+    if (e.ax !== null && (e.ax < 0 || e.ax > 180)) return ({errore: "L'asse deve essere tra 0 e 180."});
+    if (e.cil !== null && e.cil !== 0 && e.ax === null) return ({errore: "Con il cilindro serve anche l'asse."});
+  }
+  if (!ricetta.pd || ricetta.pd < 45 || ricetta.pd > 80) return ({errore: "Inserisci la distanza pupillare (45-80 mm)."});
+  if (progressive && ricetta.OD.add === null && ricetta.OS.add === null) return ({errore: "Per le progressive serve l'addizione."});
+  if (progressive && (alt.OD === null || alt.OS === null)) return ({errore: "Manca l'altezza di montaggio per le progressive (occhio destro e sinistro, in mm)."});
+  return {ricetta};
+}
+// rifacimento: lenti sbagliate o difettose. Se l'occhiale è in laboratorio si rifà subito; se è in ottica (o dal cliente) l'ottica lo rispedisce
+async function rifai(u, ord, motivo, da){
+  motivo = String(motivo || "").trim().slice(0, 300);
+  if (motivo.length < 3) return {errore: "Scrivi il motivo del rifacimento (es. «potere sbagliato», «lente rigata»)."};
+  if (ord.pagamento && ord.pagamento.chiuso) return {errore: "Il contratto di questo cliente è chiuso: contatta SocialGlass."};
+  if (u.f.Stato === L.STATI.CONSEGNATO && ord.consegnatoIl && Date.now() - new Date(ord.consegnatoIl) > 90*864e5) return {errore: "Il rifacimento si chiede entro 90 giorni dalla consegna: contatta SocialGlass."};
+  if ((ord.rifacimenti || []).length >= 5) return {errore: "Troppi rifacimenti per questo occhiale: contatta SocialGlass."};
+  const lab = ord.lab, ora = new Date().toISOString(), ott = String(u.f.Ottica1 || "").split(" - ")[0], inLab = ["IN LAVORAZIONE", "PRONTO"].includes(lab.stato);
+  ord.rifacimenti = (ord.rifacimenti || []).concat({il: ora, da, motivo, statoLab: lab.stato, stato: u.f.Stato, consegnatoIl: ord.consegnatoIl || ""});
+  for (const k of ["pronto", "spedito", "arrivato", "avvisoCliente"]) delete lab[k];
+  if (inLab) lab.stato = "IN LAVORAZIONE";
+  else { for (const k of ["spedita", "ritirata"]) delete lab[k]; Object.assign(lab, {stato: "ATTESA MONTATURA", fonte: "OTTICA", sede: ott, richiesta: ora}); }
+  lab.rifacimento = {il: ora, motivo, da};
+  delete ord.prontoIl; delete ord.consegnatoIl; ord.aggiornato = ora;
+  await L.DB.aggiorna(u, {Stato: L.STATI.ATTIVO, Ordine: JSON.stringify(ord)});
+  const chi = `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)} (${u.f.Univoco})`;
+  try {
+    if (da === "laboratorio") await L.pushPartner("ottico", ott, inLab ? `Il laboratorio rifà le lenti di ${chi}: ${motivo}.` : `Il laboratorio deve rifare le lenti di ${chi} (${motivo}): ritira l'occhiale e spediscilo al laboratorio con la scheda.`, "Occhiale da rifare", "/ottico");
+    else await L.pushPartner("lab", "LAB", `Da rifare: occhiale di ${chi} · ${motivo}.${inLab ? "" : " L'ottica ti rispedisce l'occhiale."}`, "Occhiale da rifare", "laboratorio.html");
+  } catch(e){ console.error(e); }
+  return {ok: true, dove: inLab ? "laboratorio" : "ottica", stato: lab.stato};
+}
 module.exports = L.wrap(async (req, res) => {
   const s = L.verify(req); if (!s || !["ottico", "lab"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
   await L.caricaListini();   // prezzi aggiornati dall'amministratore
@@ -19,8 +66,11 @@ module.exports = L.wrap(async (req, res) => {
     if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
+    if (b.azione === "annulla"){ L.registraEsito(res, "laboratorio", "ultimo passaggio annullato", u.f.Univoco); const r = await L.annullaUltimo(u); return L.send(res, r.errore ? 409 : 200, r); }
     const no = L.permesso(b.azione === "pronto" ? "prontoLab" : b.azione, "lab", u.f); if (no) return L.send(res, 409, no);
-    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: b.spedisci ? "occhiale pronto e spedito all'ottica" : "occhiale pronto", spedito: "occhiale spedito all'ottica", inizia: "lavorazione iniziata", disponibile: "montatura disponibile", richiedi: "montatura richiesta all'ottica"}[b.azione] || b.azione, u.f.Univoco);
+    if (b.azione === "rifare"){ L.registraEsito(res, "laboratorio", "occhiale da rifare", u.f.Univoco, String(b.motivo || "").slice(0, 200)); const r = await rifai(u, ord, b.motivo, "laboratorio"); return L.send(res, r.errore ? 409 : 200, r); }
+    if (L.ANNULLABILI.lab.includes(b.azione)) L.segnaAnnullabile(b.azione, {ritirata: "montatura ritirata", inizia: "inizio lavorazione", pronto: b.spedisci ? "pronto e spedito all'ottica" : "occhiale pronto", spedito: "spedito all'ottica"}[b.azione]);
+    if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: b.spedisci ? "occhiale pronto e spedito all'ottica" : "occhiale pronto", spedito: "occhiale spedito all'ottica", inizia: "lavorazione iniziata", disponibile: "montatura disponibile", richiedi: "montatura richiesta all'ottica", rifare: "occhiale da rifare", annulla: "ultimo passaggio annullato"}[b.azione] || b.azione, u.f.Univoco, b.motivo ? String(b.motivo).slice(0, 200) : "");
     const ora = new Date().toISOString(), lab = ord.lab;
     if (b.azione === "disponibile" || b.azione === "richiedi"){
       if (u.f.Stato !== L.STATI.ATTIVO) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
@@ -61,6 +111,7 @@ module.exports = L.wrap(async (req, res) => {
       listino: {id: u.f.Listino || (o && o.Listino) || "A", lenti: conv.lenti, trattamenti: conv.trattamenti, montatura: conv.montatura, mesi: L.PREZZI.LISTINI.mesi, spedizione: L.PREZZI.LISTINI.spedizione}});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
+  { const so = await L.partnerSospeso(s); if (so) return L.send(res, 403, so); }
   const b = await L.readBody(req);
   // orari in cui i clienti possono prenotare un appuntamento
   if (b.azione === "orari"){
@@ -84,9 +135,24 @@ module.exports = L.wrap(async (req, res) => {
   const u = await L.DB.utente("Univoco", String(b.univoco || "").toUpperCase().trim());
   if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
-  L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", arrivato: "occhiale arrivato in ottica", montaturaSpedita: "montatura spedita al laboratorio", preventivo: "preventivo inserito", riscatto: "riscatto"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco);
+  L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", arrivato: "occhiale arrivato in ottica", montaturaSpedita: "montatura spedita al laboratorio", preventivo: "preventivo inserito", riscatto: "riscatto", rifare: "occhiale da rifare", annulla: "ultimo passaggio annullato", ricetta: "ricetta corretta"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco, b.motivo ? String(b.motivo).slice(0, 200) : "");
   const ord = L.parseOrdine(u.f.Ordine);
-  if (["recesso", "ritirato", "pronto", "consegnato", "arrivato", "montaturaSpedita"].includes(b.azione)){ const no = L.permesso(b.azione, "ottico", u.f); if (no) return L.send(res, 409, no); }
+  if (b.azione === "annulla"){ const r = await L.annullaUltimo(u); return L.send(res, r.errore ? 409 : 200, r); }
+  if (["recesso", "ritirato", "pronto", "consegnato", "arrivato", "montaturaSpedita", "rifare", "ricetta"].includes(b.azione)){ const no = L.permesso(b.azione, "ottico", u.f); if (no) return L.send(res, 409, no); }
+  if (L.ANNULLABILI.ottico.includes(b.azione) && !(b.azione === "pronto" && ord.lab)) L.segnaAnnullabile(b.azione, {arrivato: "occhiale arrivato in ottica", montaturaSpedita: "montatura spedita al laboratorio", pronto: "occhiale pronto"}[b.azione]);
+  if (b.azione === "rifare"){ const r = await rifai(u, ord, b.motivo, "ottica " + s.id); return L.send(res, r.errore ? 409 : 200, r); }
+  // correzione della ricetta finché il laboratorio non ha iniziato le lenti (stesse lenti: il prezzo non cambia)
+  if (b.azione === "ricetta"){
+    if (ord.lab && ord.lab.iniziato) return L.send(res, 409, {errore: "Il laboratorio ha già iniziato le lenti: la ricetta non si corregge più, segna «Da rifare»."});
+    const ln = ord.lenti || {}, lr = leggiRicetta(b.ricetta, ln.id === "prog" || /progressiv|multifocal|ufficio|office/i.test(ln.nome || ""));
+    if (lr.errore) return L.send(res, 400, lr);
+    const ora = new Date().toISOString();
+    ord.correzioniRicetta = (ord.correzioniRicetta || []).concat({il: ora, da: "ottica " + s.id, prima: ord.ricetta || null}).slice(-10);
+    ord.ricetta = lr.ricetta; if (ord.lab) ord.lab.ricettaCorretta = ora; ord.aggiornato = ora;
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    try { await L.pushPartner("lab", "LAB", `L'ottica ${s.id} ha corretto la ricetta di ${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)} (${u.f.Univoco}): usa quella nuova e ristampa la busta.`, "Ricetta corretta", "laboratorio.html"); } catch(e){ console.error(e); }
+    return L.send(res, 200, {ok: true, ricetta: ord.ricetta});
+  }
   // montatura consegnata al corriere per il laboratorio
   if (b.azione === "montaturaSpedita"){
     const ora = new Date().toISOString(); ord.lab.spedita = ord.lab.spedita || ora; ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
@@ -157,29 +223,10 @@ module.exports = L.wrap(async (req, res) => {
   if (![L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato) || !ord.montatura) return L.send(res, 409, {errore: "Il cliente deve prima scegliere la montatura con il QR."});
   // la ricetta è un dato sanitario: serve il consenso che il cliente dà dal suo link
   if (!(u.f.ConsensoSanitario && u.f.ConsensoSanitario.il)) return L.send(res, 409, {errore: "Manca il consenso del cliente per la ricetta. Fallo accettare al cliente dal suo link, anche sul tuo tablet: in alto trova la spunta «Acconsento»."});
-  const r = b.ricetta || {};
-  // diottrie scritte senza virgola (es. -150 = -1,50): si riportano in diottrie
-  const dio = (v, max) => { const x = num(v); return x !== null && Math.abs(x) > max && Number.isInteger(x) ? x / 100 : x; };
-  const occhio = e => ({sf: dio(e && e.sf, 30), cil: dio(e && e.cil, 10), ax: num(e && e.ax), add: dio(e && e.add, 4)});
-  const ricetta = {OD: occhio(r.OD), OS: occhio(r.OS), pd: num(r.pd), note: String(r.note || "").slice(0, 300)};
-  // DP per occhio (facoltativa) e altezza di montaggio (obbligatoria per le progressive), in millimetri
-  const mm = v => { const x = num(v); return x === null ? null : Math.round(x * 2) / 2; };
-  const pdm = {OD: mm(r.pdm && r.pdm.OD), OS: mm(r.pdm && r.pdm.OS)}, alt = {OD: mm(r.h && r.h.OD), OS: mm(r.h && r.h.OS)};
-  if (pdm.OD !== null || pdm.OS !== null) ricetta.pdm = pdm;
-  if (alt.OD !== null || alt.OS !== null) ricetta.h = alt;
-  for (const x of [pdm.OD, pdm.OS]) if (x !== null && (x < 25 || x > 40)) return L.send(res, 400, {errore: "La distanza pupillare di un occhio deve essere tra 25 e 40 mm."});
-  for (const x of [alt.OD, alt.OS]) if (x !== null && (x < 10 || x > 40)) return L.send(res, 400, {errore: "L'altezza di montaggio deve essere tra 10 e 40 mm."});
-  if (ricetta.OD.sf === null && ricetta.OS.sf === null) return L.send(res, 400, {errore: "Inserisci almeno lo sfero di un occhio."});
-  for (const e of [ricetta.OD, ricetta.OS]){
-    for (const [k, max] of [["sf", 30], ["cil", 10], ["add", 4]]) if (e[k] !== null && (Math.abs(e[k]) > max || Math.abs(Math.round(e[k] * 4) - e[k] * 4) > 1e-6)) return L.send(res, 400, {errore: `Valore non valido (${k === "sf" ? "sfero" : k === "cil" ? "cilindro" : "addizione"} ${e[k]}): usa diottrie a passi di 0,25, es. -1,50.`});
-    if (e.ax !== null && (e.ax < 0 || e.ax > 180)) return L.send(res, 400, {errore: "L'asse deve essere tra 0 e 180."});
-    if (e.cil !== null && e.cil !== 0 && e.ax === null) return L.send(res, 400, {errore: "Con il cilindro serve anche l'asse."});
-  }
-  if (!ricetta.pd || ricetta.pd < 45 || ricetta.pd > 80) return L.send(res, 400, {errore: "Inserisci la distanza pupillare (45-80 mm)."});
   const lenteScelta = (L.PREZZI.conv(u.f.Listino || ((await L.DB.ottico(s.id)) || {}).Listino).lenti || {})[b.lente] || {};
-  const progressive = b.lente === "prog" || /progressiv|multifocal|ufficio|office/i.test(lenteScelta.nome || "");
-  if (progressive && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
-  if (progressive && (alt.OD === null || alt.OS === null)) return L.send(res, 400, {errore: "Manca l'altezza di montaggio per le progressive (occhio destro e sinistro, in mm)."});
+  const lr = leggiRicetta(b.ricetta, b.lente === "prog" || /progressiv|multifocal|ufficio|office/i.test(lenteScelta.nome || ""));
+  if (lr.errore) return L.send(res, 400, lr);
+  const ricetta = lr.ricetta;
   // se il cliente aveva già aperto il pagamento con il vecchio prezzo, quella pagina Stripe viene chiusa
   if (ord.pagamento && ord.pagamento.stato === "IN CORSO" && ord.pagamento.sessione && L.CFG.stripeKey){
     try { await L.stripeApi("POST", `checkout/sessions/${ord.pagamento.sessione}/expire`, {}); } catch(e){ console.error(e); }

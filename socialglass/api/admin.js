@@ -47,7 +47,7 @@ module.exports = L.wrap(async (req, res) => {
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
     salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
     salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", sollecito: "sollecito inviato", legale: "pratica legale",
-    segnalazioneRisolta: "segnalazione risolta"};
+    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
     [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
 
@@ -158,8 +158,8 @@ module.exports = L.wrap(async (req, res) => {
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     const cfgS = await L.DB.meta("config");
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf"), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf")}, comp(x, "caf"))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica"), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica")}, comp(x, "ottica"))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", disattivato: x.Disattivato || null, prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf"), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf")}, comp(x, "caf"))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", disattivato: x.Disattivato || null, Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica"), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica")}, comp(x, "ottica"))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Foto: x.Foto || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
@@ -476,8 +476,70 @@ module.exports = L.wrap(async (req, res) => {
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
     const f = u.f, o = L.parseOrdine(f.Ordine), ott = String(f.Ottica1 || "").split(" - ")[0];
     return L.send(res, 200, {cliente: {passi: Array.isArray(f.Passi) ? f.Passi : [], versione: L.versioneDi(f), presentatoDa: f.PresentatoDa || "", amicoPremiato: f.AmicoPremiato || "", notifiche: (f.Push || []).length, univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
-      genere: f.Genere || "", caf: f.CAF || "", registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""), consensoSanitario: f.ConsensoSanitario || null, ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
+      genere: f.Genere || "", caf: f.CAF || "", registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""), consensoSanitario: f.ConsensoSanitario || null, correzioni: f.Correzioni || [], residenza: f.Residenza || null,
+      cfModificabile: !(o.pagamento && o.pagamento.attivatoIl) && !(o.storico || []).length, ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
       situazione: L.situazione(f), link: L.linkCliente(f.Univoco, ott, f.CAF, f.Listino)}});
+  }
+  // correzione dei dati anagrafici; il codice fiscale solo se il cliente non ha mai attivato un abbonamento
+  if (az === "correggiDati"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const f = u.f, o = L.parseOrdine(f.Ordine), mai = !(o.pagamento && o.pagamento.attivatoIl) && !(o.storico || []).length;
+    const up = s => pulito(s, 80).toUpperCase();
+    const d = {Nome: up(b.nome) || f.Nome, Cognome: up(b.cognome) || f.Cognome, "Nato a": up(b.nato) || f["Nato a"] || "", "Data Nascita": /^\d{4}-\d{2}-\d{2}$/.test(b.data || "") ? b.data : f["Data Nascita"],
+      Genere: ["M", "F"].includes(b.sesso) ? b.sesso : f.Genere, Cellulare: String(b.cellulare || "").replace(/\D/g, "") || f.Cellulare};
+    if (d.Cellulare.length < 6) return L.send(res, 400, {errore: "Numero di cellulare non valido."});
+    const cf = up(b.cf) || f["Codice Fiscale"];
+    if (cf !== f["Codice Fiscale"]){
+      if (!mai) return L.send(res, 409, {errore: "Il codice fiscale non si cambia dopo l'attivazione dell'abbonamento (c'è un contratto con quel codice): contatta il commercialista e, se serve, registra di nuovo il cliente."});
+      if (!L.CF.valido(cf)) return L.send(res, 400, {errore: "Codice fiscale non valido."});
+      const gia = await L.DB.utente("Codice Fiscale", cf); if (gia && gia.id !== u.id) return L.send(res, 409, {errore: `Codice fiscale già usato dal cliente ${gia.f.Univoco}.`});
+      d["Codice Fiscale"] = cf;
+    }
+    if (!L.CF.coerente(cf, d.Nome, d.Cognome, d["Data Nascita"], d.Genere)) return L.send(res, 400, {errore: "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso."});
+    if (b.residenza){ const r = L.residenza(b.residenza); if (r.errore) return L.send(res, 400, r); d.Residenza = r; }
+    const prima = {}; for (const k of Object.keys(d)) if (JSON.stringify(d[k]) !== JSON.stringify(f[k])) prima[k] = f[k] === undefined ? null : f[k];
+    if (!Object.keys(prima).length) return L.send(res, 200, {ok: true, cambiati: []});
+    d.Correzioni = (Array.isArray(f.Correzioni) ? f.Correzioni : []).concat({il: new Date().toISOString(), chi: "amministratore", motivo: pulito(b.motivo, 200), prima}).slice(-30);
+    await L.DB.aggiorna(u, d);
+    return L.send(res, 200, {ok: true, cambiati: Object.keys(prima)});
+  }
+  // cambio dell'ottica del cliente: solo quando nessun pezzo è fisicamente nella vecchia ottica o in viaggio
+  if (az === "cambiaOttica"){
+    const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const nuova = await L.DB.ottico(pulito(b.ottica, 20).toUpperCase()); if (!nuova) return L.send(res, 404, {errore: "Ottica non trovata."});
+    if (nuova.Disattivato) return L.send(res, 400, {errore: "Questa ottica è disattivata."});
+    const f = u.f, o = L.parseOrdine(f.Ordine), vecchia = String(f.Ottica1 || "").split(" - ")[0], st = f.Stato, ls = (o.lab && o.lab.stato) || "";
+    if (nuova.ID === vecchia) return L.send(res, 400, {errore: "Il cliente è già di questa ottica."});
+    const prima = [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(st), dopo = [L.STATI.CONSEGNATO, L.STATI.CHIUSO].includes(st);
+    const inLab = st === L.STATI.ATTIVO && ["DA FARE", "IN LAVORAZIONE", "PRONTO"].includes(ls);
+    if (!prima && !dopo && !inLab) return L.send(res, 409, {errore: st === L.STATI.VERIFICA ? "Pagamento in verifica: aspetta la conferma della banca." : st === L.STATI.PRONTO || ["SPEDITO", "ARRIVATO"].includes(ls) ? "L'occhiale è nella vecchia ottica o in viaggio verso di lei: si cambia dopo la consegna." : "La montatura è ancora nella vecchia ottica o va verificata dal laboratorio: si cambia quando è in laboratorio."});
+    const ora = new Date().toISOString(), campi = {Ottica1: `${nuova.ID} - ${nuova.Intestatario} - ${nuova.Indirizzo || ""}${nuova.Citta || ""}`};
+    let libera = "";
+    if (prima){
+      // prima del pagamento: montatura e preventivo erano della vecchia ottica; il cliente sceglie di nuovo nella nuova
+      if (o.pagamento && !o.pagamento.attivatoIl && o.pagamento.stato === "IN CORSO" && o.pagamento.sessione && L.CFG.stripeKey){ try { await L.stripeApi("POST", `checkout/sessions/${o.pagamento.sessione}/expire`, {}); } catch(e){ console.error(e); } }
+      if (o.pagamento && !o.pagamento.attivatoIl) delete o.pagamento;
+      if (o.montatura){ try { await L.liberaMontatura(o.montatura.codice, f.Univoco); libera = o.montatura.codice; } catch(e){ console.error(e); } }
+      for (const k of ["montatura", "lenti", "trattamenti", "ricetta", "prezzi", "ottico"]) delete o[k];
+      campi.Stato = L.STATI.REGISTRATO; campi.Listino = nuova.Listino || "A";
+    }
+    if (o.appuntamento){ try { const ag = (await L.DB.meta("agenda-" + vecchia)) || {}, k = o.appuntamento.il; if (ag[k] && ag[k].u === f.Univoco) await L.DB.meta("agenda-" + vecchia, {[k]: null}); } catch(e){ console.error(e); } delete o.appuntamento; }
+    o.cambiOttica = (o.cambiOttica || []).concat({il: ora, da: vecchia, a: nuova.ID, motivo: pulito(b.motivo, 200)}).slice(-10);
+    o.aggiornato = ora; campi.Ordine = JSON.stringify(o);
+    await L.DB.aggiorna(u, campi);
+    const link = L.linkCliente(f.Univoco, nuova.ID, f.CAF, campi.Listino || f.Listino);
+    let av = null; try { av = await L.avvisa(u, `SocialGlass: ${L.nm(f.Nome)}, ora la tua ottica è ${nuova.Intestatario}, ${nuova.Indirizzo || ""}${nuova.Citta || ""}.${prima ? " Lì scegli la montatura." : ""} Il tuo link: ${link}`); } catch(e){ console.error(e); }
+    try { await L.pushPartner("ottico", nuova.ID, `Nuovo cliente assegnato alla tua ottica: ${L.nm(f.Nome)} ${L.nm(f.Cognome)} (${f.Univoco}).`, "Cliente assegnato", "/ottico"); } catch(e){ console.error(e); }
+    return L.send(res, 200, {ok: true, montaturaLiberata: libera, ripartito: prima, avviso: av, link});
+  }
+  // partner disattivato: non entra più; i suoi clienti restano (si spostano con «Cambia ottica»)
+  if (az === "attivaPartner"){
+    const id = pulito(b.id, 20).toUpperCase(), k = {caf: "caf", ottico: "ottici"}[b.tipo]; if (!k) return L.send(res, 400, {errore: "Tipo non valido"});
+    const rec = k === "caf" ? (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id) : await L.DB.ottico(id); if (!rec) return L.send(res, 404, {errore: "Partner non trovato."});
+    if (!b.attivo && !pulito(b.motivo, 200)) return L.send(res, 400, {errore: "Scrivi il motivo della disattivazione."});
+    await L.DB.salva(k, id, {Disattivato: b.attivo ? null : {il: new Date().toISOString(), motivo: pulito(b.motivo, 200)}});
+    const legati = k === "ottici" ? (await L.DB.tutti()).filter(({f}) => String(f.Ottica1 || "").startsWith(id + " ") && !f.Archiviato && ![L.STATI.CHIUSO].includes(f.Stato)).length : 0;
+    return L.send(res, 200, {ok: true, clienti: legati});
   }
   if (az === "blocco"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});

@@ -155,6 +155,25 @@ function disegnaScheda(c){
       ${riga("Notifiche sul telefono", c.notifiche ? "attive" : "")}${riga("Recensione", o.recensione ? "★".repeat(o.recensione.voto) + (o.recensione.testo ? " «" + esc(o.recensione.testo) + "»" : "") : "")}${riga("Occhiale da donare", o.dona && o.dona.si ? (o.dona.donato ? "donato il " + dt(o.dona.donato) : o.dona.daDonare ? "ritirato, da donare" : "sì, alla restituzione") : "")}</dl>
     <a class="btn-link" target="_blank" rel="noopener" href="${esc(c.link)}" style="display:inline-block">Apri la pagina del cliente</a></div>
 
+    <details class="scheda"><summary><b>Correggi i dati del cliente</b></summary>
+      <form data-f="correggiDati" data-id="${esc(c.univoco)}">
+      <div class="riga"><div style="flex:1"><label class="lbl" for="cdNome">Nome</label><input id="cdNome" name="nome" value="${esc(c.nome)}" style="text-transform:uppercase"></div><div style="flex:1"><label class="lbl" for="cdCogn">Cognome</label><input id="cdCogn" name="cognome" value="${esc(c.cognome)}" style="text-transform:uppercase"></div></div>
+      <label class="lbl" for="cdCf">Codice fiscale${c.cfModificabile ? "" : " (non modificabile: c'è già un contratto)"}</label><input id="cdCf" name="cf" value="${esc(c.cf)}" maxlength="16" style="text-transform:uppercase" ${c.cfModificabile ? "" : "disabled"}>
+      <div class="riga"><div style="flex:1"><label class="lbl" for="cdNato">Nato a</label><input id="cdNato" name="nato" value="${esc(c.natoA)}" style="text-transform:uppercase"></div><div style="flex:1"><label class="lbl" for="cdData">Data di nascita</label><input id="cdData" name="data" type="date" value="${esc(String(c.dataNascita || "").slice(0, 10))}"></div>
+        <div><label class="lbl" for="cdSesso">Sesso</label><select id="cdSesso" name="sesso"><option ${c.genere === "M" ? "selected" : ""}>M</option><option ${c.genere === "F" ? "selected" : ""}>F</option></select></div></div>
+      <label class="lbl" for="cdCell">Cellulare</label><input id="cdCell" name="cellulare" value="${esc(c.cellulare)}" inputmode="tel">
+      <label class="lbl" for="cdInd">Residenza</label><input id="cdInd" name="indirizzo" value="${esc((c.residenza || {}).indirizzo || "")}" placeholder="Via e numero civico">
+      <div class="riga"><input name="cap" value="${esc((c.residenza || {}).cap || "")}" placeholder="CAP" maxlength="5" aria-label="CAP" style="width:90px"><input name="comune" value="${esc((c.residenza || {}).comune || "")}" placeholder="Comune" aria-label="Comune" style="flex:1;text-transform:uppercase"><input name="provincia" value="${esc((c.residenza || {}).provincia || "")}" placeholder="PR" maxlength="2" aria-label="Provincia" style="width:60px;text-transform:uppercase"></div>
+      <label class="lbl" for="cdMot">Motivo della correzione</label><input id="cdMot" name="motivo" maxlength="200" placeholder="es. errore di battitura del CAF">
+      <button type="submit" class="verde">Salva le correzioni</button></form>
+      ${(c.correzioni || []).length ? `<p class="hint" style="margin:6px 0 0">Correzioni fatte: ${c.correzioni.slice().reverse().map(x => `${new Date(x.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"})} · ${esc(Object.keys(x.prima || {}).join(", "))}${x.motivo ? " · " + esc(x.motivo) : ""}`).join("<br>")}</p>` : ""}</details>
+
+    <details class="scheda"><summary><b>Cambia l'ottica del cliente</b></summary>
+      <p class="hint" style="margin:4px 0">Si può prima del pagamento (il cliente sceglie di nuovo la montatura nella nuova ottica), quando l'occhiale è in laboratorio, o dopo la consegna. Il cliente riceve il messaggio con il nuovo indirizzo.</p>
+      <form data-f="cambiaOttica" data-id="${esc(c.univoco)}"><label class="lbl" for="coOtt">Nuova ottica</label><select id="coOtt" name="ottica" required><option value="">Scegli…</option>${(dati.ottici || []).filter(x => !x.disattivato && !String(c.ottica || "").startsWith(x.ID + " ")).map(x => `<option value="${esc(x.ID)}">${esc(x.ID)} · ${esc(x.Intestatario)}</option>`).join("")}</select>
+      <label class="lbl" for="coMot">Motivo</label><input id="coMot" name="motivo" maxlength="200" placeholder="es. ottica chiusa, il cliente si è trasferito">
+      <button type="submit" class="verde">Cambia ottica</button></form></details>
+
     <div class="scheda"><b>Anagrafica: blocco</b>
       ${si.motivi.length ? `<ul style="margin:4px 0;padding-left:18px">${si.motivi.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : '<p style="margin:4px 0">Nessuna morosità e nessun blocco.</p>'}
       <p class="hint" style="margin:4px 0">${si.bloccato ? "CAF e ottico vedono solo «anagrafica bloccata, contatta SocialGlass»: non possono rinnovare, inserire un preventivo o consegnare." : "CAF e ottico possono operare normalmente."}${b ? ` Ultima decisione: ${b.stato === "bloccato" ? "bloccata" : "sbloccata"} il ${dt(b.il)}.` : si.moroso ? " Il blocco è automatico per morosità: si toglie da solo quando il cliente paga." : ""}</p>
@@ -262,6 +281,10 @@ function disegna(){
       ${campiCompenso("aCaf", "caf")}
       <button type="submit" class="verde full">Salva CAF</button></form>
       <div class="lista">${d.caf.map(c => `<div class="cli"><div class="top"><div><b>${esc(c.ID)}</b> ${esc(c.Nome)}${c.prova ? ' <span class="chip">PROVA</span>' : ""}</div></div>${contiHtml(c, "caf")}
+${c.disattivato ? `<div class="esito err" style="display:block;margin:6px 0">Disattivato il ${new Date(c.disattivato.il).toLocaleDateString("it-IT")}${c.disattivato.motivo ? " · " + esc(c.disattivato.motivo) : ""}</div>` : ""}
+        <details style="margin-top:6px"><summary>${c.disattivato ? "Riattiva" : "Disattiva"}</summary><form data-f="attivaPartner" data-tipo="caf" data-id="${esc(c.ID)}" data-attivo="${c.disattivato ? 1 : ""}">
+          ${c.disattivato ? "" : `<label class="lbl">Motivo<input name="motivo" maxlength="200" required></label><p class="hint" style="margin:4px 0">Non potrà più entrare né registrare clienti; i suoi clienti restano.</p>`}
+          <button type="submit" class="${c.disattivato ? "verde" : "grigio"}">${c.disattivato ? "Riattiva l'accesso" : "Disattiva"}</button></form></details>
         <div class="az"><button type="button" class="grigio" data-mod-caf="${esc(c.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="caf" data-id="${esc(c.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "ottici"){
@@ -278,6 +301,10 @@ function disegna(){
       <div class="lista">${d.ottici.map(o => `<div class="cli"><div class="top"><div><b>${esc(o.ID)}</b> ${esc(o.Intestatario)}${o.prova ? ' <span class="chip">PROVA</span>' : ""}</div>${o.accesso ? '<span class="chip s4">ACCESSO ATTIVO</span>' : '<span class="chip s3">SENZA PASSWORD</span>'}</div>
         <div>${esc(o.Indirizzo)}${esc(o.Citta)} · listino ${esc(o.Listino)}${o.Telefono ? " · " + esc(o.Telefono) : ""}</div>
         <div>Montature esposte: <b>${d.montature.filter(m => !m.archiviata).reduce((t, m) => t + (m.giacenze[o.ID] || 0), 0)}</b> pezzi · <button type="button" class="linkbtn" data-esposte="${esc(o.ID)}">vedi</button></div>${contiHtml(o, "ottico")}
+${o.disattivato ? `<div class="esito err" style="display:block;margin:6px 0">Disattivato il ${new Date(o.disattivato.il).toLocaleDateString("it-IT")}${o.disattivato.motivo ? " · " + esc(o.disattivato.motivo) : ""}</div>` : ""}
+        <details style="margin-top:6px"><summary>${o.disattivato ? "Riattiva" : "Disattiva"}</summary><form data-f="attivaPartner" data-tipo="ottico" data-id="${esc(o.ID)}" data-attivo="${o.disattivato ? 1 : ""}">
+          ${o.disattivato ? "" : `<label class="lbl">Motivo<input name="motivo" maxlength="200" required></label><p class="hint" style="margin:4px 0">Non potrà più entrare né registrare clienti; i suoi clienti restano.</p>`}
+          <button type="submit" class="${o.disattivato ? "verde" : "grigio"}">${o.disattivato ? "Riattiva l'accesso" : "Disattiva"}</button></form></details>
         <div class="az"><button type="button" class="grigio" data-mod-ott="${esc(o.ID)}">Modifica</button><button type="button" class="grigio" data-elimina="ottico" data-id="${esc(o.ID)}">Elimina</button></div></div>`).join("")}</div>`;
   }
   if (scheda === "magazzino") h += vistaMagazzino();
@@ -544,6 +571,18 @@ async function invio(e){
   if (k === "salvaMontatura" && v.nuova){
     const r = await call(k, v); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     artAperto = String(v.Codice).trim().toUpperCase(); await carica(); return msg("Montatura creata.");
+  }
+  if (k === "correggiDati" || k === "cambiaOttica"){
+    const corpo = k === "correggiDati" ? {id: f.dataset.id, nome: v.nome, cognome: v.cognome, cf: v.cf, nato: v.nato, data: v.data, sesso: v.sesso, cellulare: v.cellulare, motivo: v.motivo,
+      residenza: v.indirizzo || v.cap || v.comune ? {indirizzo: v.indirizzo, cap: v.cap, comune: String(v.comune || "").toUpperCase(), provincia: String(v.provincia || "").toUpperCase()} : null} : {id: f.dataset.id, ottica: v.ottica, motivo: v.motivo};
+    const r = await call(k, corpo); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    const x = await call("scheda", {id: f.dataset.id}); if (x.ok) schedaCli = x.data.cliente; clientiAdm = clientiAdm && (await call("clienti")).data.clienti; disegna();
+    return msg(k === "correggiDati" ? (r.data.cambiati.length ? "Dati corretti: " + r.data.cambiati.join(", ") + "." : "Nessun dato cambiato.")
+      : `Ottica cambiata.${r.data.ripartito ? " Il cliente sceglie di nuovo la montatura nella nuova ottica" + (r.data.montaturaLiberata ? ` (la ${r.data.montaturaLiberata} è di nuovo disponibile nella vecchia)` : "") + "." : ""}${r.data.avviso && r.data.avviso.inviato === false ? " Il cliente non è stato avvisato in automatico: mandagli tu il nuovo link." : " Cliente avvisato."}`);
+  }
+  if (k === "attivaPartner"){
+    const r = await call(k, {tipo: f.dataset.tipo, id: f.dataset.id, attivo: f.dataset.attivo === "1", motivo: v.motivo}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    await carica(); return msg(f.dataset.attivo === "1" ? "Partner riattivato." : `Partner disattivato: non può più entrare.${r.data.clienti ? ` Ha ${r.data.clienti} clienti: spostali con «Cambia l'ottica» nella scheda del cliente.` : ""}`);
   }
   if (k === "blocco"){
     const st = e.submitter ? e.submitter.value : ""; const r = await call("blocco", {id: f.dataset.id, stato: st, motivo: v.motivo});

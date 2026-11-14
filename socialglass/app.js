@@ -1078,6 +1078,9 @@ function disegnaClienti(){
         + (c.stato === STATI.PRONTO ? `<button type="button" class="verde" data-consegna="${esc(c.univoco)}">Segna consegnato</button>` : "")
         + (c.daRitirare ? `<button type="button" data-azione="ritirato" data-u="${esc(c.univoco)}">Occhiale ritirato</button>` : "")
         + rinnovoBtn(c, `data-rinnovo-uv="${esc(c.univoco)}"`)
+        + (c.stato === STATI.ATTIVO && c.lab && !c.lab.iniziato && ["DA VERIFICARE", "ATTESA MONTATURA", "DA FARE"].includes(c.lab.stato) ? `<button type="button" class="grigio" data-ricetta="${esc(c.univoco)}">Correggi ricetta</button>` : "")
+        + (c.lab && !c.esito && ["IN LAVORAZIONE", "PRONTO", "SPEDITO", "ARRIVATO"].includes(c.lab.stato) && [STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(c.stato) ? `<button type="button" class="grigio" data-rifare="${esc(c.univoco)}">Da rifare</button>` : "")
+        + (c.annulla ? `<button type="button" class="grigio" data-annulla="${esc(c.univoco)}">Annulla «${esc(c.annulla.testo)}» (fino alle ${new Date(c.annulla.fino).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"})})</button>` : "")
         + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "")
         + linkBtn(c)
       : rinnovoBtn(c, `data-rinnovo="${esc(c.cf)}"`) + linkBtn(c);
@@ -1094,6 +1097,7 @@ function disegnaClienti(){
         ${c.lab && c.lab.stato !== "PRONTO" ? voce("Laboratorio", STATO_LAB[c.lab.stato] || "in lavorazione") + (isOtt && c.lab.fonte === "OTTICA" ? voce("Montatura esposta", c.lab.ritirata ? "arrivata in laboratorio il " + dIt(c.lab.ritirata) : "da inviare al laboratorio") : "") : ""}
         ${isOtt ? voce("Pronto il", dIt(c.prontoIl)) : ""}${voce("Occhiale ricevuto", c.consegnatoIl ? "sì, il " + dIt(c.consegnatoIl) : c.attivatoIl ? "non ancora" : "")}
         ${voce("Chiuso il", dIt(c.chiuso))}</dl>
+      ${isOtt && c.lab && c.lab.rifacimento && !["PRONTO", "SPEDITO", "ARRIVATO"].includes(c.lab.stato) ? `<div class="avviso-cli">🔁 <b>Da rifare</b> (${esc(c.lab.rifacimento.da)}, ${dIt(c.lab.rifacimento.il)}): ${esc(c.lab.rifacimento.motivo)}.${c.lab.stato === "ATTESA MONTATURA" ? " Spedisci l'occhiale al laboratorio con la scheda." : " Il laboratorio rifà le lenti."}</div>` : ""}
       ${isOtt && c.ricetta ? "<b>Ricetta</b>" + ricettaCli(c.ricetta) : ""}
       ${c.esito ? `<div><span class="chip s4">${esc(c.esito)}</span></div>` : ""}
       ${c.finePeriodo ? `<div><span class="chip s2">SCELTA DEL CLIENTE: ${esc(c.finePeriodo)}</span></div>` : ""}
@@ -1121,6 +1125,25 @@ $("clientiLista").addEventListener("click", async e => {
   if (av){ post("api/clienti", {univoco: av.dataset.avvisato}).then(() => setTimeout(apriClienti, av.tagName === "A" ? 1500 : 100)); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.ord){ open("ordinePopup"); resetOrdine(); $("ordineCodice").value = b.dataset.ord; caricaOrdine(b.dataset.ord); return; }
+  if (b.dataset.ricetta){ open("ordinePopup"); resetOrdine(); $("ordineCodice").value = b.dataset.ricetta; caricaOrdine(b.dataset.ricetta, true); return; }
+  if (b.dataset.annulla){
+    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi l'annullo? Tocca di nuovo"; return; }
+    b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.annulla, azione: "annulla"}); if (scaduta(r)) return;
+    if (!r.ok){ b.disabled = false; alertBox(r.data.errore); return; }
+    await apriClienti(); alertBox(`Annullato: «${r.data.annullato}». La scheda è tornata com'era prima.${r.data.annullato === "occhiale arrivato in ottica" ? " Il messaggio al cliente era già partito: se serve, avvisalo tu." : ""}`); return;
+  }
+  // rifacimento: motivo obbligatorio, scritto nel riquadro sotto i pulsanti
+  if (b.dataset.rifare){
+    const uv = b.dataset.rifare, box = document.createElement("div"); box.className = "avviso-cli"; box.id = "boxRif";
+    box.innerHTML = `<b>Perché va rifatto?</b> Il laboratorio e SocialGlass leggono il motivo. Il cliente non paga niente in più.<br><input id="motRif" maxlength="300" autocomplete="off" placeholder="es. potere sbagliato, lente rigata, il cliente non vede bene" style="width:100%;margin:6px 0">
+      <button type="button" class="verde" data-rifare-ok="${esc(uv)}">Conferma: da rifare</button>`;
+    const vecchio = $("boxRif"); if (vecchio) vecchio.remove(); b.closest(".az, div").after(box); $("motRif").focus(); return;
+  }
+  if (b.dataset.rifareOk){
+    b.disabled = true; const r = await post("api/ordine", {univoco: b.dataset.rifareOk, azione: "rifare", motivo: $("motRif").value}); if (scaduta(r)) return;
+    if (!r.ok){ b.disabled = false; alertBox(r.data.errore); return; }
+    await apriClienti(); alertBox(r.data.dove === "laboratorio" ? "Segnato da rifare: il laboratorio rifà le lenti e ti avvisa quando l'occhiale riparte." : "Segnato da rifare: ritira l'occhiale dal cliente e spediscilo al laboratorio con la scheda (lo trovi in «Montature da inviare al laboratorio»)."); return;
+  }
   // consegna: prima il controllo del codice del cliente (tessera o ultime 4 cifre)
   if (b.dataset.consegna){
     const uv = b.dataset.consegna, box = document.createElement("div"); box.className = "avviso-cli"; box.id = "boxCons";
@@ -1175,15 +1198,19 @@ $("formRinnovoCf").addEventListener("submit", async e => {
   $("rinnovoCf").value = "";
   avvisoCliente(x.data.avviso || {whatsapp: x.data.whatsapp, sms: x.data.smsInviato}, `Rinnovo avviato (codice ${x.data.univoco}): ora il cliente è della tua ottica. Fagli scegliere la montatura con il QR, poi inserisci lenti e ricetta.`);
 });
-async function caricaOrdine(cod){
-  resetOrdine(); if (!cod) return;
+// soloRicetta: correzione della ricetta dopo l'attivazione (lenti e prezzo restano uguali), finché il laboratorio non inizia
+let soloRicetta = false;
+async function caricaOrdine(cod, ricetta){
+  resetOrdine(); soloRicetta = !!ricetta; if (!cod) return;
   const r = await api(`api/ordine?univoco=${encodeURIComponent(cod.toUpperCase())}`); if (scaduta(r)) return;
   if (!r.ok){ esito($("ordineEsito"), r.data.errore, "err"); return; }
   const d = r.data, o = d.ordine || {}; ordCorrente = Object.assign({univoco: cod.toUpperCase()}, d);
   if (d.bloccato){ const e = $("ordineEsito"); e.hidden = false; e.className = "esito"; e.removeAttribute("role"); e.innerHTML = `${esc(d.nome)} ${esc(d.cognome)}` + contattoAdmin(); return; }
   const m = o.montatura;
-  if (!m || ![STATI.MONTATURA, STATI.PAGAMENTO].includes(d.stato)){
-    esito($("ordineEsito"), `${d.nome} ${d.cognome} · ${d.stato}. ` + (!m ? "Il cliente deve prima scegliere la montatura con il QR (pulsante «Ho scelto la montatura» sul suo link)." : "L'ordine è già confermato."), m ? "ok" : "info");
+  const lab = o.lab || {}, correggibile = d.stato === STATI.ATTIVO && !lab.iniziato && ["DA VERIFICARE", "ATTESA MONTATURA", "DA FARE"].includes(lab.stato);
+  if (soloRicetta && !correggibile){ soloRicetta = false; esito($("ordineEsito"), `${d.nome} ${d.cognome}: il laboratorio ha già iniziato le lenti, la ricetta non si corregge più. Se le lenti sono sbagliate usa «Da rifare» nella scheda del cliente.`, "info"); return; }
+  if (!soloRicetta && (!m || ![STATI.MONTATURA, STATI.PAGAMENTO].includes(d.stato))){
+    esito($("ordineEsito"), `${d.nome} ${d.cognome} · ${d.stato}. ` + (!m ? "Il cliente deve prima scegliere la montatura con il QR (pulsante «Ho scelto la montatura» sul suo link)." : "L'ordine è già confermato." + (correggibile ? " Per correggere la ricetta usa «Correggi ricetta» nella scheda del cliente." : "")), m ? "ok" : "info");
     return;
   }
   // senza il consenso del cliente la ricetta non si inserisce: lo dà lui dal suo link, anche sul tablet dell'ottica
@@ -1202,7 +1229,12 @@ async function caricaOrdine(cod){
   const f = $("formOrdine"), rc = o.ricetta;
   if (rc){ for (const e of ["OD","OS"]) for (const k of ["sf","cil","ax","add"]) if (rc[e] && rc[e][k] != null) f[`${e}_${k}`].value = String(rc[e][k]).replace(".", ","); if (rc.pd) f.pd.value = rc.pd; for (const e of ["OD", "OS"]){ if (rc.pdm && rc.pdm[e] != null) f["pdm_" + e].value = String(rc.pdm[e]).replace(".", ","); if (rc.h && rc.h[e] != null) f["h_" + e].value = String(rc.h[e]).replace(".", ","); } if (rc.note) f.note.value = rc.note; }
   else { try { const pd = JSON.parse(localStorage.getItem("ov_pd") || "null"); if (pd) f.pd.value = pd; } catch(e){} }
-  f.hidden = false; calcolaOrdine();
+  if (soloRicetta){
+    f.querySelectorAll("[name=lente],[name=tratt]").forEach(x => x.disabled = true);
+    $("ordineCliente").insertAdjacentHTML("beforeend", `<div class="esito info" style="display:block;margin-top:8px"><b>Correzione della ricetta.</b> Lenti, trattamenti e canone restano uguali; il laboratorio viene avvisato.</div>`);
+  }
+  $("ordineInvia").textContent = soloRicetta ? "Salva la ricetta corretta" : "Conferma e invia al cliente";
+  f.hidden = false; calcolaOrdine(); $("ordineTotale").hidden = soloRicetta;
 }
 function sceltaOrdine(){
   const f = $("formOrdine");
@@ -1233,11 +1265,12 @@ $("formOrdine").addEventListener("submit", async e => {
   if (!ricetta.OD.sf && !ricetta.OS.sf){ esito($("ordineErr"), "Inserisci almeno lo sfero di un occhio (0 se neutro).", "err"); return; }
   if (!ricetta.pd){ esito($("ordineErr"), "Inserisci la distanza pupillare.", "err"); return; }
   $("ordineErr").hidden = true; $("ordineInvia").disabled = true;
-  const r = await post("api/ordine", Object.assign({univoco: ordCorrente.univoco, ricetta}, s));
+  const r = await post("api/ordine", soloRicetta ? {univoco: ordCorrente.univoco, azione: "ricetta", ricetta} : Object.assign({univoco: ordCorrente.univoco, ricetta}, s));
   $("ordineInvia").disabled = false;
   if (scaduta(r)) return;
   if (!r.ok){ esito($("ordineErr"), r.data.errore, "err"); return; }
   f.hidden = true;
+  if (soloRicetta){ soloRicetta = false; esito($("ordineEsito"), `Ricetta di ${ordCorrente.nome} corretta: il laboratorio è avvisato e usa quella nuova.`, "ok"); return; }
   avvisoCliente(r.data.avviso || {sms: false, whatsapp: ""}, `Ordine inviato a ${ordCorrente.nome}: abbonamento ${euro(r.data.prezzi.rata)}/mese (valore occhiale ${euro(r.data.prezzi.totale)}). Il cliente vede il riepilogo sul suo link e attiva l'abbonamento dal telefono.`);
 });
 

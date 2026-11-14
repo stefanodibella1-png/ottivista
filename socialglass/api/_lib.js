@@ -23,6 +23,12 @@ function preparaScrittura(cur, fields){
   const o = parseOrdine(dopo.Ordine), pg = o.pagamento || {};
   if (pg.chiuso && [STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(dopo.Stato)){ out.Stato = dopo.Stato = STATI.CHIUSO; }
   out.Versione = versioneDi(cur) + 1;
+  // annullo dell'ultimo passaggio (D6): si tiene la fotografia di prima; le altre scritture della stessa richiesta la portano avanti
+  const st = contesto.getStore() || {};
+  if (st.ann && !st.annId){
+    st.annId = crypto.randomBytes(6).toString("hex");
+    out.Annullabile = {id: st.annId, il: new Date().toISOString(), chi: st.chi || "sistema", az: st.ann.az, testo: st.ann.testo, versione: out.Versione, prima: {Stato: cur.Stato || "", Ordine: cur.Ordine || "{}"}};
+  } else if (st.annId && cur.Annullabile && cur.Annullabile.id === st.annId) out.Annullabile = Object.assign({}, cur.Annullabile, {versione: out.Versione});
   const a = riassunto(cur), b = riassunto(dopo);
   if (a.stato !== b.stato || a.lab !== b.lab || a.pag !== b.pag){
     const s = contesto.getStore() || {};
@@ -31,6 +37,25 @@ function preparaScrittura(cur, fields){
     out.Passi = (Array.isArray(cur.Passi) ? cur.Passi : []).concat(riga).slice(-300);
   }
   return out;
+}
+
+// passaggi annullabili entro 30 minuti da chi li ha fatti (D6): non la consegna con codice, non i pagamenti, non i movimenti di magazzino
+const ANNULLABILI = {lab: ["ritirata", "inizia", "pronto", "spedito"], ottico: ["arrivato", "montaturaSpedita", "pronto"]};
+const MIN_ANNULLA = 30;
+function segnaAnnullabile(az, testo){ const s = contesto.getStore(); if (s) s.ann = {az, testo}; }
+function annullabileDa(f, nome){
+  const a = f && f.Annullabile; if (!a || !a.prima || a.chi !== nome) return null;
+  const fino = new Date(a.il).getTime() + MIN_ANNULLA * 60e3;
+  if (Date.now() > fino || Number(a.versione) !== versioneDi(f)) return null;
+  return {az: a.az, testo: a.testo, fino: new Date(fino).toISOString()};
+}
+async function annullaUltimo(u){
+  const nome = chiAgisce(), a = annullabileDa(u.f, nome);
+  if (!a) return {errore: `Non c'è niente da annullare: si annulla solo il tuo ultimo passaggio, entro ${MIN_ANNULLA} minuti e se nel frattempo non è cambiato altro.`};
+  const prima = u.f.Annullabile.prima;
+  chi(null, "annullato: " + a.testo);
+  await DB.aggiorna(u, {Stato: prima.Stato, Ordine: prima.Ordine, Annullabile: null});
+  return {ok: true, annullato: a.testo, stato: u.f.Stato};
 }
 
 const E = process.env;
@@ -581,7 +606,9 @@ const MAPPA = {
   recesso:         {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
   ritirato:        {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO, S_.CHIUSO]},
   finePeriodo:     {ruoli: ["cliente"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
-  rinnovo:         {ruoli: ["caf", "ottico"], stati: [S_.CONSEGNATO, S_.CHIUSO, S_.REGISTRATO]}
+  rinnovo:         {ruoli: ["caf", "ottico"], stati: [S_.CONSEGNATO, S_.CHIUSO, S_.REGISTRATO]},
+  rifare:          {ruoli: ["lab", "ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO], lab: ["IN LAVORAZIONE", "PRONTO", "SPEDITO", "ARRIVATO"]},
+  ricetta:         {ruoli: ["ottico"], stati: [S_.ATTIVO], lab: ["DA VERIFICARE", "ATTESA MONTATURA", "DA FARE"]}
 };
 const PERCHE_STATO = {
   [S_.REGISTRATO]: "Il cliente non ha ancora scelto la montatura.", [S_.MONTATURA]: "L'ottica non ha ancora inviato il preventivo.",
@@ -594,11 +621,12 @@ function permesso(azione, ruolo, f){
   const m = MAPPA[azione]; if (!m) return {errore: "Operazione non prevista."};
   if (!m.ruoli.includes(ruolo)) return {errore: "Operazione non permessa per il tuo ruolo."};
   if (!m.stati.includes(f.Stato)) return {errore: PERCHE_STATO[f.Stato] || "Operazione non possibile in questo stato."};
-  if (m.lab){ const o = parseOrdine(f.Ordine), st = (o.lab && o.lab.stato) || ""; if (!m.lab.includes(st)) return {errore: st === "DA VERIFICARE" ? "Prima indica se la montatura è disponibile in laboratorio."
+  if (m.lab){ const o = parseOrdine(f.Ordine), st = (o.lab && o.lab.stato) || ""; if (!m.lab.includes(st)) return {errore: azione === "rifare" ? "Il laboratorio non ha ancora lavorato le lenti: non c'è niente da rifare." : st === "DA VERIFICARE" ? "Prima indica se la montatura è disponibile in laboratorio."
     : azione === "prontoLab" ? (["PRONTO", "SPEDITO", "ARRIVATO"].includes(st) ? "L'occhiale è già segnato pronto." : "Prima tocca «Inizio lavorazione».")
     : azione === "spedito" ? (st === "SPEDITO" || st === "ARRIVATO" ? "L'occhiale risulta già spedito." : "Prima segna l'occhiale pronto.")
     : azione === "arrivato" ? (st === "ARRIVATO" ? "L'arrivo è già stato registrato." : "Il laboratorio non ha ancora finito l'occhiale.")
-    : azione === "montaturaSpedita" ? "Il laboratorio non sta aspettando questa montatura." : azione === "inizia" ? "La lavorazione è già iniziata." : "La montatura è già stata gestita: aggiorna la pagina."}; }
+    : azione === "montaturaSpedita" ? "Il laboratorio non sta aspettando questa montatura." : azione === "inizia" ? "La lavorazione è già iniziata."
+    : azione === "rifare" ? "Il laboratorio non ha ancora lavorato le lenti: non c'è niente da rifare." : azione === "ricetta" ? "Il laboratorio ha già iniziato le lenti: la ricetta non si corregge più, segna «Da rifare»." : "La montatura è già stata gestita: aggiorna la pagina."}; }
   return null;
 }
 
@@ -654,6 +682,13 @@ function verify(req, ruolo){
   if (p.exp < Date.now() || (ruolo && p.ruolo !== ruolo)) return null;
   chi({ottico: "ottica " + p.id, lab: "laboratorio", caf: "CAF " + p.id, admin: "amministratore"}[p.ruolo] || p.ruolo);
   return p;
+}
+// partner disattivato dall'amministratore: non entra e non opera più (i token già dati smettono di valere qui)
+const SOSPESO = {errore: "Accesso sospeso da SocialGlass: contatta l'amministratore.", sospeso: true};
+async function partnerSospeso(s){
+  if (!s || !["caf", "ottico"].includes(s.ruolo)) return null;
+  const r = s.ruolo === "caf" ? await DB.login("caf", s.id) : await DB.ottico(s.id);
+  return r && r.Disattivato ? SOSPESO : null;
 }
 function safeEq(a, b){ const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); }
 
@@ -1062,4 +1097,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {INFORMATIVA_VERSIONE, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

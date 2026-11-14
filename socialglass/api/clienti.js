@@ -16,7 +16,7 @@ module.exports = L.wrap(async (req, res) => {
     }
     const buste = tutti.map(({f}) => ({f, o: L.parseOrdine(f.Ordine)})).filter(x => x.o.lab).map(({f, o}) => {
       const oid = String(f.Ottica1 || "").split(" - ")[0], ot = ottici.find(x => (x.ID || x._id) === oid) || {};
-      return {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", stato: f.Stato || "", inLavorazione: f.Stato === L.STATI.ATTIVO, lab: o.lab, montatura: o.montatura || null, lenti: o.lenti || null,
+      return {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", stato: f.Stato || "", inLavorazione: f.Stato === L.STATI.ATTIVO, lab: o.lab, annulla: L.annullabileDa(f, "laboratorio"), rifacimenti: o.rifacimenti || [], montatura: o.montatura || null, lenti: o.lenti || null,
         trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, consegnatoIl: o.consegnatoIl || "", chiuso: !!(o.pagamento && o.pagamento.chiuso),
         ottica: {id: oid, nome: ot.Intestatario || "", indirizzo: `${ot.Indirizzo || ""}${ot.Citta || ""}`, telefono: ot.Telefono || ""}};
     }).sort((a, b) => String(a.lab.creato).localeCompare(String(b.lab.creato)));
@@ -24,6 +24,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {buste, laboratorio: {nome: lb.nome || "Laboratorio"}});
   }
   if (!["caf", "ottico"].includes(s.ruolo)) return L.send(res, 401, L.NOAUTH);
+  { const so = await L.partnerSospeso(s); if (so) return L.send(res, 403, so); }
   // segna come inviato su WhatsApp l'ultimo avviso automatico
   if (req.method === "POST"){
     const b = await L.readBody(req);
@@ -43,12 +44,12 @@ module.exports = L.wrap(async (req, res) => {
     const tecnico = isOtt ? {montaturaCodice: m ? m.codice : "", calibro: m ? `${m.calibro || ""}${m.asse ? "-" + m.asse : ""}` : "",
       lenti: o.lenti ? o.lenti.nome : "", trattamenti: (o.trattamenti || []).map(t => t.nome), ricetta: o.ricetta || null, riscatto: o.prezzi ? o.prezzi.riscatto : null, prontoIl: o.prontoIl || ""} : {};
     return Object.assign({univoco: f.Univoco, nome: f.Nome, cognome: f.Cognome, stato: f.Stato || "", scadeLink: L.scadenzaLink(f), cf: s.ruolo === "caf" ? f["Codice Fiscale"] : undefined,
-      bloccato: L.situazione(f).bloccato, dona: !!(o.dona && o.dona.si && !o.dona.donato), voto: o.recensione ? o.recensione.voto : 0, lab: o.lab ? {stato: o.lab.stato, fonte: o.lab.stato === "ATTESA MONTATURA" ? "OTTICA" : o.lab.fonte, ritirata: o.lab.ritirata || "", pronto: o.lab.pronto || "", richiesta: o.lab.richiesta || "", spedita: o.lab.spedita || "", spedito: o.lab.spedito || "", arrivato: o.lab.arrivato || ""} : null, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
+      bloccato: L.situazione(f).bloccato, dona: !!(o.dona && o.dona.si && !o.dona.donato), voto: o.recensione ? o.recensione.voto : 0, lab: o.lab ? {stato: o.lab.stato, fonte: o.lab.stato === "ATTESA MONTATURA" ? "OTTICA" : o.lab.fonte, ritirata: o.lab.ritirata || "", pronto: o.lab.pronto || "", richiesta: o.lab.richiesta || "", spedita: o.lab.spedita || "", spedito: o.lab.spedito || "", arrivato: o.lab.arrivato || "", iniziato: o.lab.iniziato || "", rifacimento: o.lab.rifacimento || null} : null, consegnatoIl: o.consegnatoIl || "", creato: f.Creato || "", attivatoIl: pg.attivatoIl || "", chiuso: pg.chiuso || "",
       ottica: String(f.Ottica1 || "").split(" - ").slice(0, 2).join(" - "), caf: f.CAF || "",
       cellulare: f.Cellulare, montatura: o.montatura ? `${o.montatura.modello} ${o.montatura.colore}` : "", totale: o.prezzi ? o.prezzi.totale : null,
       rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || f.Creato || "",
       periodo: L.PREZZI.periodo(o), rinnovabile: L.PREZZI.rinnovabile(o), daRitirare: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato),
-      esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo, consenso: !!(f.ConsensoSanitario && f.ConsensoSanitario.il), registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""),
+      esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo, consenso: !!(f.ConsensoSanitario && f.ConsensoSanitario.il), annulla: isOtt ? L.annullabileDa(f, "ottica " + s.id) : null, lenteTipo: o.lenti ? o.lenti.id || "" : "", registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""),
       link: L.linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino),
       recedibile: L.annullabile(o, f.Stato),
       ritiroInRitardo: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && Date.now() - new Date(o.ritiro.dal) > 15*864e5),

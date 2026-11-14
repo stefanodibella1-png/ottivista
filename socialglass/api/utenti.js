@@ -13,7 +13,7 @@ module.exports = L.wrap(async (req, res) => {
     // elenco ottiche convenzionate: il CAF le vede tutte, l'ottica solo sé stessa (registra i clienti per sé)
     const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
     if (!sc && !so) return L.send(res, 401, L.NOAUTH);
-    const list = (await L.DB.ottici()).filter(f => f.ID && (!so || f.ID === so.id)).sort((a, b) => parseInt(String(a.ID).replace(/\D/g, "") || 0) - parseInt(String(b.ID).replace(/\D/g, "") || 0))
+    const list = (await L.DB.ottici()).filter(f => f.ID && !f.Disattivato && (!so || f.ID === so.id)).sort((a, b) => parseInt(String(a.ID).replace(/\D/g, "") || 0) - parseInt(String(b.ID).replace(/\D/g, "") || 0))
       .map(f => ({id: f.ID, label: `${f.ID} - ${f.Intestatario || ""} - ${f.Indirizzo || ""}${f.Citta || ""}`, listino: f.Listino || ""}));
     return L.send(res, 200, {ottici: list});
   }
@@ -44,6 +44,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 400, {errore: "Parametro mancante"});
   }
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
+  { const so = await L.partnerSospeso(L.verify(req)); if (so) return L.send(res, 403, so); }
   const b = await L.readBody(req);
 
   // rinnovo: dal CAF o direttamente dall'ottico, dai 30 giorni prima della scadenza
@@ -66,6 +67,7 @@ module.exports = L.wrap(async (req, res) => {
     }
     // l'ottico che rinnova diventa l'ottica del cliente; il CAF può indicarne un'altra
     const otticoId = so ? so.id : (b.ottica || "");
+    if (otticoId && !so){ const oo = await L.DB.ottico(otticoId); if (!oo || oo.Disattivato) return L.send(res, 400, {errore: "Questa ottica non è più attiva: scegline un'altra."}); }
     return L.send(res, 200, await L.rinnova(u, {otticoId, caf: sc ? sc.id : ""}));
   }
 
@@ -89,6 +91,7 @@ module.exports = L.wrap(async (req, res) => {
   if (gia) return L.send(res, 409, {errore: `ATTENZIONE ! CODICE FISCALE ${gia.f.Stato || "GIÀ REGISTRATO"}`, univoco: gia.f.Univoco});
   const o = await L.DB.ottico(d.ottica);
   if (!o) return L.send(res, 400, {errore: "Ottica non trovata."});
+  if (o.Disattivato) return L.send(res, 400, {errore: "Questa ottica non è più attiva: scegline un'altra."});
   // porta un amico: codice cliente di chi lo ha presentato (facoltativo)
   const amico = String(b.amico || "").toUpperCase().replace(/\s/g, "");
   if (amico){ const a = await L.DB.utente("Univoco", amico); if (!a) return L.send(res, 400, {errore: "Codice amico non trovato: controllalo o lascia il campo vuoto."}); if (a.f["Codice Fiscale"] === d.cf) return L.send(res, 400, {errore: "Il codice amico è dello stesso cliente."});

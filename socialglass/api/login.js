@@ -49,6 +49,7 @@ module.exports = L.wrap(async (req, res) => {
   const rec = await L.DB.login(ruolo, id);
   if (!rec || !L.checkPw(rec.Password, password)) return sbagliato("Codice o password non valida.");
   let nome = rec.Nome || id, listino = "";
-  if (ruolo === "ottico"){ const o = await L.DB.ottico(id); if (o){ nome = o.Intestatario || nome; listino = o.Listino || ""; } }
+  if (rec.Disattivato) return L.send(res, 403, L.SOSPESO);
+  if (ruolo === "ottico"){ const o = await L.DB.ottico(id); if (o){ if (o.Disattivato) return L.send(res, 403, L.SOSPESO); nome = o.Intestatario || nome; listino = o.Listino || ""; } }
   L.send(res, 200, {token: L.sign({ruolo, id, listino}), nome, id, listino});
 });

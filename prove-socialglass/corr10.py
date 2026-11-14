@@ -1,0 +1,61 @@
+# Modifica 10: annullo dell'ultimo passaggio, rifacimento, correzione della ricetta, correzioni dell'amministratore, cambio ottica, partner disattivato
+import sys; sys.argv=[sys.argv[0]]
+exec(open("conc.py").read().split("import sys\nbase")[0])
+def lab(uv, az, **k): s,r=call("api/ordine",{"univoco":uv,"azione":az,**k},Lb); return r.get("errore") or ("ok " + (r.get("annullato") or r.get("dove") or ""))
+def ott(uv, az, tok=None, **k): s,r=call("api/ordine",{"univoco":uv,"azione":az,**k},tok or T); return r.get("errore") or ("ok " + (r.get("annullato") or r.get("dove") or ""))
+def adm(az, **k): s,r=call("api/admin",{"azione":az,**k},A); return r
+def st(uv): c=scheda(uv); return c["stato"], (c["ordine"].get("lab") or {}).get("stato")
+def ann_lab(uv): s,r=call("api/clienti",None,Lb); b=[x for x in r["buste"] if x["univoco"]==uv][0]; return (b.get("annulla") or {}).get("testo")
+def ann_ott(uv): s,r=call("api/clienti",None,T); c=[x for x in r["clienti"] if x["univoco"]==uv][0]; return (c.get("annulla") or {}).get("testo")
+RX={"OD":{"sf":-2},"OS":{"sf":-2.25},"pd":64}
+
+print("A — annullo dell'ultimo passaggio")
+uv=nuovo("PRVGLI60A41C351","GIULIA","SG-1042")
+print("1 copia del lab:", lab(uv,"disponibile"), "| annullabile?", ann_lab(uv), "(i movimenti di magazzino no)")
+print("  inizio:", lab(uv,"inizia"), "| annullabile:", ann_lab(uv), "| l'ottica può annullarlo?", ott(uv,"annulla"))
+print("  annullo:", lab(uv,"annulla"), "| stato:", st(uv), "| iniziato:", bool(scheda(uv)["ordine"]["lab"].get("iniziato")), "| di nuovo:", lab(uv,"annulla"))
+print("2 inizio + pronto e spedito:", lab(uv,"inizia"), lab(uv,"pronto",spedisci=True), "| stato:", st(uv), "| annullabile:", ann_lab(uv))
+print("  annullo:", lab(uv,"annulla"), "| stato:", st(uv))
+print("  di nuovo pronto e spedito:", lab(uv,"pronto",spedisci=True), "| l'ottica segna arrivato:", ott(uv,"arrivato"), "| stato:", st(uv))
+print("  il lab ora non può più annullare (è cambiato altro):", lab(uv,"annulla"))
+print("  l'ottica annulla l'arrivo:", ann_ott(uv), "→", ott(uv,"annulla"), "| stato:", st(uv))
+print("  arrivato di nuovo:", ott(uv,"arrivato"), "| consegna:", ott(uv,"consegnato",codice=uv[-4:]), "| annullabile la consegna?", ann_ott(uv), ott(uv,"annulla"))
+c=scheda(uv); print("  storico:", [p.get("az","") for p in c["passi"][-6:]])
+
+print("B — rifacimento")
+print("3 rifare senza motivo:", ott(uv,"rifare"), "| con motivo:", ott(uv,"rifare",motivo="il cliente non vede bene da lontano"), "| stato:", st(uv))
+o=scheda(uv)["ordine"]; print("  consegnato tolto:", not o.get("consegnatoIl"), "| rifacimenti:", len(o["rifacimenti"]), "| lab ritirata tolta:", not o["lab"].get("ritirata"))
+print("  l'ottica spedisce l'occhiale:", ott(uv,"montaturaSpedita"), "| il lab controlla il codice:", lab(uv,"disponibile",codice="SG-1042"), "| stato:", st(uv))
+print("  pronto e spedito:", lab(uv,"pronto",spedisci=True), "| arrivato:", ott(uv,"arrivato"), "| consegna:", ott(uv,"consegnato",codice=uv[-4:]), "| stato:", st(uv))
+uv2=nuovo("PRVMRT60A41C351","MARTA","SG-1043")
+print("4 il lab rifà mentre ce l'ha:", lab(uv2,"disponibile"), lab(uv2,"inizia"), lab(uv2,"pronto"), "| rifare:", lab(uv2,"rifare",motivo="lente rigata"), "| stato:", st(uv2))
+print("  rifare prima di iniziare (nuovo cliente):", end=" "); uv3=nuovo("PRVLRA60A41C351","LAURA","SG-1044"); print(lab(uv3,"rifare",motivo="prova"))
+
+print("C — correzione della ricetta")
+print("5 lab DA VERIFICARE, ricetta corretta:", ott(uv3,"ricetta",ricetta=RX), "| ricetta:", scheda(uv3)["ordine"]["ricetta"]["OD"]["sf"], "| segnata al lab:", bool(scheda(uv3)["ordine"]["lab"].get("ricettaCorretta")))
+print("  valori sbagliati:", ott(uv3,"ricetta",ricetta={"OD":{"sf":-2.1},"OS":{"sf":-1},"pd":64}))
+print("  il lab inizia, poi correzione:", lab(uv3,"disponibile"), lab(uv3,"inizia"), "→", ott(uv3,"ricetta",ricetta=RX))
+print("  canone invariato:", scheda(uv3)["ordine"]["prezzi"]["rata"])
+
+print("D — correzioni dell'amministratore")
+c=scheda(uv3); print("6 cf modificabile dopo l'attivazione?", c["cfModificabile"], "| cambio cf:", adm("correggiDati",id=uv3,cf=cf("PRVLRA60A41C352")).get("errore","ok")[:60])
+print("  cellulare e residenza:", adm("correggiDati",id=uv3,cellulare="3471234567",residenza={"indirizzo":"Via Roma 2","cap":"95100","comune":"CATANIA","provincia":"CT"},motivo="numero sbagliato"))
+print("  nome incoerente col cf:", adm("correggiDati",id=uv3,nome="PAOLA").get("errore"))
+s,r=call("api/utenti",{"cf":cf("PRVNNA60A41C351"),"nome":"ANNA","cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C); uv4=r["univoco"]
+print("  prima dell'attivazione cf corretto (ANNA→ANNA nata il 2/1):", adm("correggiDati",id=uv4,cf=cf("PRVNNA60A42C351"),data="1960-01-02"), "| correzioni:", len(scheda(uv4)["correzioni"]))
+
+print("E — cambio ottica")
+call("api/montatura",{"univoco":uv4,"codice":"SG-1043"})
+print("7 in MONTATURA →", adm("cambiaOttica",id=uv4,ottica="OTT12",motivo="si è trasferito"), "| stato:", st(uv4), "| montatura:", scheda(uv4)["ordine"].get("montatura"))
+print("  stessa ottica:", adm("cambiaOttica",id=uv4,ottica="OTT12").get("errore"))
+print("  in lab DA VERIFICARE:", adm("cambiaOttica",id=uv3,ottica="OTT12").get("errore") if st(uv3)[1]=="DA VERIFICARE" else st(uv3), "| in lavorazione:", adm("cambiaOttica",id=uv3,ottica="OTT12").get("ok"), "| ottica:", scheda(uv3)["ottica"][:5])
+print("  OTT07 non vede più il cliente:", ott(uv3,"ricetta",ricetta=RX)[:45])
+
+print("F — partner disattivato")
+print("8 disattivo senza motivo:", adm("attivaPartner",tipo="ottico",id="OTT12").get("errore"), "| con motivo:", adm("attivaPartner",tipo="ottico",id="OTT12",motivo="chiusa"))
+T12=call("api/login",{"ruolo":"ottico","codice":"OTT12","password":"demo"}); print("  login OTT12:", T12)
+print("  il CAF la vede nell'elenco?", any(o["id"]=="OTT12" for o in call("api/utenti?ottici=1",None,C)[1]["ottici"]))
+print("  cambio ottica verso OTT12:", adm("cambiaOttica",id=uv2,ottica="OTT12").get("errore"))
+print("  riattivo:", adm("attivaPartner",tipo="ottico",id="OTT12",attivo=True), "| login:", "token" in call("api/login",{"ruolo":"ottico","codice":"OTT12","password":"demo"})[1])
+Tc=C; print("  CAF disattivato:", adm("attivaPartner",tipo="caf",id="CAF001",motivo="prova"), "| il token già dato:", call("api/clienti",None,Tc)[1].get("errore"))
+adm("attivaPartner",tipo="caf",id="CAF001",attivo=True); print("  CAF riattivato:", call("api/clienti",None,Tc)[0])

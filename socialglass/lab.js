@@ -69,8 +69,11 @@
     w.document.close();
   }
   const attesa = b => { const g = Math.floor((Date.now() - new Date(b.lab.creato)) / 864e5); return !finito(b) && !b.chiuso && g >= 4 ? `<span class="chip c-rit">IN ATTESA DA ${g} GIORNI</span>` : ""; };
+  const puoRifare = b => !b.chiuso && ["IN LAVORAZIONE", "PRONTO", "SPEDITO", "ARRIVATO"].includes(b.lab.stato) && ["ABBONAMENTO ATTIVO - IN LAVORAZIONE", "PRONTO PER IL RITIRO", "CONSEGNATO"].includes(b.stato);
+  const ora = d => new Date(d).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
   function statoChip(b){
     if (b.chiuso && !finito(b)) return '<span class="chip c-rit">ORDINE CHIUSO</span>';
+    if (b.lab.rifacimento && !finito(b)) return `<span class="chip c-rit">DA RIFARE</span>` + statoChip(Object.assign({}, b, {lab: Object.assign({}, b.lab, {rifacimento: null})}));
     if (b.lab.stato === "ARRIVATO") return `<span class="chip c-pronto">ARRIVATO IN OTTICA ${dt(b.lab.arrivato)}</span>`;
     if (b.lab.stato === "SPEDITO") return `<span class="chip c-pronto">SPEDITO ALL'OTTICA ${dt(b.lab.spedito)}</span>`;
     if (b.lab.stato === "PRONTO" && !spedito(b)) return `<span class="chip c-dafare">PRONTO: DA SPEDIRE</span>`;
@@ -107,8 +110,9 @@
         <div class="box"><h4>Montatura</h4><dl class="dl"><dt>Codice</dt><dd>${esc(m.codice)}</dd><dt>Modello</dt><dd>${esc(m.modello)} ${esc(m.colore)}</dd><dt>Calibro</dt><dd>${esc(m.calibro)}${m.asse ? " · asta " + esc(m.asse) : ""}</dd></dl></div>
         <div class="box"><h4>Lenti</h4><dl class="dl"><dt>Tipo</dt><dd>${esc(b.lenti ? b.lenti.nome : "")}</dd><dt>Trattamenti</dt><dd>${esc((b.trattamenti || []).join(", ") || "nessuno")}</dd></dl></div>
       </div>
+      ${b.lab.rifacimento ? `<div class="dove ott">DA RIFARE (${esc(b.lab.rifacimento.da)}, ${dt(b.lab.rifacimento.il)}): ${esc(b.lab.rifacimento.motivo)}</div>` : ""}
       ${dove(b)}
-      <div class="box"><h4>Ricetta</h4>${ricetta(b.ricetta, b.lenti)}</div>
+      <div class="box"><h4>Ricetta${b.lab.ricettaCorretta ? ` <span style="color:#b00020">· corretta dall'ottica il ${dt(b.lab.ricettaCorretta)} alle ${ora(b.lab.ricettaCorretta)}: usa questa</span>` : ""}</h4>${ricetta(b.ricetta, b.lenti)}</div>
       ${b.lab.note ? `<div class="box"><h4>Note del laboratorio</h4>${esc(b.lab.note)}</div>` : ""}
       ${b.lab.avvisoCliente ? `<div class="box">Avviso «occhiali pronti» al cliente: ${b.lab.avvisoCliente.inviato ? `inviato in automatico (${({sms: "SMS", notifica: "notifica sul telefono"})[b.lab.avvisoCliente.canale] || "WhatsApp"}) il ${dt(b.lab.avvisoCliente.il)}` : "non partito in automatico: lo manda l'ottica"}.</div>` : ""}`;
   }
@@ -140,14 +144,15 @@
       ${l.map(b => `<details class="busta" data-u="${esc(b.univoco)}" ${aperti.has(b.univoco) ? "open" : ""}><summary>
           <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}" onclick="event.stopPropagation()">
             <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${statoChip(b)}${prossimo(b)}</div></summary>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${statoChip(b)}${prossimo(b)}${b.annulla ? `<button type="button" class="grigio" data-annulla="${esc(b.univoco)}" title="Annulla l'ultimo passaggio (entro le ${ora(b.annulla.fino)})">↶ Annulla «${esc(b.annulla.testo)}»</button>` : ""}</div></summary>
         <div class="corpo">${chiediCodice === b.univoco && inArrivo(b) ? `<div class="box" style="border:2px solid #2e7d32"><h4>Montatura arrivata: controllo</h4><p style="margin:0 0 6px">Scansiona il QR sulla montatura o scrivi il codice (atteso: <b>${esc((b.montatura || {}).codice || "")}</b>).</p>
             <input id="codMont" autocomplete="off" placeholder="Codice montatura (es. SG-1042)" style="width:100%;max-width:280px"> <button type="button" class="verde" data-az="disponibile" data-u="${esc(b.univoco)}">Conferma arrivo</button></div>` : ""}${corpoBusta(b)}
           ${!b.chiuso && !b.lab.iniziato && !finito(b) && b.inLavorazione ? `<p style="margin:0;color:#555;font-size:13px">Tocca «Inizio lavorazione» quando ordini o prepari le lenti: da quel momento il cliente non può più annullare l'ordine.</p>` : ""}
           ${!b.chiuso && !finito(b) && b.inLavorazione && !inAttesa(b) ? `<p style="margin:0;color:#555;font-size:13px">${daRitirare(b) ? "Per segnarlo pronto, prima tocca «Montatura ritirata». " : ""}Con «Pronto e spedito all'ottica» l'ottica riceve l'avviso che l'occhiale sta arrivando; il cliente lo avvisa l'ottica quando lo riceve.</p>` : ""}
           <div class="az">${!b.chiuso && daRitirare(b) ? `<button type="button" data-az="ritirata" data-u="${esc(b.univoco)}">Montatura ritirata</button>` : ""}
             ${!b.chiuso && !spedito(b) && b.inLavorazione && !inAttesa(b) && !daRitirare(b) ? prossimo(b) : ""}
-            <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button></div></div></details>`).join("")
+            <button type="button" class="grigio" data-stampa="${esc(b.univoco)}">Stampa busta</button><button type="button" class="grigio" data-nota="${esc(b.univoco)}">Nota</button>
+            ${puoRifare(b) ? `<button type="button" class="grigio" data-rifare="${esc(b.univoco)}">Da rifare</button>` : ""}</div></div></details>`).join("")
         || `<div class="vuoto">Nessuna busta in «${FILTRI[filtro][0]}».</div>`}`;
     const c = $("cerca"); c.oninput = () => { cerca = c.value; const p = c.selectionStart; disegna(); const n = $("cerca"); n.focus(); try { n.setSelectionRange(p, p); } catch(_){} };
     $("aggiorna").onclick = () => location.reload();
@@ -167,11 +172,25 @@
       if (n === null) return; const r = await api("api/ordine", {method: "POST", body: JSON.stringify({univoco: x.univoco, azione: "nota", nota: n})});
       messaggio = r.ok ? ["Nota salvata.", "ok"] : [r.data.errore || "Errore", "err"]; return carica();
     }
+    if (b.dataset.annulla){
+      if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi l'annullo? Tocca di nuovo"; return; }
+      b.disabled = true; apri = b.dataset.annulla;
+      const r = await api("api/ordine", {method: "POST", body: JSON.stringify({univoco: b.dataset.annulla, azione: "annulla"})}); if (r.status === 401) return esci();
+      messaggio = r.ok ? [`Annullato: «${r.data.annullato}». La busta è tornata com'era prima.`, "ok"] : [r.data.errore || "Errore", "err"]; return carica();
+    }
+    if (b.dataset.rifare){
+      const motivo = prompt("Perché l'occhiale va rifatto? (es. potere sbagliato, lente rigata). Lo leggono l'ottica e SocialGlass.");
+      if (motivo === null) return; apri = b.dataset.rifare;
+      const r = await api("api/ordine", {method: "POST", body: JSON.stringify({univoco: b.dataset.rifare, azione: "rifare", motivo})}); if (r.status === 401) return esci();
+      messaggio = r.ok ? [r.data.dove === "laboratorio" ? "Segnato da rifare: la busta torna in lavorazione e l'ottica è avvisata." : "Segnato da rifare: l'ottica è avvisata di ritirare l'occhiale e rispedirtelo. Quando arriva, controlla il codice della montatura.", "ok"] : [r.data.errore || "Errore", "err"];
+      if (r.ok) filtro = r.data.dove === "laboratorio" ? "dafare" : "arrivo";
+      return carica();
+    }
     if (b.dataset.arrivo){ chiediCodice = apri = b.dataset.arrivo; messaggio = null; disegna(); const i = $("codMont"); if (i) i.focus(); return; }
     if (b.dataset.az){
       if (b.dataset.az === "pronto" && b.dataset.spedisci && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? L'ottica viene avvisata che arriva: tocca di nuovo"; return; }
       if (b.dataset.az === "richiedi" && !b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi? Avvisiamo l'ottica di prepararla per il corriere: tocca di nuovo"; return; }
-      b.disabled = true;
+      b.disabled = true; apri = b.dataset.u;
       const corpo = {univoco: b.dataset.u, azione: b.dataset.az}; if (b.dataset.spedisci) corpo.spedisci = true;
       if (b.dataset.az === "disponibile" && $("codMont") && chiediCodice === b.dataset.u) corpo.codice = $("codMont").value;
       const r = await api("api/ordine", {method: "POST", body: JSON.stringify(corpo)});
