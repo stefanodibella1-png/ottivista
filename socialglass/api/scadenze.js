@@ -9,6 +9,23 @@ async function annota(u, ord, chiave, testo){
   ord.avvisi[chiave] = {il: new Date().toISOString(), sms: av.sms, testo, whatsapp: av.whatsapp, inviato: av.sms};
   return av;
 }
+// acquisto dell'usato: una sola fattura Stripe anche ripetendo (chiavi anti-doppione e ricerca di quella già creata)
+async function richiediRiscatto(u, ord){
+  const pg = ord.pagamento, r = pg.riscatto; if (!r || r.fattura || r.pagato) return r && r.fattura;
+  const meta = {univoco: u.f.Univoco, tipo: "riscatto"};
+  let inv = ((await L.stripeApi("GET", "invoices", {customer: pg.cliente, limit: 20})).data || []).find(i => (i.metadata || {}).tipo === "riscatto" && (i.metadata || {}).univoco === u.f.Univoco && i.status !== "void");
+  if (!inv){
+    const voci = ((await L.stripeApi("GET", "invoiceitems", {customer: pg.cliente, pending: true, limit: 20})).data || []).filter(x => (x.metadata || {}).tipo === "riscatto");
+    if (!voci.length) await L.stripeApi("POST", "invoiceitems", {customer: pg.cliente, currency: "eur", amount: Math.round(r.importo*100), description: "Acquisto occhiale usato a fine noleggio", metadata: meta}, r.chiave + "-voce");
+    inv = await L.stripeApi("POST", "invoices", {customer: pg.cliente, collection_method: "charge_automatically", pending_invoice_items_behavior: "include", auto_advance: true, metadata: meta}, r.chiave + "-fattura");
+  }
+  if (inv.status === "draft") inv = await L.stripeApi("POST", `invoices/${inv.id}/finalize`, {}, r.chiave + "-finalizza");
+  r.fattura = inv.id;
+  // i canoni mensili finiscono qui (l'avviso di chiusura dell'abbonamento non chiude il contratto finché l'acquisto non è pagato)
+  if (!r.abbonamentoChiuso){ try { await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`); } catch(e){ if (!/No such subscription|canceled/i.test(e.message)) throw e; } r.abbonamentoChiuso = new Date().toISOString(); }
+  ord.aggiornato = new Date().toISOString(); await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+  return inv.id;
+}
 async function esegui(u, ord, p, ora){
   const pg = ord.pagamento, fp = ord.finePeriodo, link = L.linkCliente(u.f.Univoco, String(u.f.Ottica1 || "").split(" - ")[0], u.f.CAF, u.f.Listino);
   const stripeOk = L.CFG.stripeKey && pg.abbonamento;
@@ -22,6 +39,22 @@ async function esegui(u, ord, p, ora){
     const e = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ","), "0", u.f.Stato === L.STATI.CONSEGNATO ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", pg.insoluto.link || L.CFG.site]);
     pg.insoluto.messaggi = (pg.insoluto.messaggi || []).concat([Object.assign({il: ora, passo: 0, giorni: 0, testo}, e)]).slice(-20);
     return "chiuso per insoluto";
+  }
+  // acquisto dell'usato non pagato da oltre 30 giorni: l'occhiale torna a SocialGlass e va restituito
+  if (pg.insoluto && pg.insoluto.tipo === "riscatto" && new Date(ora) - new Date(pg.insoluto.dal) > 30*864e5){
+    pg.chiuso = ora; pg.esito = "ACQUISTO DELL'USATO NON PAGATO: OCCHIALE DA RESTITUIRE";
+    ord.ritiro = {daRitirare: true, dal: ora};
+    if (stripeOk && pg.riscatto && pg.riscatto.fattura) try { await L.stripeApi("POST", `invoices/${pg.riscatto.fattura}/void`, {}); } catch(e){ console.error(e); }
+    const testo = `SocialGlass: ${L.nm(u.f.Nome)}, il pagamento per l'acquisto dell'usato non è arrivato entro 30 giorni: l'occhiale resta di SocialGlass. Riportalo in ottica entro 15 giorni.`;
+    const e = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ","), "0", "l'occhiale andrà restituito", pg.insoluto.link || L.CFG.site]);
+    pg.insoluto.messaggi = (pg.insoluto.messaggi || []).concat([Object.assign({il: ora, passo: 0, giorni: 0, testo}, e)]).slice(-20);
+    return "acquisto dell'usato non pagato: occhiale da restituire";
+  }
+  // richiesta di acquisto interrotta a metà (Stripe non rispondeva): si riprende senza creare un secondo addebito
+  if (stripeOk && pg.riscatto && pg.riscatto.richiesto && !pg.riscatto.fattura && !pg.riscatto.pagato){
+    await richiediRiscatto(u, ord);
+    if (!(ord.avvisi && ord.avvisi.esito)) await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, hai scelto di comprare l'occhiale usato: abbiamo richiesto il pagamento di ${Number(pg.riscatto.importo || 0).toFixed(2).replace(".", ",")} € sul tuo metodo di pagamento. I canoni mensili sono finiti. Ti scriviamo appena il pagamento è confermato.`);
+    return "acquisto dell'usato: richiesta ripresa";
   }
   // con un pagamento in sospeso la scelta di fine periodo aspetta
   if (pg.insoluto){
@@ -43,19 +76,22 @@ async function esegui(u, ord, p, ora){
   }
   if (scelta === "riscatta"){
     const imp = (ord.prezzi && ord.prezzi.riscatto) || 0;
-    if (stripeOk){
-      if (imp > 0){
-        await L.stripeApi("POST", "invoiceitems", {customer: pg.cliente, currency: "eur", amount: Math.round(imp*100), description: "Acquisto occhiale usato a fine noleggio"});
-        const inv = await L.stripeApi("POST", "invoices", {customer: pg.cliente, collection_method: "charge_automatically", pending_invoice_items_behavior: "include", auto_advance: true, metadata: {univoco: u.f.Univoco, tipo: "riscatto"}});
-        await L.stripeApi("POST", `invoices/${inv.id}/finalize`, {});
-        pg.riscatto = {fattura: inv.id, importo: imp};
-      }
-      await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`);
-    }
-    pg.chiuso = ora; pg.esito = "RISCATTATO: L'OCCHIALE È DEL CLIENTE";
     fp.eseguita = ora;
-    await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, il noleggio è chiuso e l'occhiale ora è tuo. ${imp ? `Abbiamo addebitato l'acquisto dell'usato di ${imp.toFixed(2).replace(".", ",")} €. ` : ""}Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`);
-    return "riscattato";
+    // senza importo (o nelle prove senza Stripe) l'occhiale passa subito al cliente
+    if (!(imp > 0) || !stripeOk){
+      if (stripeOk) await L.stripeApi("DELETE", `subscriptions/${pg.abbonamento}`);
+      if (imp > 0) pg.riscatto = {richiesto: ora, importo: imp, pagato: ora, simulato: true};
+      pg.chiuso = ora; pg.esito = "RISCATTATO: L'OCCHIALE È DEL CLIENTE";
+      await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, il noleggio è chiuso e l'occhiale ora è tuo. Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`);
+      return "riscattato";
+    }
+    // prima si salva la richiesta (così un'interruzione non porta mai a un secondo addebito), poi si chiede il pagamento
+    pg.riscatto = {richiesto: ora, importo: imp, chiave: `riscatto-${u.f.Univoco}-${String(p.scadenza).slice(0, 10)}`};
+    pg.esito = "ACQUISTO DELL'USATO: IN ATTESA DI PAGAMENTO";
+    ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    await richiediRiscatto(u, ord);
+    await annota(u, ord, "esito", `SocialGlass: ${L.nm(u.f.Nome)}, finiti i ${p.mesi} mesi hai scelto di comprare l'occhiale usato: abbiamo richiesto il pagamento di ${imp.toFixed(2).replace(".", ",")} € sul tuo metodo di pagamento. I canoni mensili sono finiti. Ti scriviamo appena il pagamento è confermato.`);
+    return "acquisto dell'usato richiesto";
   }
   if (scelta === "restituisci"){
     if (stripeOk) await L.stripeApi("POST", `subscriptions/${pg.abbonamento}`, {cancel_at_period_end: true});

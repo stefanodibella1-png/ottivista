@@ -378,6 +378,10 @@ const numeroCliente = f => { const n = String(f.Cellulare || "").replace(/[^\d+]
 function giorniAllaChiusura(ins, ora){ return Math.max(0, Math.ceil(GIORNI_CHIUSURA - (new Date(ora || Date.now()) - new Date(ins.dal)) / 864e5)); }
 function testoSollecito(f, ins, giorni, consegnato){
   const imp = Number(ins.importo || 0).toFixed(2).replace(".", ",");
+  // acquisto dell'usato non pagato: senza pagamento l'occhiale torna a SocialGlass
+  if (ins.tipo === "riscatto") return `SocialGlass: ${nm(f.Nome)}, il pagamento di ${imp} € per l'acquisto dell'usato non è andato a buon fine. ` + (giorni > 0
+    ? `Hai ancora ${giorni} ${giorni === 1 ? "giorno" : "giorni"}: dopo, l'occhiale andrà restituito in ottica. `
+    : `Oggi scade il tempo per pagarlo: l'occhiale andrà restituito in ottica. `) + `Paga qui: ${ins.link || linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino)}`;
   return `SocialGlass: ${nm(f.Nome)}, il canone di ${imp} € non risulta pagato. ` + (giorni > 0
     ? `Mancano ${giorni} ${giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento: dopo, ${consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato"}. `
     : `Oggi l'abbonamento verrà chiuso. `) + `Paga o cambia carta qui: ${ins.link || linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino)}`;
@@ -417,7 +421,7 @@ async function inviaCanale(f, testo, param, modello){
 }
 // conto alla rovescia: un messaggio a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura (mai due nello stesso giorno, mai lo stesso passo due volte)
 async function sollecita(u, ord, ora){
-  const pg = ord.pagamento || {}, ins = pg.insoluto; if (!ins || ins.tipo === "riscatto" || pg.chiuso) return null;
+  const pg = ord.pagamento || {}, ins = pg.insoluto; if (!ins || pg.chiuso) return null;
   const giorni = giorniAllaChiusura(ins, ora), inviati = ins.messaggi || [];
   const passo = PASSI_SOLLECITO.filter(p => giorni <= p && !inviati.some(m => m.passo === p)).pop(); if (passo === undefined) return null;
   if (inviati.some(m => String(m.il).slice(0, 10) === String(ora).slice(0, 10))) return null;

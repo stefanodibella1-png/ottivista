@@ -17,8 +17,12 @@ async function elabora(u, ev){
   // clienti già attivi: il primo canone contato all'attivazione (prima che arrivasse la fattura) resta contato
   if (pg.primaRata === undefined && !(pg.pagamenti || []).length && (pg.ratePagate || 0) >= 1) pg.primaRata = true;
   let sollecito = false;
+  let riscattoPagato = false;
   if (ev.type === "invoice.paid" && o.amount_paid > 0 && meta.tipo === "riscatto"){
+    // acquisto dell'usato pagato: solo adesso l'occhiale è del cliente e il contratto si chiude
+    riscattoPagato = !(pg.riscatto && pg.riscatto.pagato);
     pg.riscatto = Object.assign(pg.riscatto || {}, {pagato: pg.riscatto && pg.riscatto.pagato || ora});
+    if (!pg.chiuso || /IN ATTESA DI PAGAMENTO|NON PAGATO/.test(pg.esito || "")){ pg.chiuso = pg.chiuso || ora; pg.esito = "RISCATTATO: L'OCCHIALE È DEL CLIENTE"; if (ord.ritiro && !ord.ritiro.ritirato && !ord.ritiro.rinnovo) delete ord.ritiro; }
     pg.pagamenti = (pg.pagamenti || []).filter(x => x.id !== o.id).concat([{id: o.id, il: ora, canone: 0, spedizione: 0, riscatto: (o.amount_paid || 0) / 100}]).slice(-60);
     if (pg.insoluto && pg.insoluto.tipo === "riscatto") delete pg.insoluto;
   }
@@ -43,6 +47,8 @@ async function elabora(u, ev){
       prossimoTentativo: o.next_payment_attempt ? new Date(o.next_payment_attempt*1000).toISOString() : null, link: o.hosted_invoice_url || prima.link || ""});
     sollecito = true;
   }
+  // abbonamento chiuso per l'acquisto dell'usato: il contratto resta aperto finché l'acquisto non è pagato
+  if (ev.type === "customer.subscription.deleted" && pg.riscatto && !pg.riscatto.pagato && !pg.chiuso) return {ignorato: true};
   if (ev.type === "customer.subscription.deleted" && (!pg.abbonamento || !o.id || o.id === pg.abbonamento)){
     const mesi = (ord.prezzi && ord.prezzi.mesi) || 12, consegnato = u.f.Stato === L.STATI.CONSEGNATO || !!ord.consegnatoIl;
     pg.chiuso = pg.chiuso || ora;
@@ -60,6 +66,12 @@ async function elabora(u, ev){
   if (sollecito) try {
     const o2 = L.parseOrdine(u.f.Ordine);
     if (await L.sollecita(u, o2, ora)){ o2.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o2)}); }
+  } catch(e){ console.error(e); }
+  if (riscattoPagato) try {
+    const testo = `SocialGlass: ${L.nm(u.f.Nome)}, pagamento ricevuto: l'occhiale ora è tuo. Grazie! Quando vuoi un occhiale nuovo, chiedi al tuo ottico.`;
+    const av = await L.avvisa(u, testo), o3 = L.parseOrdine(u.f.Ordine);
+    o3.avvisi = o3.avvisi || {}; o3.avvisi.riscattoPagato = {il: ora, sms: av.sms, testo, whatsapp: av.whatsapp, inviato: av.sms};
+    await L.DB.aggiorna(u, {Ordine: JSON.stringify(o3)});
   } catch(e){ console.error(e); }
   // fattura dell'incasso (una sola anche se Stripe ripete l'avviso)
   if (ev.type === "invoice.paid" && o.amount_paid > 0){
@@ -83,6 +95,12 @@ async function riconcilia(u){
     return null;
   }
   const ord = L.parseOrdine(u.f.Ordine), pg = ord.pagamento || {};
+  if (pg.riscatto && pg.riscatto.fattura && !pg.riscatto.pagato && !pg.chiuso){
+    const inv = await L.stripeApi("GET", `invoices/${pg.riscatto.fattura}`);
+    if (inv.status === "paid"){ const r = await elabora(u, {id: "notte-" + inv.id, type: "invoice.paid", data: {object: inv}}); return r.ok ? {esito: "recuperato da Stripe: acquisto dell'usato pagato"} : null; }
+    if (inv.status === "open" && (inv.attempt_count || 0) > 0 && !pg.insoluto){ const r = await elabora(u, {id: `notte-${inv.id}-${inv.attempt_count}`, type: "invoice.payment_failed", data: {object: inv}}); return r.ok ? {esito: "recuperato da Stripe: acquisto dell'usato non pagato"} : null; }
+    return null;
+  }
   if (!pg.abbonamento || pg.chiuso) return null;
   let sub;
   try { sub = await L.stripeApi("GET", `subscriptions/${pg.abbonamento}`); }
