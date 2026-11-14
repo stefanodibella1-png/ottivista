@@ -101,16 +101,23 @@ async def paga_stripe(ctx, uv, metodo="carta", iban=None, nome_pag="Prova Genera
             if c: await c.fill(v)
     sp = await trova(pg, ["#enableStripePass", "input[name=enableStripePass]"], 2)
     if sp and await sp.is_checked(): await sp.uncheck()
-    await pg.screenshot(path=f"{OUT}/stripe-{metodo}-compilato-{uv}.png", full_page=True)
+    await pg.screenshot(path=f"{OUT}/stripe-{metodo}-compilato-{uv}.png")
     bt = await trova(pg, ["button[type=submit]", "button:has-text('Abbonati')"], 10); await bt.click()
     try: await pg.wait_for_url(lambda u: "checkout.stripe.com" not in u, timeout=90000)
-    except Exception: await pg.screenshot(path=f"{OUT}/stripe-dopo-invio-{uv}.png", full_page=True); raise
+    except Exception:
+        await pg.screenshot(path=f"{OUT}/stripe-dopo-invio-{uv}.png")
+        testi = []
+        for fr in pg.frames:
+            try: testi.append((fr.url[:60], (await fr.locator("body").inner_text())[:300].replace("\n", " | ")))
+            except Exception: pass
+        print("  testo della pagina Stripe dopo l'invio:", testi); raise
     await pg.wait_for_timeout(4000)
     await pg.screenshot(path=f"{OUT}/ritorno-{metodo}-{uv}.png", full_page=True); await pg.close()
 
 async def main():
     async with async_playwright() as p:
-        b = await p.chromium.launch()
+        # finestra vera (in un monitor virtuale): la pagina di Stripe con il browser automatico «senza schermo» non conclude il pagamento
+        b = await p.chromium.launch(headless=os.environ.get("PG_HEADLESS") == "1", args=["--disable-blink-features=AutomationControlled"])
         tel = await b.new_context(viewport={"width": 390, "height": 844}, locale="it-IT")
         tab = await b.new_context(viewport={"width": 820, "height": 1180}, locale="it-IT")
         pc = await b.new_context(viewport={"width": 1280, "height": 900}, locale="it-IT")

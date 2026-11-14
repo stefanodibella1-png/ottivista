@@ -37,7 +37,7 @@ jobs:
           [ -n "$V" ] || { echo "::error::SESSION_SECRET non leggibile"; exit 1; }
           echo "::add-mask::$V"; echo "SESSION_SECRET=$V" >> $GITHUB_ENV
       - name: Prova generale
-        run: python scripts/sg-prova-generale.py
+        run: xvfb-run -a -s "-screen 0 1400x1100x24" python scripts/sg-prova-generale.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
