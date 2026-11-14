@@ -2,6 +2,36 @@
 const crypto = require("crypto");
 const CF = require("../cf.js");
 const PREZZI = require("../listini.js");
+const {AsyncLocalStorage} = require("async_hooks");
+
+/* ---------- fondamenta dei passaggi (mappa approvata il 14/11/2026) ----------
+   Ogni scrittura del cliente: 1) controlla la versione letta (se nel frattempo qualcuno ha cambiato l'ordine → Conflitto),
+   2) scrive tutto insieme, 3) aumenta la versione, 4) aggiunge una riga allo storico «Passi» se cambia uno stato. */
+const contesto = new AsyncLocalStorage();
+const chiAgisce = () => (contesto.getStore() || {}).chi || "sistema";
+function chi(nome, azione){ const s = contesto.getStore(); if (s){ if (nome) s.chi = nome; if (azione) s.az = azione; } }
+class Conflitto extends Error { constructor(){ super("L'ordine è appena cambiato: ricarica la pagina e riprova."); this.conflitto = true; } }
+const versioneDi = f => Number((f && f.Versione) || 0);
+function riassunto(f){
+  const o = parseOrdine(f.Ordine), pg = o.pagamento || {};
+  return {stato: f.Stato || "", lab: (o.lab && o.lab.stato) || "", pag: o.pagamento ? (pg.chiuso ? "CHIUSO" : pg.insoluto ? "INSOLUTO" : String(pg.stato || "")) : ""};
+}
+const testoRiassunto = r => [r.stato, r.lab && "lab " + r.lab, r.pag && "pagamento " + r.pag].filter(Boolean).join(" · ");
+// prepara la scrittura: stato CHIUSO quando il contratto è finito, versione +1, riga di storico se cambia qualcosa
+function preparaScrittura(cur, fields){
+  const out = Object.assign({}, fields), dopo = Object.assign({}, cur, out);
+  const o = parseOrdine(dopo.Ordine), pg = o.pagamento || {};
+  if (pg.chiuso && [STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO].includes(dopo.Stato)){ out.Stato = dopo.Stato = STATI.CHIUSO; }
+  out.Versione = versioneDi(cur) + 1;
+  const a = riassunto(cur), b = riassunto(dopo);
+  if (a.stato !== b.stato || a.lab !== b.lab || a.pag !== b.pag){
+    const s = contesto.getStore() || {};
+    const riga = {il: new Date().toISOString(), chi: s.chi || "sistema", da: testoRiassunto(a), a: testoRiassunto(b)};
+    if (s.az) riga.az = s.az;
+    out.Passi = (Array.isArray(cur.Passi) ? cur.Passi : []).concat(riga).slice(-300);
+  }
+  return out;
+}
 
 const E = process.env;
 const CFG = {
@@ -85,16 +115,16 @@ const FS = {
   async ottico(id){ if (!id) return null; const d = await (await fdb()).collection(COL.ottici).doc(id).get(); return d.exists ? d.data() : null; },
   async utente(by, val){
     const db = await fdb();
-    if (by === "Univoco"){ const d = await db.collection(COL.utenti).doc(String(val)).get(); return d.exists ? {id: d.id, f: d.data()} : null; }
+    if (by === "Univoco"){ const d = await db.collection(COL.utenti).doc(String(val)).get(); return d.exists ? {id: d.id, f: d.data(), v: versioneDi(d.data())} : null; }
     const {FieldPath} = require("firebase-admin/firestore");
     const r = await db.collection(COL.utenti).where(new FieldPath(by), "==", val).limit(1).get();
-    return r.empty ? null : {id: r.docs[0].id, f: r.docs[0].data()};
+    return r.empty ? null : {id: r.docs[0].id, f: r.docs[0].data(), v: versioneDi(r.docs[0].data())};
   },
   async utenti(filtro){
     const c = (await fdb()).collection(COL.utenti);
     const r = filtro.caf ? await c.where("CAF", "==", filtro.caf).get()
       : await c.where("Ottica1", ">=", filtro.ottico + " ").where("Ottica1", "<", filtro.ottico + " \uf8ff").get();
-    return r.docs.map(d => ({id: d.id, f: d.data()})).sort((a, b) => String(b.f.Creato || "").localeCompare(String(a.f.Creato || "")));
+    return r.docs.map(d => ({id: d.id, f: d.data(), v: versioneDi(d.data())})).sort((a, b) => String(b.f.Creato || "").localeCompare(String(a.f.Creato || "")));
   },
   async creaUtente(fields){
     const c = (await fdb()).collection(COL.utenti);
@@ -105,8 +135,19 @@ const FS = {
     }
     throw new Error("Impossibile creare il codice cliente");
   },
-  async tutti(){ return (await (await fdb()).collection(COL.utenti).get()).docs.map(d => ({id: d.id, f: d.data()})); },
-  async aggiorna(u, fields){ await (await fdb()).collection(COL.utenti).doc(u.id).update(fields); Object.assign(u.f, fields); },
+  async tutti(){ return (await (await fdb()).collection(COL.utenti).get()).docs.map(d => ({id: d.id, f: d.data(), v: versioneDi(d.data())})); },
+  // campi che non riguardano l'ordine (iscrizioni alle notifiche): niente versione, così non fanno scattare conflitti
+  async campi(u, fields){ await (await fdb()).collection(COL.utenti).doc(u.id).update(fields); Object.assign(u.f, fields); },
+  // scrittura protetta: se la versione salvata non è quella letta, qualcuno ha cambiato il cliente nel frattempo
+  async aggiorna(u, fields){
+    const db = await fdb(), ref = db.collection(COL.utenti).doc(u.id);
+    const out = await db.runTransaction(async t => {
+      const d = await t.get(ref); if (!d.exists) throw new Error("Cliente non trovato");
+      const cur = d.data(); if (u.v !== undefined && versioneDi(cur) !== u.v) throw new Conflitto();
+      const x = preparaScrittura(cur, fields); t.update(ref, x); return x;
+    });
+    Object.assign(u.f, out); u.v = out.Versione;
+  },
   async montatura(codice){ const d = await (await fdb()).collection(COL.mont).doc(String(codice)).get(); return d.exists ? {id: d.id, f: d.data()} : null; },
   async aggiornaMontatura(m, fields){ await (await fdb()).collection(COL.mont).doc(m.id).update(fields); Object.assign(m.f, fields); },
   // lettura e scrittura atomica (due prenotazioni contemporanee non possono prendere lo stesso pezzo)
@@ -180,13 +221,13 @@ const AT = {
     const r = await find(CFG.baseMain, CFG.tOttici, `{ID}="${q(id)}"`, 1); return r[0] ? r[0].fields : null;
   },
   async utente(by, val){ // by: "Univoco" | "Codice Fiscale"
-    if (DEMO){ const u = demo.utenti.find(x => x[by] === val); return u ? {id: u.Univoco, f: u} : null; }
+    if (DEMO){ const u = demo.utenti.find(x => x[by] === val); return u ? {id: u.Univoco, f: u, v: versioneDi(u)} : null; }
     const r = await find(CFG.baseMain, CFG.tUtenti, `{${by}}="${q(val)}"`, 1);
-    return r[0] ? {id: r[0].id, f: r[0].fields} : null;
+    return r[0] ? {id: r[0].id, f: r[0].fields, v: versioneDi(r[0].fields)} : null;
   },
   async utenti(filtro){ // {caf} oppure {ottico}
     let rows;
-    if (DEMO) rows = demo.utenti.map(f => ({id: f.Univoco, f}));
+    if (DEMO) rows = demo.utenti.map(f => ({id: f.Univoco, f, v: versioneDi(f)}));
     else {
       const formula = filtro.caf ? `{CAF}="${q(filtro.caf)}"` : `LEFT({Ottica1},${String(filtro.ottico).length + 1})="${q(filtro.ottico)} "`;
       rows = (await find(CFG.baseMain, CFG.tUtenti, formula, 300)).map(r => ({id: r.id, f: r.fields}));
@@ -194,7 +235,7 @@ const AT = {
     return rows.filter(r => filtro.caf ? r.f.CAF === filtro.caf : String(r.f.Ottica1 || "").startsWith(filtro.ottico + " "));
   },
   async tutti(){
-    if (DEMO) return demo.utenti.map(f => ({id: f.Univoco, f}));
+    if (DEMO) return demo.utenti.map(f => ({id: f.Univoco, f, v: versioneDi(f)}));
     return (await find(CFG.baseMain, CFG.tUtenti, "", 0)).map(r => ({id: r.id, f: r.fields}));
   },
   async creaUtente(fields){
@@ -204,10 +245,20 @@ const AT = {
     if (!uv){ uv = nuovoUnivoco(); await at(CFG.baseMain, CFG.tUtenti, {method: "PATCH", id: r.id, body: {fields: {Univoco: uv}, typecast: true}}); }
     return uv;
   },
+  async campi(u, fields){
+    if (DEMO){ const rec = demo.utenti.find(x => x.Univoco === u.id) || u.f; Object.assign(rec, fields); if (u.f !== rec) Object.assign(u.f, fields); return; }
+    await at(CFG.baseMain, CFG.tUtenti, {method: "PATCH", id: u.id, body: {fields, typecast: true}}); Object.assign(u.f, fields);
+  },
   async aggiorna(u, fields){
-    if (DEMO){ Object.assign(u.f, fields); return; }
-    await at(CFG.baseMain, CFG.tUtenti, {method: "PATCH", id: u.id, body: {fields, typecast: true}});
-    Object.assign(u.f, fields);
+    if (DEMO){
+      // in prova il cliente è l'oggetto in memoria: la versione salvata è quella dell'archivio di prova
+      const rec = demo.utenti.find(x => x.Univoco === u.id) || u.f;
+      if (u.v !== undefined && versioneDi(rec) !== u.v) throw new Conflitto();
+      const x = preparaScrittura(rec, fields); Object.assign(rec, x); if (u.f !== rec) Object.assign(u.f, x); u.v = x.Versione; return;
+    }
+    const x = preparaScrittura(u.f, fields);
+    await at(CFG.baseMain, CFG.tUtenti, {method: "PATCH", id: u.id, body: {fields: Object.assign({}, x, {Passi: JSON.stringify(x.Passi || u.f.Passi || [])}), typecast: true}});
+    Object.assign(u.f, x); u.v = x.Versione;
   },
   async montatura(codice){
     if (DEMO){ const m = demo.montature.find(x => x.Codice === codice); return m ? {id: m.Codice, f: m} : null; }
@@ -275,7 +326,7 @@ async function pushCliente(f, testo, titolo){
     try { await WP.sendNotification(s, dati, {vapidDetails: {subject: "mailto:assistenza@socialglass.it", publicKey: k.pubblica, privateKey: k.privata}, TTL: 172800}); ok = true; }
     catch(e){ if (e.statusCode === 404 || e.statusCode === 410) scadute.push(s.endpoint); else console.error("push", e.statusCode || e.message); }
   }
-  if (scadute.length) try { const u = await DB.utente("Univoco", f.Univoco); if (u) await DB.aggiorna(u, {Push: (u.f.Push || []).filter(x => !scadute.includes(x.endpoint))}); } catch(e){ console.error(e); }
+  if (scadute.length) try { const u = await DB.utente("Univoco", f.Univoco); if (u) await DB.campi(u, {Push: (u.f.Push || []).filter(x => !scadute.includes(x.endpoint))}); } catch(e){ console.error(e); }
   return ok;
 }
 /* ---------- porta un amico: un canone gratis a chi ha presentato il nuovo cliente, quando questo attiva ----------
@@ -462,9 +513,44 @@ const STATI = {
   ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE",
   PRONTO: "PRONTO PER IL RITIRO",
   CONSEGNATO: "CONSEGNATO",
+  CHIUSO: "CHIUSO",                             // contratto finito (recesso, restituzione, acquisto dell'usato, insoluto)
   SCADUTO: "LINK SCADUTO",                      // 30 giorni senza attivare: pratica in archivio
   ANONIMO: "ARCHIVIATO (DATI CANCELLATI)"       // altri 30 giorni dopo: dati personali cancellati
 };
+/* ---------- mappa dei passaggi permessi: chi può fare cosa, da quale stato (vedi «Mappa dei passaggi dell'ordine») ---------- */
+const S_ = STATI;
+const MAPPA = {
+  scegliMontatura: {ruoli: ["cliente"], stati: [S_.REGISTRATO, S_.MONTATURA]},
+  preventivo:      {ruoli: ["ottico"], stati: [S_.MONTATURA, S_.PAGAMENTO]},
+  paga:            {ruoli: ["cliente"], stati: [S_.PAGAMENTO]},
+  disponibile:     {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["DA VERIFICARE", "ATTESA MONTATURA"]},
+  richiedi:        {ruoli: ["lab"], stati: [S_.ATTIVO], lab: ["DA VERIFICARE"]},
+  ritirata:        {ruoli: ["lab"], stati: [S_.ATTIVO]},
+  inizia:          {ruoli: ["lab"], stati: [S_.ATTIVO]},
+  nota:            {ruoli: ["lab"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO, S_.CHIUSO]},
+  prontoLab:       {ruoli: ["lab"], stati: [S_.ATTIVO]},
+  pronto:          {ruoli: ["ottico"], stati: [S_.ATTIVO]},
+  consegnato:      {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO]},
+  recesso:         {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
+  ritirato:        {ruoli: ["ottico"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO, S_.CHIUSO]},
+  finePeriodo:     {ruoli: ["cliente"], stati: [S_.ATTIVO, S_.PRONTO, S_.CONSEGNATO]},
+  rinnovo:         {ruoli: ["caf", "ottico"], stati: [S_.CONSEGNATO, S_.CHIUSO, S_.REGISTRATO]}
+};
+const PERCHE_STATO = {
+  [S_.REGISTRATO]: "Il cliente non ha ancora scelto la montatura.", [S_.MONTATURA]: "L'ottica non ha ancora inviato il preventivo.",
+  [S_.PAGAMENTO]: "Il cliente non ha ancora attivato l'abbonamento.", [S_.ATTIVO]: "L'ordine è ancora in lavorazione.",
+  [S_.PRONTO]: "L'occhiale è già pronto per il ritiro.", [S_.CONSEGNATO]: "L'occhiale è già stato consegnato.",
+  [S_.CHIUSO]: "Il contratto di questo cliente è chiuso.", [S_.SCADUTO]: "Il link del cliente è scaduto.", [S_.ANONIMO]: "La pratica è archiviata."
+};
+// null = permesso; altrimenti {errore} con una frase chiara
+function permesso(azione, ruolo, f){
+  const m = MAPPA[azione]; if (!m) return {errore: "Operazione non prevista."};
+  if (!m.ruoli.includes(ruolo)) return {errore: "Operazione non permessa per il tuo ruolo."};
+  if (!m.stati.includes(f.Stato)) return {errore: PERCHE_STATO[f.Stato] || "Operazione non possibile in questo stato."};
+  if (m.lab){ const o = parseOrdine(f.Ordine), st = (o.lab && o.lab.stato) || ""; if (!m.lab.includes(st)) return {errore: st === "DA VERIFICARE" ? "Prima indica se la montatura è disponibile in laboratorio." : "La montatura è già stata gestita: aggiorna la pagina."}; }
+  return null;
+}
+
 /* ---------- link del cliente: vale 30 giorni dalla registrazione finché l'abbonamento non è attivato ----------
    Alla scadenza la pratica va in archivio (montatura liberata, link non più valido); i dati personali restano
    in archivio altri 30 giorni e poi si cancellano (resta una traccia anonima). Non vale per chi ha già avuto un abbonamento. */
@@ -512,6 +598,7 @@ function verify(req, ruolo){
   if (mac.length !== good.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good))) return null;
   const p = JSON.parse(Buffer.from(body, "base64url").toString());
   if (p.exp < Date.now() || (ruolo && p.ruolo !== ruolo)) return null;
+  chi({ottico: "ottica " + p.id, lab: "laboratorio", caf: "CAF " + p.id, admin: "amministratore"}[p.ruolo] || p.ruolo);
   return p;
 }
 function safeEq(a, b){ const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); }
@@ -551,10 +638,18 @@ function giaTroppi(key, max, windowMs = 10*60e3){ return (hits.get(key) || []).f
 function bloccato(req){ const a = (hits.get("cod:" + ipDi(req)) || []).filter(t => Date.now() - t < 10*60e3); return a.length >= 10; }
 function codiceErrato(req){ tooMany("cod:" + ipDi(req), 1e9); }
 const TROPPI = {errore: "Troppi codici sbagliati. Riprova tra 10 minuti."};
+// chi agisce, in base alla funzione chiamata (poi verify() lo precisa con il ruolo di chi ha fatto l'accesso)
+const CHI_DEFAULT = {"stripe-webhook": "stripe", scadenze: "sistema", benvenuto: "cliente", montatura: "cliente", pagamento: "cliente", "fine-periodo": "cliente"};
 function wrap(fn){
   return async (req, res) => {
-    try { await fn(req, res); }
-    catch(e){ console.error(e); send(res, 500, {errore: "Errore del server. Riprova tra poco."}); }
+    const nome = String(req.url || "").split("?")[0].split("/").pop();
+    return contesto.run({chi: CHI_DEFAULT[nome] || nome || "sistema"}, async () => {
+      try { await fn(req, res); }
+      catch(e){
+        if (e && e.conflitto){ if (!res.headersSent) send(res, 409, {errore: e.message, conflitto: true}); return; }
+        console.error(e); if (!res.headersSent) send(res, 500, {errore: "Errore del server. Riprova tra poco."});
+      }
+    });
   };
 }
 const NOAUTH = {errore: "Sessione scaduta: accedi di nuovo."};
@@ -873,9 +968,10 @@ async function registra(chi, azione, rif, dettaglio){
   catch(e){ console.error("registro", e); }
 }
 // registra l'operazione solo se è andata a buon fine, prima che la risposta parta
-function registraEsito(res, chi, azione, rif, dettaglio){
+function registraEsito(res, chiE, azione, rif, dettaglio){
+  chi(null, azione);
   const fine = res.end.bind(res);
-  res.end = body => { if (res.statusCode < 300) registra(chi, azione, rif, dettaglio).finally(() => fine(body)); else fine(body); };
+  res.end = body => { if (res.statusCode < 300) registra(chiE, azione, rif, dettaglio).finally(() => fine(body)); else fine(body); };
 }
 
 /* ---------- copia dei dati ogni notte (ultime 7), scaricabile dal pannello ---------- */
@@ -901,4 +997,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

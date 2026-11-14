@@ -1,0 +1,10 @@
+import sys; sys.argv=[sys.argv[0]]
+exec(open("conc.py").read().split("import sys\nbase")[0])
+uv = nuovo("PRVGNN60A41C351", "GIANNA", "SG-1042")
+print("recesso subito:", call("api/ordine",{"univoco":uv,"azione":"recesso"},T)[0])
+c = scheda(uv); print("stato:", c["stato"], "| esito:", c["ordine"]["pagamento"].get("esito"))
+print("ripeto il recesso:", call("api/ordine",{"univoco":uv,"azione":"recesso"},T)[1].get("errore"))
+print("il lab prova a lavorarlo:", call("api/ordine",{"univoco":uv,"azione":"disponibile"},Lb)[1].get("errore"))
+s,cli = call(f"api/benvenuto?univoco={uv}&espositore="); print("pagina cliente:", cli.get("stato"), "| chiuso:", cli.get("chiuso"))
+s,l = call("api/clienti", None, T); x=[k for k in l["clienti"] if k["univoco"]==uv][0]; print("elenco ottica:", x["stato"], "| rinnovabile:", x.get("rinnovabile"))
+for p in c["passi"][-2:]: print("  ", p["chi"], "|", p.get("az",""), "|", p["da"], "→", p["a"])

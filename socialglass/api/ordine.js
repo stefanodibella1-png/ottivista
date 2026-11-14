@@ -19,6 +19,7 @@ module.exports = L.wrap(async (req, res) => {
     if (u && u.f.Archiviato) return L.send(res, 410, {errore: "Pratica scaduta: il cliente non ha attivato l'abbonamento entro 30 giorni. Va registrato di nuovo dal CAF."});
     const ord = u ? L.parseOrdine(u.f.Ordine) : null;
     if (!u || !ord.lab) return L.send(res, 404, {errore: "Lavorazione non trovata."});
+    const no = L.permesso(b.azione === "pronto" ? "prontoLab" : b.azione, "lab", u.f); if (no) return L.send(res, 409, no);
     if (b.azione !== "nota") L.registraEsito(res, "laboratorio", {ritirata: "montatura ritirata", pronto: "occhiale pronto", inizia: "lavorazione iniziata", disponibile: "montatura disponibile", richiedi: "montatura richiesta all'ottica"}[b.azione] || b.azione, u.f.Univoco);
     const ora = new Date().toISOString(), lab = ord.lab;
     if (b.azione === "disponibile" || b.azione === "richiedi"){
@@ -88,6 +89,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!u || !String(u.f.Ottica1 || "").startsWith(s.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i clienti della tua ottica."});
   L.registraEsito(res, "ottica " + s.id, {recesso: "recesso", ritirato: "occhiale restituito ritirato", pronto: "occhiale pronto", consegnato: "occhiale consegnato", preventivo: "preventivo inserito", riscatto: "riscatto"}[b.azione] || b.azione || "preventivo inserito", u.f.Univoco);
   const ord = L.parseOrdine(u.f.Ordine);
+  if (["recesso", "ritirato", "pronto", "consegnato"].includes(b.azione)){ const no = L.permesso(b.azione, "ottico", u.f); if (no) return L.send(res, 409, no); }
   // recesso entro 14 giorni dall'attivazione (diritto del consumatore): l'abbonamento si chiude subito
   if (b.azione === "recesso"){
     const pg = ord.pagamento;

@@ -461,7 +461,7 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "scheda"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
     const f = u.f, o = L.parseOrdine(f.Ordine), ott = String(f.Ottica1 || "").split(" - ")[0];
-    return L.send(res, 200, {cliente: {presentatoDa: f.PresentatoDa || "", amicoPremiato: f.AmicoPremiato || "", notifiche: (f.Push || []).length, univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
+    return L.send(res, 200, {cliente: {passi: Array.isArray(f.Passi) ? f.Passi : [], versione: L.versioneDi(f), presentatoDa: f.PresentatoDa || "", amicoPremiato: f.AmicoPremiato || "", notifiche: (f.Push || []).length, univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", cf: f["Codice Fiscale"] || "", cellulare: f.Cellulare || "", natoA: f["Nato a"] || "", dataNascita: f["Data Nascita"] || "",
       genere: f.Genere || "", caf: f.CAF || "", ottica: f.Ottica1 || "", listino: f.Listino || "", stato: f.Stato || "", creato: f.Creato || "", ordine: o, periodo: L.PREZZI.periodo(o),
       situazione: L.situazione(f), link: L.linkCliente(f.Univoco, ott, f.CAF, f.Listino)}});
   }
@@ -503,7 +503,7 @@ module.exports = L.wrap(async (req, res) => {
     if (k === "ottici" || k === "caf"){
       // i clienti restano: un'ottica con clienti in corso non si elimina (perderebbero indirizzo e ordini), si toglie solo l'accesso
       const legati = (await L.DB.tutti()).filter(({f}) => k === "caf" ? f.CAF === id : String(f.Ottica1 || "").startsWith(id + " "));
-      const inCorso = legati.filter(({f}) => { const pg = L.parseOrdine(f.Ordine).pagamento || {}; return f.Stato !== L.STATI.CONSEGNATO || (pg.abbonamento && !pg.chiuso); });
+      const inCorso = legati.filter(({f}) => { const pg = L.parseOrdine(f.Ordine).pagamento || {}; return ![L.STATI.CONSEGNATO, L.STATI.CHIUSO].includes(f.Stato) || (pg.abbonamento && !pg.chiuso); });
       if (k === "ottici" && inCorso.length && !b.soloAccesso) return L.send(res, 409, {errore: `L'ottica ha ${inCorso.length} ${inCorso.length === 1 ? "cliente" : "clienti"} con ordini o abbonamenti in corso: puoi togliere solo l'accesso.`, soloAccesso: true});
       if (k === "ottici" && b.soloAccesso){ await L.DB.elimina("ottLogin", id); return L.send(res, 200, {ok: true, soloAccesso: true}); }
       await L.DB.elimina(k, id); if (k === "ottici") await L.DB.elimina("ottLogin", id);

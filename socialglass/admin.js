@@ -177,6 +177,10 @@ function disegnaScheda(c){
       ${riga("Scelta di fine periodo", o.finePeriodo ? esc(o.finePeriodo.descrizione) : "")}${riga("Chiuso il", pg.chiuso ? dt(pg.chiuso) : "")}${riga("Esito", esc(pg.esito || ""))}
       ${riga("Rinnovo", o.rinnovo ? `avviato il ${dt(o.rinnovo.il)} (${esc(o.rinnovo.da)})` : "")}${riga("Abbonamento Stripe", esc(pg.abbonamento || ""))}</dl>
       ${(o.storico || []).length ? `<p class="hint" style="margin:4px 0">${o.storico.length} ${o.storico.length === 1 ? "periodo precedente" : "periodi precedenti"} in archivio.</p>` : ""}</div>
+    ${(c.passi || []).length ? `<details class="scheda" style="margin-top:6px"><summary><b>Storico dei passaggi</b> (${c.passi.length})</summary>
+      <div style="overflow-x:auto"><table class="rx" style="width:100%;margin-top:6px;font-size:13px"><thead><tr><th style="text-align:left">Quando</th><th style="text-align:left">Chi</th><th style="text-align:left">Operazione</th><th style="text-align:left">Da</th><th style="text-align:left">A</th></tr></thead><tbody>
+      ${c.passi.slice().reverse().map(x => `<tr><td>${new Date(x.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"})}</td><td>${esc(x.chi || "")}</td><td>${esc(x.az || "")}</td><td>${esc(x.da || "")}</td><td>${esc(x.a || "")}</td></tr>`).join("")}
+      </tbody></table></div></details>` : ""}
 
     <div class="az" style="margin-top:6px"><button type="button" class="grigio" data-elimina="cliente" data-id="${esc(c.univoco)}" data-attivo="${pg.abbonamento && !pg.chiuso ? 1 : ""}">Elimina cliente</button></div>`;
 }

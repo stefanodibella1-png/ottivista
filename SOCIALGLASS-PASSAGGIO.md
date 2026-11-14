@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1796900000**, prossimo 1797000000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1797000000**, prossimo 1797100000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -50,6 +50,10 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Occhiali restituiti
 - Ogni occhiale restituito viene rigenerato e donato a un'associazione benefica: al cliente si dice solo questo (niente spunta «dono», niente altri dettagli). Alla restituzione registrata dall'ottica `ord.dona.daDonare` si imposta sempre; nel pannello «Occhiali restituiti da rigenerare e donare»; «donati» manda la notifica al cliente.
+
+## Piano pre-lancio (14/11/2026): mappa dei passaggi e modifiche in ordine
+- Audit: documento «SocialGlass — Audit tecnico, funzionale, UX/UI e pre-lancio». Mappa approvata da Stefano: «SocialGlass — Mappa dei passaggi dell'ordine» (stati, chi può fare cosa, decisioni D1–D8). Le modifiche si fanno una alla volta, spiegate prima e approvate: 1 mappa ✔, 2 fondamenta ✔, 3 pagamenti contati una volta + controllo notturno Stripe, 4 SEPA, 5 acquisto dell'usato, 6 «Inizio lavorazione» e annullamento, 7 spedito/arrivato in ottica + codice alla consegna, 8 altezza progressive, 9 consenso privacy dal cliente + registrazione dall'ottica, 10 correzioni/annulli/rifacimento, 11 coda eccezioni, 12 prenotazione sull'ottica, 13 affidabilità (lotti, allarmi, backup esterno), 14 sicurezza, 15 testi, 16 prova generale, 17 Stripe live, 18 pilota e lancio.
+- Modifica 2 (fondamenta): ogni scrittura del cliente passa da `DB.aggiorna`, che ora è una transazione con controllo di versione (`Versione`): chi ha letto dati vecchi riceve `Conflitto` → 409 «L'ordine è appena cambiato: ricarica la pagina e riprova» (Stripe ripete l'avviso da solo). `preparaScrittura` aumenta la versione, aggiunge una riga a `Passi` (storico: quando, chi, operazione, da → a; chi viene da `verify()`/endpoint via AsyncLocalStorage) e porta lo stato a **CHIUSO** quando il pagamento è chiuso. `DB.campi` scrive senza versione solo le iscrizioni push. `L.MAPPA` + `L.permesso(azione, ruolo, f)` = passaggi permessi (usati in `api/ordine.js`). La pagina del cliente riceve per CHIUSO la tappa raggiunta + `chiuso: true`; liste CAF/ottica mostrano CHIUSO e lo trattano come CONSEGNATO per il rinnovo (`FINITO`). Storico visibile nella scheda cliente del pannello. Prove: `prove-socialglass/conc.py`, `conc2.py`.
 
 ## Laboratorio: verifica della montatura (13/11/2026)
 - Al pagamento (`avviaLavorazione`) la busta nasce «DA VERIFICARE» (`ord.lab.verifica`) e il laboratorio riceve una notifica push (iscrizione con «🔔 Attiva notifiche» in `laboratorio.html`; meta `push-lab`). La ricetta resta nascosta finché la montatura non è disponibile; le azioni ritirata/inizia/pronto sono rifiutate prima.

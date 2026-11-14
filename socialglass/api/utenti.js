@@ -25,7 +25,7 @@ module.exports = L.wrap(async (req, res) => {
       const u = await L.DB.utente("Codice Fiscale", cf);
       const o = u ? L.parseOrdine(u.f.Ordine) : null, per = o ? L.PREZZI.periodo(o) : null;
       return L.send(res, 200, {valido: true, stato: u ? u.f.Stato || "REGISTRATO" : null, nome: u ? `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}` : null, univoco: u ? u.f.Univoco : null,
-        ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: u ? u.f.Stato === L.STATI.CONSEGNATO && L.PREZZI.rinnovabile(o) : false,
+        ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: u ? [L.STATI.CONSEGNATO, L.STATI.CHIUSO].includes(u.f.Stato) && L.PREZZI.rinnovabile(o) : false,
         rinnovoDal: per && !per.chiuso ? per.preavviso : null, bloccato: u ? L.situazione(u.f).bloccato : false});
     }
     if (uv){
@@ -50,7 +50,7 @@ module.exports = L.wrap(async (req, res) => {
     const ord = L.parseOrdine(u.f.Ordine);
     if (ord.rinnovo && [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato))
       return L.send(res, 409, {errore: `Rinnovo già avviato il ${new Date(ord.rinnovo.il).toLocaleDateString("it-IT")} (${ord.rinnovo.da}): il cliente deve solo scegliere la montatura dal suo link.`, univoco: u.f.Univoco});
-    if (![L.STATI.CONSEGNATO, L.STATI.REGISTRATO].includes(u.f.Stato) && ord.pagamento && !ord.pagamento.chiuso)
+    if (![L.STATI.CONSEGNATO, L.STATI.CHIUSO, L.STATI.REGISTRATO].includes(u.f.Stato) && ord.pagamento && !ord.pagamento.chiuso)
       return L.send(res, 409, {errore: "Il cliente ha un ordine in corso: il rinnovo si fa dopo la consegna."});
     if (!L.PREZZI.rinnovabile(ord)){
       const p = L.PREZZI.periodo(ord);

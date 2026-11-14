@@ -164,7 +164,8 @@ function esito(el, txt, kind){ el.textContent = txt; el.className = "esito " + (
 
 /* ---------- stati ---------- */
 const STATI = {REGISTRATO: "IN ATTESA SCELTA MONTATURA", MONTATURA: "MONTATURA SCELTA", PAGAMENTO: "IN ATTESA PAGAMENTO",
-  ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE", PRONTO: "PRONTO PER IL RITIRO", CONSEGNATO: "CONSEGNATO"};
+  ATTIVO: "ABBONAMENTO ATTIVO - IN LAVORAZIONE", PRONTO: "PRONTO PER IL RITIRO", CONSEGNATO: "CONSEGNATO", CHIUSO: "CHIUSO"};
+const FINITO = s => s === STATI.CONSEGNATO || s === STATI.CHIUSO;   // occhiale consegnato o contratto chiuso: si può rinnovare
 const ORDINE_STATI = [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO, STATI.ATTIVO, STATI.PRONTO, STATI.CONSEGNATO];
 const chip = s => { const i = ORDINE_STATI.indexOf(s); return `<span class="chip s${i < 0 ? 6 : i + 1}">${esc(s || "—")}</span>`; };
 
@@ -376,7 +377,7 @@ function disegnaCruscotto(isOtt, d){
     f(n(c => c.stato === STATI.PRONTO), "Occhiali pronti da consegnare", "Quando il cliente li ritira, segna «consegnato»", `data-vai="stato:${STATI.PRONTO}"`);
     f(n(c => c.daRitirare), "Occhiali da ritirare dal cliente", "Fine abbonamento, recesso o rinnovo", 'data-vai="sit:ritiro"', l.some(c => c.ritiroInRitardo));
     f(n(c => c.stato === STATI.PAGAMENTO), "Clienti che devono attivare l'abbonamento", "Preventivo inviato: ricordaglielo", `data-vai="stato:${STATI.PAGAMENTO}"`);
-    f(n(c => c.rinnovabile && c.stato === STATI.CONSEGNATO && !c.bloccato), "Clienti che possono rinnovare", "Proponi l'occhiale nuovo", 'data-vai="sit:rinnovabili"');
+    f(n(c => c.rinnovabile && FINITO(c.stato) && !c.bloccato), "Clienti che possono rinnovare", "Proponi l'occhiale nuovo", 'data-vai="sit:rinnovabili"');
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
     tess = tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
       + tessera("agenda", "Appuntamenti", `${(d.appuntamenti || []).length} in agenda · orari`, "data-agenda")
@@ -937,7 +938,7 @@ $("formRinnovo").addEventListener("submit", async e => {
   const d = r.data;
   if (d.bloccato){ box.hidden = false; box.className = "esito"; box.removeAttribute("role"); box.innerHTML = `${esc(d.nome)} · codice ${esc(d.univoco)}` + contattoAdmin(); return; }
   if (!d.rinnovabile){
-    const perche = d.stato !== STATI.CONSEGNATO ? "ha un ordine in corso: il rinnovo si fa dopo la consegna degli occhiali."
+    const perche = !FINITO(d.stato) ? "ha un ordine in corso: il rinnovo si fa dopo la consegna degli occhiali."
       : d.rinnovoDal ? `il rinnovo è possibile dal ${new Date(d.rinnovoDal).toLocaleDateString("it-IT")} (30 giorni prima della scadenza).` : "il rinnovo non è ancora possibile.";
     esito(box, `${d.nome} · codice ${d.univoco} · ${d.stato}: ${perche}`, "info"); return;
   }
@@ -982,7 +983,7 @@ async function apriClienti(pre){
   if (conti && !(r.ok && r.data.estratto)){ $("clientiLista").hidden = false; $("clientiLista").innerHTML = '<div class="vuoto">Non c\'è ancora un accordo economico registrato: contatta SocialGlass.</div>'; }
 }
 function rinnovoBtn(c, attr){
-  if (c.stato !== STATI.CONSEGNATO) return "";
+  if (!FINITO(c.stato)) return "";
   return c.rinnovabile ? `<button type="button" class="verde" ${attr}>Rinnovo: occhiale nuovo</button>`
     : c.periodo ? `<span class="chip">Rinnovo dal ${new Date(c.periodo.preavviso).toLocaleDateString("it-IT")}</span>` : "";
 }
@@ -997,7 +998,7 @@ const SIT_P = {
   bloccati: c => c.bloccato, scadenza: c => c.periodo && !c.esito && c.periodo.aperto && !c.periodo.scaduto,
   ultimati: c => c.periodo && c.periodo.scaduto, consegnati: c => !!c.consegnatoIl || c.stato === STATI.CONSEGNATO, avvisi: c => !!c.avviso,
   attivi: c => c.attivatoIl && !c.chiuso, inattesa: c => !c.attivatoIl && !c.esito, mese: c => String(c.creato).slice(0, 7) === new Date().toISOString().slice(0, 7),
-  fermi: c => c.stato === STATI.REGISTRATO && giorniDa(c.creato) > 3, ritiro: c => !!c.daRitirare, rinnovabili: c => c.rinnovabile && c.stato === STATI.CONSEGNATO && !c.bloccato,
+  fermi: c => c.stato === STATI.REGISTRATO && giorniDa(c.creato) > 3, ritiro: c => !!c.daRitirare, rinnovabili: c => c.rinnovabile && FINITO(c.stato) && !c.bloccato,
   lab: c => c.lab && c.lab.fonte === "OTTICA" && !c.lab.ritirata && !["PRONTO", "DA VERIFICARE"].includes(c.lab.stato)
 };
 const STATO_LAB = {"DA VERIFICARE": "il laboratorio controlla se ha la montatura", "ATTESA MONTATURA": "aspetta la montatura dall'ottica", "DA FARE": "in attesa di lavorazione", "IN LAVORAZIONE": "in lavorazione"};

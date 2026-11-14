@@ -58,7 +58,7 @@ module.exports = L.wrap(async (req, res) => {
     if (b.azione === "push"){
       const s = b.sub || {}; if (!/^https:\/\//.test(s.endpoint || "") || !s.keys || !s.keys.p256dh || !s.keys.auth) return L.send(res, 400, {errore: "Iscrizione non valida."});
       const l = (u.f.Push || []).filter(x => x.endpoint !== s.endpoint).concat([{endpoint: s.endpoint, keys: {p256dh: String(s.keys.p256dh), auth: String(s.keys.auth)}}]).slice(-5);
-      await L.DB.aggiorna(u, {Push: l});
+      await L.DB.campi(u, {Push: l});
       const ok = await L.pushCliente(Object.assign({}, u.f, {Push: [l[l.length - 1]]}), `SocialGlass: ${L.nm(u.f.Nome)}, notifiche attive! Ti scriviamo qui quando c'è una novità sui tuoi occhiali.`, "Notifiche attive");
       return L.send(res, 200, {ok: true, prova: ok});
     }
@@ -157,7 +157,9 @@ module.exports = L.wrap(async (req, res) => {
     contratto: ord.pagamento && ord.pagamento.attivatoIl ? {attivatoIl: ord.pagamento.attivatoIl, consensi: ord.consensi || null, caf: u.f.CAF || ""} : null,
     barraTempo: barraAttiva(cfg, u.f) ? {giorni: Number(u.f.ProveGiorni) || 0} : null,
     residenza: !!(u.f.Residenza && u.f.Residenza.cap), scadeLink: L.scadenzaLink(u.f)};
-  L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: u.f.Stato || "",
+  // contratto chiuso: la pagina del cliente mostra la tappa raggiunta (con il messaggio di chiusura in alto)
+  const oC = L.parseOrdine(u.f.Ordine), statoCli = u.f.Stato === L.STATI.CHIUSO ? (oC.consegnatoIl ? L.STATI.CONSEGNATO : oC.prontoIl ? L.STATI.PRONTO : L.STATI.ATTIVO) : u.f.Stato;
+  L.send(res, 200, {...extra, nome: u.f.Nome, cognome: u.f.Cognome, stato: statoCli || "", chiuso: u.f.Stato === L.STATI.CHIUSO,
     ottico: o ? {id: o.ID, nome: o.Intestatario, indirizzo: o.Indirizzo || "", citta: o.Citta || "", telefono: o.Telefono || ""} : null,
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,
       finePeriodo: ord.finePeriodo || null, periodo: L.PREZZI.periodo(ord), rinnovo: ord.rinnovo ? {prosegue: !!(ord.rinnovo.prosegue)} : null,
