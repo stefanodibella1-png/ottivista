@@ -56,36 +56,56 @@ def registra(base, nome, data):
     CLIENTI.append(r["univoco"]); return r["univoco"]
 RICETTA = {"OD": {"sf": -1.25, "cil": -0.5, "ax": 90}, "OS": {"sf": -1}, "pd": 63}
 
+async def trova(pg, selettori, sec=20):
+    """il modulo di Stripe sta in parte dentro iframe: cerca il primo campo visibile in tutta la pagina"""
+    t0 = time.time()
+    while time.time() - t0 < sec:
+        for fr in pg.frames:
+            for sel in selettori:
+                try:
+                    loc = fr.locator(sel)
+                    if await loc.count() and await loc.first.is_visible(): return loc.first
+                except Exception: pass
+        await pg.wait_for_timeout(500)
+    return None
 async def paga_stripe(ctx, uv, metodo="carta", iban=None, nome_pag="Prova Generale"):
-    """dalla pagina del cliente: «Attiva l'abbonamento» → pagina di Stripe → carta 4242 o IBAN di prova → ritorno al sito"""
+    """dalla pagina del cliente: «Attiva l'abbonamento» → pagina di Stripe → carta 4242 (o IBAN di prova) → ritorno al sito"""
     pg = await ctx.new_page()
     await pg.goto(f"{SITO}/?Univoco={uv}"); await pg.wait_for_timeout(2500)
     for sel in ["#c1", "#c2", "#c3"]:
         if await pg.locator(sel).count(): await pg.check(sel)
-    await pg.click("#mpPaga"); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000)
-    try: await pg.wait_for_selector("#email, #cardNumber, [data-testid=card-accordion-item-button], #payment-method-accordion-item-title-card", state="visible", timeout=45000)
-    except Exception:
-        await pg.screenshot(path=f"{OUT}/stripe-non-pronto-{uv}.png", full_page=True)
-        ids = await pg.evaluate("() => [...document.querySelectorAll('input,button,[data-testid]')].slice(0, 60).map(e => (e.id || e.getAttribute('data-testid') || e.name || e.type) + ':' + (e.offsetWidth > 0))")
-        print("  campi della pagina Stripe:", ids); raise
-    await pg.wait_for_timeout(1500)
-    await pg.screenshot(path=f"{OUT}/stripe-{metodo}-{uv}.png", full_page=True)
-    if await pg.locator("#email").count() and await pg.locator("#email").is_editable(): await pg.fill("#email", f"prova.generale+{uv.lower()}@example.com")
+    await pg.click("#mpPaga"); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000); await pg.wait_for_timeout(4000)
+    em = await trova(pg, ["input#email", "input[name=email]", "input[type=email]"])
+    if em: await em.fill(f"prova.generale+{uv.lower()}@example.com")
+    voce = await trova(pg, ["text=Carta"] if metodo == "carta" else ["text=SEPA", "text=Addebito diretto"], 10)
+    if not voce: await pg.screenshot(path=f"{OUT}/stripe-metodi-{uv}.png", full_page=True); raise RuntimeError(f"metodo «{metodo}» non offerto nella pagina di Stripe")
+    await voce.click(); await pg.wait_for_timeout(2000)
+    async def scrivi(sels, v):
+        c = await trova(pg, sels, 15)
+        if not c: raise RuntimeError("campo non trovato: " + sels[0])
+        await c.fill(v)
     if metodo == "carta":
-        if not await pg.locator("#cardNumber").is_visible():
-            for s in ["[data-testid=card-accordion-item-button]", "#payment-method-accordion-item-title-card", "text=Carta"]:
-                if await pg.locator(s).count(): await pg.locator(s).first.click(); await pg.wait_for_timeout(800); break
-        await pg.fill("#cardNumber", "4242424242424242"); await pg.fill("#cardExpiry", "12 / 34"); await pg.fill("#cardCvc", "123"); await pg.fill("#billingName", nome_pag)
+        await scrivi(["input#cardNumber", "input[name=cardnumber]", "input[name=number]", "input[autocomplete=cc-number]"], "4242424242424242")
+        await scrivi(["input#cardExpiry", "input[name=exp-date]", "input[name=expiry]", "input[autocomplete=cc-exp]"], "12 / 34")
+        await scrivi(["input#cardCvc", "input[name=cvc]", "input[autocomplete=cc-csc]"], "123")
+        n = await trova(pg, ["input#billingName", "input[name=billingName]", "input[name=name]", "input[autocomplete=cc-name]"], 5)
+        if n: await n.fill(nome_pag)
     else:
-        for s in ["[data-testid=sepa_debit-accordion-item-button]", "#payment-method-accordion-item-title-sepa_debit", "text=SEPA"]:
-            if await pg.locator(s).count(): await pg.locator(s).first.click(); await pg.wait_for_timeout(800); break
-        await pg.fill("#iban", iban); await pg.fill("#billingName", nome_pag)
-        for sel, v in [("#billingAddressLine1", "Via Etnea 1"), ("#billingPostalCode", "95124"), ("#billingLocality", "Catania")]:
-            if await pg.locator(sel).count() and await pg.locator(sel).is_visible(): await pg.fill(sel, v)
-    if await pg.locator("#enableStripePass").count() and await pg.locator("#enableStripePass").is_checked(): await pg.uncheck("#enableStripePass")
+        await scrivi(["input#iban", "input[name=iban]"], iban)
+        n = await trova(pg, ["input#billingName", "input[name=billingName]", "input[name=name]"], 5)
+        if n: await n.fill(nome_pag)
+        for sels, v in [(["input#billingAddressLine1", "input[name=addressLine1]", "input[autocomplete='address-line1']"], "Via Etnea 1"),
+                        (["input#billingPostalCode", "input[name=postalCode]", "input[autocomplete=postal-code]"], "95124"),
+                        (["input#billingLocality", "input[name=locality]", "input[autocomplete='address-level2']"], "Catania")]:
+            c = await trova(pg, sels, 3)
+            if c: await c.fill(v)
+    sp = await trova(pg, ["#enableStripePass", "input[name=enableStripePass]"], 2)
+    if sp and await sp.is_checked(): await sp.uncheck()
     await pg.screenshot(path=f"{OUT}/stripe-{metodo}-compilato-{uv}.png", full_page=True)
-    await pg.locator("button[type=submit]").last.click()
-    await pg.wait_for_url(lambda u: "checkout.stripe.com" not in u, timeout=90000); await pg.wait_for_timeout(4000)
+    bt = await trova(pg, ["button[type=submit]", "button:has-text('Abbonati')"], 10); await bt.click()
+    try: await pg.wait_for_url(lambda u: "checkout.stripe.com" not in u, timeout=90000)
+    except Exception: await pg.screenshot(path=f"{OUT}/stripe-dopo-invio-{uv}.png", full_page=True); raise
+    await pg.wait_for_timeout(4000)
     await pg.screenshot(path=f"{OUT}/ritorno-{metodo}-{uv}.png", full_page=True); await pg.close()
 
 async def main():
