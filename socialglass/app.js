@@ -1028,7 +1028,7 @@ function contattoAdmin(){
 function ricettaCli(r){
   if (!r) return "";
   const n = (v, max) => { if (v == null || v === "") return ""; let x = Number(v); if (Math.abs(x) > max && Number.isInteger(x)) x /= 100; return (x > 0 ? "+" : "") + x.toFixed(2).replace(".", ","); };
-  return `<table class="rx"><tr><th></th><th>Sf</th><th>Cil</th><th>Asse</th><th>Add</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf, 30)}</td><td>${n(r[e] && r[e].cil, 10)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add, 4)}</td></tr>`).join("")}</table>${r.pd ? `<div>DP ${esc(r.pd)} mm${r.note ? " · " + esc(r.note) : ""}</div>` : ""}`;
+  return `<table class="rx"><tr><th></th><th>Sf</th><th>Cil</th><th>Asse</th><th>Add</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf, 30)}</td><td>${n(r[e] && r[e].cil, 10)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add, 4)}</td></tr>`).join("")}</table>${r.pdm ? `<div>DP per occhio: OD ${esc(r.pdm.OD ?? "—")} · OS ${esc(r.pdm.OS ?? "—")} mm</div>` : ""}${r.h ? `<div>Altezza di montaggio: OD ${esc(r.h.OD ?? "—")} · OS ${esc(r.h.OS ?? "—")} mm</div>` : ""}${r.pd ? `<div>DP ${esc(r.pd)} mm${r.note ? " · " + esc(r.note) : ""}</div>` : ""}`;
 }
 let perCli = {p: "", da: "", a: ""};
 function disegnaConti(k){
@@ -1184,7 +1184,7 @@ async function caricaOrdine(cod){
   $("ordineLenti").innerHTML = Object.entries(L.lenti).map(([id, l], i) => `<label class="scelta"><input type="radio" name="lente" value="${id}" ${(o.lenti ? o.lenti.id === id : i === 0) ? "checked" : ""}><span class="t">${esc(l.nome)}<small>${esc(l.desc || "")}</small></span><span class="p">${euro(l.prezzo)}</span></label>`).join("");
   $("ordineTratt").innerHTML = Object.entries(L.trattamenti).map(([id, t]) => `<label class="scelta"><input type="checkbox" name="tratt" value="${id}" ${(o.trattamenti || []).some(x => x.id === id) ? "checked" : ""}><span class="t">${esc(t.nome)}</span><span class="p">+${euro(t.prezzo)}</span></label>`).join("");
   const f = $("formOrdine"), rc = o.ricetta;
-  if (rc){ for (const e of ["OD","OS"]) for (const k of ["sf","cil","ax","add"]) if (rc[e] && rc[e][k] != null) f[`${e}_${k}`].value = String(rc[e][k]).replace(".", ","); if (rc.pd) f.pd.value = rc.pd; if (rc.note) f.note.value = rc.note; }
+  if (rc){ for (const e of ["OD","OS"]) for (const k of ["sf","cil","ax","add"]) if (rc[e] && rc[e][k] != null) f[`${e}_${k}`].value = String(rc[e][k]).replace(".", ","); if (rc.pd) f.pd.value = rc.pd; for (const e of ["OD", "OS"]){ if (rc.pdm && rc.pdm[e] != null) f["pdm_" + e].value = String(rc.pdm[e]).replace(".", ","); if (rc.h && rc.h[e] != null) f["h_" + e].value = String(rc.h[e]).replace(".", ","); } if (rc.note) f.note.value = rc.note; }
   else { try { const pd = JSON.parse(localStorage.getItem("ov_pd") || "null"); if (pd) f.pd.value = pd; } catch(e){} }
   f.hidden = false; calcolaOrdine();
 }
@@ -1201,7 +1201,9 @@ function calcolaOrdine(){
   const pv = LISTINI.preventivo(L.id || "A", s.lente, s.trattamenti, m && m.prezzo);
   if (!pv) return;
   $("ordineTotale").innerHTML = `Valore occhiale <b>${euro(pv.totale)}</b> (montatura ${euro(pv.montatura)} + lenti ${euro(pv.lenti.prezzo)}${s.trattamenti.length ? " + trattamenti" : ""})<br>Abbonamento <b>${euro(pv.rata)}/mese</b> · durata minima ${pv.mesi} mesi · spedizione ${euro(pv.spedizione)} · riscatto a fine periodo ${euro(pv.riscatto)}`;
-  $("formOrdine").querySelectorAll("[name$=_add]").forEach(x => { x.disabled = !(s.lente === "prog" || /progressiv|multifocal/i.test(((L.lenti || {})[s.lente] || {}).nome || "")); if (x.disabled) x.value = ""; });
+  const prog = s.lente === "prog" || /progressiv|multifocal|ufficio|office/i.test(((L.lenti || {})[s.lente] || {}).nome || "");
+  $("formOrdine").querySelectorAll("[name$=_add]").forEach(x => { x.disabled = !prog; if (x.disabled) x.value = ""; });
+  $("rigaAlt").hidden = !prog;
 }
 $("formOrdine").addEventListener("change", calcolaOrdine);
 $("formOrdine").addEventListener("input", () => { $("ordineErr").hidden = true; });
@@ -1209,7 +1211,9 @@ $("formOrdine").addEventListener("submit", async e => {
   e.preventDefault();
   const f = e.target, v = n => f[n].value.trim().replace(",", ".");
   const s = sceltaOrdine();
-  const ricetta = {OD: {sf: v("OD_sf"), cil: v("OD_cil"), ax: v("OD_ax"), add: v("OD_add")}, OS: {sf: v("OS_sf"), cil: v("OS_cil"), ax: v("OS_ax"), add: v("OS_add")}, pd: v("pd"), note: f.note.value.trim()};
+  const ricetta = {OD: {sf: v("OD_sf"), cil: v("OD_cil"), ax: v("OD_ax"), add: v("OD_add")}, OS: {sf: v("OS_sf"), cil: v("OS_cil"), ax: v("OS_ax"), add: v("OS_add")}, pd: v("pd"), note: f.note.value.trim(),
+    pdm: {OD: v("pdm_OD"), OS: v("pdm_OS")}, h: $("rigaAlt").hidden ? {} : {OD: v("h_OD"), OS: v("h_OS")}};
+  if (!$("rigaAlt").hidden && (!ricetta.h.OD || !ricetta.h.OS)){ esito($("ordineErr"), "Inserisci l'altezza di montaggio per le progressive (occhio destro e sinistro, in mm).", "err"); f.h_OD.focus(); return; }
   if (!ricetta.OD.sf && !ricetta.OS.sf){ esito($("ordineErr"), "Inserisci almeno lo sfero di un occhio (0 se neutro).", "err"); return; }
   if (!ricetta.pd){ esito($("ordineErr"), "Inserisci la distanza pupillare.", "err"); return; }
   $("ordineErr").hidden = true; $("ordineInvia").disabled = true;

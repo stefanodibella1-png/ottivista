@@ -51,7 +51,7 @@ function ricettaHtml(r){
   if (!r) return "";
   const n = (v, max) => { if (v == null || v === "") return ""; let x = Number(v); if (Math.abs(x) > max && Number.isInteger(x)) x /= 100; return (x > 0 ? "+" : "") + x.toFixed(2).replace(".", ","); };
   return `<table class="rx"><tr><th></th><th>Sfero</th><th>Cilindro</th><th>Asse</th><th>Add.</th></tr>${["OD", "OS"].map(e => `<tr><th>${e}</th><td>${n(r[e] && r[e].sf, 30)}</td><td>${n(r[e] && r[e].cil, 10)}</td><td>${r[e] && r[e].ax != null ? r[e].ax + "°" : ""}</td><td>${n(r[e] && r[e].add, 4)}</td></tr>`).join("")}</table>
-    ${r.pd ? `<div>Distanza pupillare: <b>${esc(r.pd)} mm</b></div>` : ""}${r.note ? `<div>Note: ${esc(r.note)}</div>` : ""}`;
+    ${r.pd ? `<div>Distanza pupillare: <b>${esc(r.pd)} mm</b></div>` : ""}${r.pdm ? `<div>DP per occhio: OD <b>${esc(r.pdm.OD ?? "—")}</b> · OS <b>${esc(r.pdm.OS ?? "—")}</b> mm</div>` : ""}${r.h ? `<div>Altezza di montaggio: OD <b>${esc(r.h.OD ?? "—")}</b> · OS <b>${esc(r.h.OS ?? "—")}</b> mm</div>` : ""}${r.note ? `<div>Note: ${esc(r.note)}</div>` : ""}`;
 }
 // accordo economico con il CAF o l'ottica e riepilogo dei conti
 function campiCompenso(pfx, ruolo){

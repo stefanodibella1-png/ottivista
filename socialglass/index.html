@@ -648,6 +648,8 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
           <tr><th>OS</th><td><input name="OS_sf" aria-label="Occhio sinistro sfero" inputmode="decimal" placeholder="0,00"></td><td><input name="OS_cil" aria-label="Occhio sinistro cilindro" inputmode="decimal" placeholder="0,00"></td><td><input name="OS_ax" aria-label="Occhio sinistro asse" inputmode="numeric" placeholder="0-180"></td><td><input name="OS_add" aria-label="Occhio sinistro addizione" inputmode="decimal" placeholder="—"></td></tr>
         </tbody></table></div>
       <div class="riga" style="margin-top:8px"><label class="mini" for="ordPd">Distanza pupillare (mm)</label><input id="ordPd" name="pd" inputmode="decimal" placeholder="es. 63" style="width:100px;flex:0 0 100px"></div>
+      <div class="riga" style="margin-top:8px;flex-wrap:wrap;gap:6px"><span class="mini">DP per occhio (facoltativa)</span><input name="pdm_OD" aria-label="Distanza pupillare occhio destro in mm" inputmode="decimal" placeholder="OD" style="width:110px;flex:0 0 110px"><input name="pdm_OS" aria-label="Distanza pupillare occhio sinistro in mm" inputmode="decimal" placeholder="OS" style="width:110px;flex:0 0 110px"></div>
+      <div class="riga" id="rigaAlt" style="margin-top:8px;flex-wrap:wrap;gap:6px" hidden><span class="mini"><b>Altezza di montaggio (mm)</b> · obbligatoria per le progressive</span><input name="h_OD" aria-label="Altezza di montaggio occhio destro in mm" inputmode="decimal" placeholder="OD" style="width:110px;flex:0 0 110px"><input name="h_OS" aria-label="Altezza di montaggio occhio sinistro in mm" inputmode="decimal" placeholder="OS" style="width:110px;flex:0 0 110px"></div>
       <input name="note" aria-label="Note per il laboratorio" placeholder="Note per il laboratorio (facoltative)" style="width:100%">
       <div class="totale" id="ordineTotale"></div>
       <div class="esito err" id="ordineErr" hidden></div>
@@ -682,9 +684,9 @@ details.regole-box{margin-top:6px} details.regole-box summary{cursor:pointer;col
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1797500000"></script>
-<script src="listini.js?v=1797500000"></script>
-<script src="app.js?v=1797500000"></script>
-<script src="prove-tempo.js?v=1797500000"></script>
+<script src="cf.js?v=1797600000"></script>
+<script src="listini.js?v=1797600000"></script>
+<script src="app.js?v=1797600000"></script>
+<script src="prove-tempo.js?v=1797600000"></script>
 </body>
 </html>

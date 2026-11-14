@@ -160,6 +160,13 @@ module.exports = L.wrap(async (req, res) => {
   const dio = (v, max) => { const x = num(v); return x !== null && Math.abs(x) > max && Number.isInteger(x) ? x / 100 : x; };
   const occhio = e => ({sf: dio(e && e.sf, 30), cil: dio(e && e.cil, 10), ax: num(e && e.ax), add: dio(e && e.add, 4)});
   const ricetta = {OD: occhio(r.OD), OS: occhio(r.OS), pd: num(r.pd), note: String(r.note || "").slice(0, 300)};
+  // DP per occhio (facoltativa) e altezza di montaggio (obbligatoria per le progressive), in millimetri
+  const mm = v => { const x = num(v); return x === null ? null : Math.round(x * 2) / 2; };
+  const pdm = {OD: mm(r.pdm && r.pdm.OD), OS: mm(r.pdm && r.pdm.OS)}, alt = {OD: mm(r.h && r.h.OD), OS: mm(r.h && r.h.OS)};
+  if (pdm.OD !== null || pdm.OS !== null) ricetta.pdm = pdm;
+  if (alt.OD !== null || alt.OS !== null) ricetta.h = alt;
+  for (const x of [pdm.OD, pdm.OS]) if (x !== null && (x < 25 || x > 40)) return L.send(res, 400, {errore: "La distanza pupillare di un occhio deve essere tra 25 e 40 mm."});
+  for (const x of [alt.OD, alt.OS]) if (x !== null && (x < 10 || x > 40)) return L.send(res, 400, {errore: "L'altezza di montaggio deve essere tra 10 e 40 mm."});
   if (ricetta.OD.sf === null && ricetta.OS.sf === null) return L.send(res, 400, {errore: "Inserisci almeno lo sfero di un occhio."});
   for (const e of [ricetta.OD, ricetta.OS]){
     for (const [k, max] of [["sf", 30], ["cil", 10], ["add", 4]]) if (e[k] !== null && (Math.abs(e[k]) > max || Math.abs(Math.round(e[k] * 4) - e[k] * 4) > 1e-6)) return L.send(res, 400, {errore: `Valore non valido (${k === "sf" ? "sfero" : k === "cil" ? "cilindro" : "addizione"} ${e[k]}): usa diottrie a passi di 0,25, es. -1,50.`});
@@ -168,7 +175,9 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (!ricetta.pd || ricetta.pd < 45 || ricetta.pd > 80) return L.send(res, 400, {errore: "Inserisci la distanza pupillare (45-80 mm)."});
   const lenteScelta = (L.PREZZI.conv(u.f.Listino || ((await L.DB.ottico(s.id)) || {}).Listino).lenti || {})[b.lente] || {};
-  if ((b.lente === "prog" || /progressiv|multifocal/i.test(lenteScelta.nome || "")) && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
+  const progressive = b.lente === "prog" || /progressiv|multifocal|ufficio|office/i.test(lenteScelta.nome || "");
+  if (progressive && ricetta.OD.add === null && ricetta.OS.add === null) return L.send(res, 400, {errore: "Per le progressive serve l'addizione."});
+  if (progressive && (alt.OD === null || alt.OS === null)) return L.send(res, 400, {errore: "Manca l'altezza di montaggio per le progressive (occhio destro e sinistro, in mm)."});
   // se il cliente aveva già aperto il pagamento con il vecchio prezzo, quella pagina Stripe viene chiusa
   if (ord.pagamento && ord.pagamento.stato === "IN CORSO" && ord.pagamento.sessione && L.CFG.stripeKey){
     try { await L.stripeApi("POST", `checkout/sessions/${ord.pagamento.sessione}/expire`, {}); } catch(e){ console.error(e); }

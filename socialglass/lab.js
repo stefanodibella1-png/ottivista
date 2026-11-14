@@ -80,11 +80,15 @@
       + (daRitirare(b) ? `<span class="chip c-rit">MONTATURA DA RITIRARE</span>` : "") + attesa(b);
   }
   const dio = (v, max) => { if (v == null || v === "") return ""; let x = Number(v); if (Math.abs(x) > max && Number.isInteger(x)) x /= 100; return (x > 0 ? "+" : "") + x.toFixed(2).replace(".", ","); };
-  function ricetta(r){
+  function ricetta(r, lenti){
     if (!r) return '<p class="msg err">Ricetta mancante: contatta l\'ottica.</p>';
+    const mm = v => v != null ? String(v).replace(".", ",") + " mm" : "—";
+    const prog = /progressiv|multifocal|ufficio|office/i.test((lenti && lenti.nome) || "") || (r.OD && r.OD.add) || (r.OS && r.OS.add);
+    const extra = (r.pdm ? `<p style="margin:4px 0 0">DP per occhio: OD <b>${mm(r.pdm.OD)}</b> · OS <b>${mm(r.pdm.OS)}</b></p>` : "")
+      + (r.h ? `<p style="margin:4px 0 0">Altezza di montaggio: OD <b>${mm(r.h.OD)}</b> · OS <b>${mm(r.h.OS)}</b></p>` : prog ? '<p class="msg err" style="margin:6px 0 0">Altezza di montaggio mancante: chiedila all\'ottica prima di montare le progressive.</p>' : "");
     return `<table class="rx"><tr><th></th><th>Sfero</th><th>Cilindro</th><th>Asse</th><th>Addizione</th></tr>${["OD", "OS"].map(e => { const x = r[e] || {};
       return `<tr><th>${e}</th><td>${dio(x.sf, 30)}</td><td>${dio(x.cil, 10)}</td><td>${x.ax != null ? x.ax + "°" : ""}</td><td>${dio(x.add, 4)}</td></tr>`; }).join("")}</table>
-      <p style="margin:6px 0 0">Distanza pupillare: <b>${r.pd ? esc(r.pd) + " mm" : "—"}</b>${r.note ? ` · Note dell'ottico: <b>${esc(r.note)}</b>` : ""}</p>`;
+      <p style="margin:6px 0 0">Distanza pupillare: <b>${r.pd ? esc(r.pd) + " mm" : "—"}</b>${r.note ? ` · Note dell'ottico: <b>${esc(r.note)}</b>` : ""}</p>${extra}`;
   }
   function dove(b){
     const m = b.montatura || {};
@@ -104,7 +108,7 @@
         <div class="box"><h4>Lenti</h4><dl class="dl"><dt>Tipo</dt><dd>${esc(b.lenti ? b.lenti.nome : "")}</dd><dt>Trattamenti</dt><dd>${esc((b.trattamenti || []).join(", ") || "nessuno")}</dd></dl></div>
       </div>
       ${dove(b)}
-      <div class="box"><h4>Ricetta</h4>${ricetta(b.ricetta)}</div>
+      <div class="box"><h4>Ricetta</h4>${ricetta(b.ricetta, b.lenti)}</div>
       ${b.lab.note ? `<div class="box"><h4>Note del laboratorio</h4>${esc(b.lab.note)}</div>` : ""}
       ${b.lab.avvisoCliente ? `<div class="box">Avviso «occhiali pronti» al cliente: ${b.lab.avvisoCliente.inviato ? `inviato in automatico (${({sms: "SMS", notifica: "notifica sul telefono"})[b.lab.avvisoCliente.canale] || "WhatsApp"}) il ${dt(b.lab.avvisoCliente.il)}` : "non partito in automatico: lo manda l'ottica"}.</div>` : ""}`;
   }
