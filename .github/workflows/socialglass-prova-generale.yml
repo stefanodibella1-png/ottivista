@@ -1,0 +1,46 @@
+# SocialGlass · prova generale sul sito vero con Stripe in modalità TEST (solo a mano). Alla fine cancella i clienti di prova.
+# Usa: VERCEL_TOKEN (legge SESSION_SECRET), STRIPE_SECRET_KEY (deve essere sk_test_…), FIREBASE_SERVICE_ACCOUNT (spostare le date dei clienti di prova).
+name: socialglass-prova-generale
+on: workflow_dispatch
+concurrency: socialglass-prova-generale
+permissions: { contents: read }
+jobs:
+  prova:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      SITO: https://socialglass.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Strumenti
+        run: |
+          (cd socialglass && npm i --no-audit --no-fund >/dev/null)
+          pip install -q playwright && python -m playwright install --with-deps chromium >/dev/null
+      - name: Chiave delle sessioni (letta da Vercel, mai stampata)
+        working-directory: socialglass
+        run: |
+          set -e
+          case "$STRIPE_SECRET_KEY" in sk_test_*|rk_test_*) ;; *) echo "::error::Stripe non è in modalità test: prova generale annullata"; exit 1;; esac
+          npm i -g vercel@latest >/dev/null 2>&1
+          vercel link --yes --project socialglass --token "$VERCEL_TOKEN" >/dev/null
+          PID=$(node -p "require('./.vercel/project.json').projectId"); TEAM=$(node -p "require('./.vercel/project.json').orgId")
+          Q="teamId=$TEAM"; case "$TEAM" in team_*) ;; *) Q="";; esac
+          EID=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/env?$Q" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const e=(JSON.parse(s).envs||[]).find(x=>x.key==="SESSION_SECRET"&&(x.target||[]).includes("production"));process.stdout.write(e?e.id:"")})')
+          V=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v1/projects/$PID/env/$EID?$Q" | node -p "JSON.parse(require('fs').readFileSync(0)).value||''")
+          [ -n "$V" ] || { echo "::error::SESSION_SECRET non leggibile"; exit 1; }
+          echo "::add-mask::$V"; echo "SESSION_SECRET=$V" >> $GITHUB_ENV
+      - name: Prova generale
+        run: python scripts/sg-prova-generale.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prova-generale
+          path: pg/
+          retention-days: 2
