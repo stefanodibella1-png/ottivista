@@ -255,22 +255,76 @@ async function controlla(u, ora, esiti){
   } catch(e){ console.error(u.f.Univoco, e); esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
 
 }
+// lavori di fine giro: differenze con Stripe, riordino ai fornitori, fatture in sospeso, copia dei dati
+async function fineGiro(ora, esiti, differenze, copia){
+  try { await L.DB.meta("differenze-stripe", {il: ora, voci: differenze}); } catch(e){ console.error(e); }
+  try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
+  try { const inv = await require("./_fattura").inviaInSospeso(); if (inv.length) esiti.push({fatture: inv}); } catch(e){ esiti.push({errore: "fatture: " + String(e.message).slice(0, 200)}); }
+  if (copia) try { esiti.push({copia: await L.copiaNotturna()}); } catch(e){ esiti.push({errore: "copia dei dati: " + String(e.message).slice(0, 200)}); }
+}
+const SECONDI = () => Math.max(5, Number(process.env.NOTTE_SECONDI) || 25);
 const handler = L.wrap(async (req, res) => {
   const auth = req.headers.authorization || "";
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) return L.send(res, 401, {errore: "Non autorizzato"});
   const url = new URL(req.url, "http://x"), ora = url.searchParams.get("data") ? new Date(url.searchParams.get("data")).toISOString() : new Date().toISOString();
-  const tutti = await L.DB.tutti();
-  const esiti = [];
-  for (const u of tutti) await controlla(u, ora, esiti);
-  // differenze con Stripe da far vedere all'amministratore (si rifanno ogni notte)
-  if (!url.searchParams.get("data")) try { await L.DB.meta("differenze-stripe", {il: ora, voci: esiti.filter(x => x.differenza).map(x => ({univoco: x.univoco, testo: x.differenza}))}); } catch(e){ console.error(e); }
-  // riordino automatico per i fornitori che lo hanno attivo
-  try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
-  // fatture non ancora partite verso Aruba (errori di rete, credenziali arrivate dopo)
-  try { const inv = await require("./_fattura").inviaInSospeso(); if (inv.length) esiti.push({fatture: inv}); } catch(e){ esiti.push({errore: "fatture: " + String(e.message).slice(0, 200)}); }
-  // copia di tutti i dati (si tengono le ultime 7), scaricabile dal pannello
-  if (!url.searchParams.get("data")) try { esiti.push({copia: await L.copiaNotturna()}); } catch(e){ esiti.push({errore: "copia dei dati: " + String(e.message).slice(0, 200)}); }
-  L.send(res, 200, {ok: true, data: ora, esiti});
+  L.chi("controllo notturno");
+  // copia esterna (GitHub): si scarica l'ultima copia e se ne registra l'esito
+  if (url.searchParams.get("copia")){
+    // a pezzi (come è salvata), per stare sotto il limite di dimensione delle risposte di Vercel
+    const v = (((await L.DB.meta("copie")) || {}).elenco || [])[0], n = Math.max(0, Math.floor(Number(url.searchParams.get("parte")) || 0));
+    const p = v && n < v.parti ? await L.DB.uno("copie", `${v.data}-${n}`) : null;
+    if (!p) return L.send(res, 404, {errore: "Nessuna copia disponibile."});
+    res.statusCode = 200; res.setHeader("Content-Type", "text/plain; charset=utf-8"); res.setHeader("X-Copia-Data", v.data); res.setHeader("X-Copia-Parti", String(v.parti)); return res.end(p.testo);
+  }
+  // solo lettura: a che punto è il giro (per provare la chiave senza toccare i clienti)
+  if (url.searchParams.get("stato")) return L.send(res, 200, {ok: true, notte: (await L.DB.meta("notte")) || null});
+  if (url.searchParams.get("backup")){
+    const st = String(url.searchParams.get("backup")).replace(/[^a-z-]/g, "").slice(0, 30);
+    await L.DB.meta("backup-esterno", {il: ora, stato: st, byte: Number(url.searchParams.get("byte")) || 0, data: String(url.searchParams.get("del") || "").slice(0, 10)});
+    return L.send(res, 200, {ok: true});
+  }
+  // giro completo in una volta (prove con la «macchina del tempo»)
+  if (url.searchParams.get("data") || url.searchParams.get("tutto")){
+    const tutti = await L.DB.tutti(), esiti = [];
+    for (const u of tutti) await controlla(u, ora, esiti);
+    await fineGiro(ora, esiti, esiti.filter(x => x.differenza).map(x => ({univoco: x.univoco, testo: x.differenza})), !url.searchParams.get("data"));
+    return L.send(res, 200, {ok: true, data: ora, esiti});
+  }
+  // giro a lotti: ogni chiamata lavora al massimo SECONDI() secondi e ricorda il punto; la successiva riparte da lì
+  const oggi = L.oraRoma().slice(0, 10);
+  let st = (await L.DB.meta("notte")) || {};
+  if (url.searchParams.get("nuovo") || st.giorno !== oggi) st = {giorno: oggi, inizio: ora, fine: null, cursore: "", controllati: 0, azioni: 0, errori: [], differenze: [], fatto: false, lotti: 0, inCorso: null, copia: null};
+  if (st.fatto) return L.send(res, 200, {ok: true, fatto: true, giorno: st.giorno, controllati: st.controllati, errori: st.errori.length});
+  // un altro giro sta lavorando adesso (Vercel e GitHub insieme): si aspetta
+  if (st.inCorso && Date.now() - new Date(st.inCorso) < (SECONDI() + 35) * 1000) return L.send(res, 200, {ok: true, fatto: false, inCorso: true, controllati: st.controllati});
+  st.inCorso = new Date().toISOString(); await L.DB.meta("notte", st);
+  const t0 = Date.now(), tutti = (await L.DB.tutti()).sort((a, b) => String(a.f.Univoco || "").localeCompare(String(b.f.Univoco || "")));
+  let i = st.cursore ? tutti.findIndex(u => String(u.f.Univoco || "") > st.cursore) : 0; if (i < 0) i = tutti.length;
+  const salva = () => L.DB.meta("notte", st);
+  let ultimoSalvo = Date.now(), esiti = [];
+  const raccogli = () => {
+    st.azioni += esiti.filter(x => x.esito).length;
+    st.errori = st.errori.concat(esiti.filter(x => x.errore).map(x => ({univoco: x.univoco || "", errore: String(x.errore).slice(0, 200)}))).slice(-50);
+    st.differenze = st.differenze.concat(esiti.filter(x => x.differenza).map(x => ({univoco: x.univoco, testo: x.differenza}))).slice(-200);
+    esiti = [];
+  };
+  const MAX = Number(process.env.NOTTE_MAX) || Infinity; let fatti = 0;   // NOTTE_MAX: solo per le prove (clienti per lotto)
+  while (i < tutti.length && Date.now() - t0 < SECONDI() * 1000 && fatti++ < MAX){
+    const u = tutti[i];
+    try { await controlla(u, ora, esiti); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }
+    st.cursore = String(u.f.Univoco || ""); st.controllati++; i++;
+    // il punto raggiunto si salva spesso: se Vercel interrompe la funzione si perde al massimo qualche secondo di lavoro
+    if (Date.now() - ultimoSalvo > 3000){ raccogli(); st.inCorso = new Date().toISOString(); await salva(); ultimoSalvo = Date.now(); }
+  }
+  raccogli(); st.lotti = (st.lotti || 0) + 1;
+  if (i >= tutti.length){
+    const fine = []; await fineGiro(ora, fine, st.differenze, true);
+    st.errori = st.errori.concat(fine.filter(x => x.errore).map(x => ({univoco: "", errore: String(x.errore).slice(0, 200)}))).slice(-50);
+    st.copia = (fine.find(x => x.copia) || {}).copia || null;
+    st.fatto = true; st.fine = new Date().toISOString();
+  }
+  st.inCorso = null; await salva();
+  L.send(res, 200, {ok: true, fatto: st.fatto, giorno: st.giorno, controllati: st.controllati, totale: tutti.length, errori: st.errori.length, lotti: st.lotti});
 });
 module.exports = handler;
 module.exports.esegui = esegui;

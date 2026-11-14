@@ -142,6 +142,18 @@ function vistaConteggi(){
     <div class="seg" role="tablist"><button type="button" role="tab" data-seg="caf" class="${segConti === "caf" ? "attivo" : ""}" aria-selected="${segConti === "caf"}">CAF (${d.caf.length})</button><button type="button" role="tab" data-seg="ottici" class="${segConti === "ottici" ? "attivo" : ""}" aria-selected="${segConti === "ottici"}">Ottiche (${d.ottici.length})</button></div>
     <div class="scheda">${segConti === "caf" ? tab("caf", d.caf) : tab("ottico", d.ottici)}</div>`;
 }
+// controllo notturno (a lotti) e copia dei dati fuori dal sito
+function boxNotte(d){
+  const n = d.notte || {}, ce = d.copiaEsterna, oggi = new Date().toLocaleDateString("sv-SE", {timeZone: "Europe/Rome"}), ora = x => new Date(x).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
+  const giro = !n.giorno ? `<div class="esito info" style="display:block">Il controllo notturno non ha ancora girato.</div>`
+    : n.giorno !== oggi ? `<div class="esito err" style="display:block"><b>Il controllo di oggi non è ancora partito.</b> L'ultimo è del ${dt(n.giorno)}${n.fatto ? "" : " e non è finito"}.</div>`
+    : !n.fatto ? `<div class="esito info" style="display:block">Controllo di stanotte in corso: ${n.controllati} clienti controllati finora.</div>`
+    : `<div class="esito ${n.errori.length ? "err" : "ok"}" style="display:block">${n.errori.length ? "⚠" : "✓"} Stanotte: ${n.controllati} clienti controllati, ${n.azioni} operazioni (promemoria, solleciti, scadenze), finito alle ${ora(n.fine)} in ${n.lotti} ${n.lotti === 1 ? "lotto" : "lotti"}.${n.errori.length ? ` <b>${n.errori.length} errori:</b><br>${n.errori.slice(0, 5).map(x => esc((x.univoco ? x.univoco + ": " : "") + x.errore)).join("<br>")}` : ""}</div>`;
+  const copia = !ce ? `<p class="hint" style="margin:6px 0 0">Copia fuori dal sito: non ancora partita.</p>`
+    : ce.stato === "manca-password" ? `<div class="esito err" style="display:block;margin-top:6px"><b>Copia fuori dal sito ferma: manca la password delle copie.</b> Aggiungi su GitHub il secret <code>SG_BACKUP_PASSWORD</code> (conservala anche in un posto sicuro: senza non si leggono le copie).</div>`
+    : `<p class="hint" style="margin:6px 0 0">Copia fuori dal sito (cifrata): ${ce.stato === "ok" ? "ultima il " + new Date(ce.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"}) + (ce.byte ? ` · ${Math.round(ce.byte / 1024)} KB` : "") : "esito " + esc(ce.stato)}${Date.now() - new Date(ce.il) > 2 * 864e5 ? ' · <b style="color:#b00020">più vecchia di 2 giorni</b>' : ""}.</p>`;
+  return `<div class="cru-box" style="margin-top:14px"><h3>Controllo notturno</h3>${giro}${copia}</div>`;
+}
 function disegnaScheda(c){
   const o = c.ordine || {}, pg = o.pagamento || {}, pr = o.prezzi || {}, m = o.montatura, p = c.periodo, si = c.situazione, b = si.blocco;
   const ins = pg.insoluto;
@@ -240,6 +252,7 @@ function disegna(){
         <button type="button" data-tab="conteggi"><b>${euro(n.canoniMensili)}</b>Canoni al mese</button></div>
       <div class="cru-griglia"><div class="cru-box"><h3>Da fare oggi</h3>${fare.length ? `<div class="fare">${fare.join("")}</div>` : '<div class="fare-vuoto"><b>✓</b> Tutto in ordine: niente in sospeso.</div>'}</div>
         <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
+      ${boxNotte(d)}
       ${(d.coda || []).length ? `<div class="cru-box" id="admCoda" style="margin-top:14px"><h3>Da risolvere</h3><p class="hint" style="margin:0 0 8px">In ordine di scadenza. In rosso quelli oltre la scadenza. Tocca un caso per aprire la scheda del cliente.</p>
         ${d.coda.map(x => `<button type="button" class="riga-cli" ${x.tipo === "segnalazione" ? "data-vai-segn" : x.tipo === "giacenza" ? `data-giacenza="${esc(x.codice)}" data-u="${esc(x.univoco)}"` : `data-scheda="${esc(x.univoco)}"`} style="width:100%;text-align:left"><span><span class="nome">${esc(x.titolo)} · ${esc(x.nome || x.univoco)}</span><span class="cod">${esc(x.univoco)}${x.ottica ? " · " + esc(x.ottica) : ""} · ${esc(x.dettaglio || "")}</span></span>
           <span class="bad"><span class="chip ${x.scaduto ? "s3" : "s2"}">${x.scaduto ? "SCADUTO IL" : "ENTRO IL"} ${dt(x.scadenza)}</span></span></button>`).join("")}</div>` : ""}

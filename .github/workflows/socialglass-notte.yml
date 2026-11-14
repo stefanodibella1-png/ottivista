@@ -1,0 +1,105 @@
+# SocialGlass · controllo notturno a lotti, copia dei dati fuori dal sito e allarme del mattino.
+# Segreti: VERCEL_TOKEN (già presente). Facoltativo: SG_BACKUP_PASSWORD (password delle copie cifrate: senza, la copia esterna resta ferma).
+# Se il giro di stanotte non è finito o ha errori, il controllo delle 9:30 fallisce e GitHub manda un'email.
+name: socialglass-notte
+on:
+  workflow_dispatch:
+    inputs:
+      cosa:
+        description: "giro (controllo notturno + copia), controllo (verifica del mattino) oppure prova (legge solo la chiave, non tocca i clienti)"
+        default: giro
+  schedule:
+    - cron: "10 6 * * *"   # giro del mattino: 7:10 (ora solare) / 8:10 (ora legale), prima del cron di Vercel; i messaggi ai clienti non partono di notte
+    - cron: "30 8 * * *"   # controllo: 9:30 / 10:30
+concurrency: socialglass-notte
+env:
+  SITO: https://socialglass.vercel.app
+jobs:
+  giro:
+    if: github.event.schedule == '10 6 * * *' || (github.event_name == 'workflow_dispatch' && inputs.cosa != 'controllo')
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SG_BACKUP_PASSWORD: ${{ secrets.SG_BACKUP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Chiave del controllo notturno (letta da Vercel, mai stampata)
+        working-directory: socialglass
+        run: |
+          set -e
+          npm i -g vercel@latest >/dev/null 2>&1
+          vercel link --yes --project socialglass --token "$VERCEL_TOKEN" >/dev/null
+          PID=$(node -p "require('./.vercel/project.json').projectId"); TEAM=$(node -p "require('./.vercel/project.json').orgId")
+          Q="teamId=$TEAM"; case "$TEAM" in team_*) ;; *) Q="";; esac
+          EID=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$PID/env?$Q" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const e=(JSON.parse(s).envs||[]).find(x=>x.key==="CRON_SECRET"&&(x.target||[]).includes("production"));process.stdout.write(e?e.id:"")})')
+          [ -n "$EID" ] || { echo "::error title=Controllo notturno::CRON_SECRET non trovato su Vercel"; exit 1; }
+          CS=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v1/projects/$PID/env/$EID?$Q" | node -p "JSON.parse(require('fs').readFileSync(0)).value||''")
+          [ -n "$CS" ] || { echo "::error title=Controllo notturno::CRON_SECRET non leggibile"; exit 1; }
+          echo "::add-mask::$CS"; echo "CS=$CS" >> $GITHUB_ENV
+      - name: Prova della chiave (solo lettura)
+        if: inputs.cosa == 'prova'
+        run: |
+          C=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $CS" "$SITO/api/scadenze?stato=1")
+          [ "$C" = 200 ] && echo "::notice title=Controllo notturno::chiave letta da Vercel e accettata dal sito" || { echo "::error title=Controllo notturno::il sito risponde $C"; exit 1; }
+      - name: Giro a lotti fino alla fine
+        if: inputs.cosa != 'prova'
+        run: |
+          for i in $(seq 1 80); do
+            R=$(curl -s -m 120 -H "Authorization: Bearer $CS" "$SITO/api/scadenze") || R='{}'
+            F=$(printf '%s' "$R" | node -p "try{const j=JSON.parse(require('fs').readFileSync(0));(j.fatto?'si':'no')+' '+(j.controllati||0)+'/'+(j.totale||'?')+' errori '+(j.errori||0)}catch(e){'no risposta'}")
+            echo "lotto $i: $F"
+            case "$F" in si*) echo "::notice title=Controllo notturno::finito · $F"; exit 0;; esac
+            sleep 5
+          done
+          echo "::error title=Controllo notturno::non finito dopo 80 lotti"; exit 1
+      - name: Copia dei dati fuori dal sito (cifrata)
+        if: always() && inputs.cosa != 'prova'
+        run: |
+          if [ -z "$SG_BACKUP_PASSWORD" ]; then
+            curl -s -o /dev/null -H "Authorization: Bearer $CS" "$SITO/api/scadenze?backup=manca-password"
+            echo "::warning title=Copia esterna::manca il secret SG_BACKUP_PASSWORD: copia non fatta"; exit 0
+          fi
+          umask 077; D=$(mktemp -d)
+          scarica(){ curl -s -m 120 -o "$D/p$1" -D "$D/h$1" -w "%{http_code}" -H "Authorization: Bearer $CS" "$SITO/api/scadenze?copia=1&parte=$1"; }
+          male(){ curl -s -o /dev/null -H "Authorization: Bearer $CS" "$SITO/api/scadenze?backup=errore-download"; echo "::error title=Copia esterna::$1"; exit 1; }
+          [ "$(scarica 0)" = 200 ] || male "download non riuscito"
+          DATA=$(grep -i '^x-copia-data:' "$D/h0" | tr -d '\r' | awk '{print $2}'); N=$(grep -i '^x-copia-parti:' "$D/h0" | tr -d '\r' | awk '{print $2}')
+          cat "$D/p0" > "$D/copia.json"
+          for i in $(seq 1 $((N-1))); do [ "$(scarica $i)" = 200 ] || male "parte $i non scaricata"; cat "$D/p$i" >> "$D/copia.json"; done
+          rm -f "$D"/p* "$D"/h*
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$D/copia.json" || { echo "::error title=Copia esterna::copia non valida"; exit 1; }
+          BYTE=$(stat -c %s "$D/copia.json")
+          mkdir -p copia && openssl enc -aes-256-cbc -pbkdf2 -iter 300000 -salt -pass env:SG_BACKUP_PASSWORD -in "$D/copia.json" -out "copia/socialglass-$DATA.json.enc"
+          shred -u "$D/copia.json" 2>/dev/null || rm -f "$D/copia.json"
+          echo "BYTE=$BYTE" >> $GITHUB_ENV; echo "DATA=$DATA" >> $GITHUB_ENV
+          echo "Per leggerla: openssl enc -d -aes-256-cbc -pbkdf2 -iter 300000 -in socialglass-$DATA.json.enc -out copia.json" > copia/LEGGIMI.txt
+      - uses: actions/upload-artifact@v4
+        if: env.BYTE != ''
+        with:
+          name: socialglass-copia-${{ env.DATA }}
+          path: copia/
+          retention-days: 30
+      - name: Esito della copia nel pannello
+        if: env.BYTE != ''
+        run: |
+          curl -s -o /dev/null -H "Authorization: Bearer $CS" "$SITO/api/scadenze?backup=ok&byte=$BYTE&del=$DATA"
+  controllo:
+    if: github.event.schedule == '30 8 * * *' || (github.event_name == 'workflow_dispatch' && inputs.cosa == 'controllo')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Il giro di stanotte è finito senza errori?
+        run: |
+          OGGI=$(TZ=Europe/Rome date +%F)
+          R=$(curl -s -m 60 "$SITO/api/health")
+          printf '%s' "$R" | OGGI=$OGGI node -e '
+            const j = JSON.parse(require("fs").readFileSync(0)), n = j.notte || {}, c = j.copiaEsterna || {}, oggi = process.env.OGGI;
+            const male = [];
+            if (n.giorno !== oggi) male.push(`il controllo di oggi non è partito (ultimo: ${n.giorno || "mai"})`);
+            else if (!n.fatto) male.push(`il controllo di oggi non è finito (${n.controllati} clienti controllati)`);
+            if (n.giorno === oggi && n.errori) male.push(`${n.errori} errori: guardali nel pannello, in Oggi`);
+            if (c.stato === "manca-password") console.log("::warning title=Copia esterna::manca il secret SG_BACKUP_PASSWORD");
+            else if (c.il && Date.now() - new Date(c.il) > 2 * 864e5) male.push("la copia fuori dal sito è più vecchia di 2 giorni");
+            if (male.length){ for (const m of male) console.log("::error title=SocialGlass · controllo notturno::" + m); process.exit(1); }
+            console.log(`::notice title=Controllo notturno::tutto in ordine · ${n.controllati} clienti`);'

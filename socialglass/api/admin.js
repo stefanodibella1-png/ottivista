@@ -186,6 +186,8 @@ module.exports = L.wrap(async (req, res) => {
       differenzeStripe: ((await L.DB.meta("differenze-stripe")) || {}).voci || [],
       coda: L.codaEccezioni(utenti, await L.DB.lista("segn"), await L.DB.meta("differenze-stripe"), cfgS, null, mont),
       addebitoUsato: ((cfgS || {}).addebitoUsato) || "",
+      notte: await (async () => { const n = (await L.DB.meta("notte")) || {}; return {giorno: n.giorno || "", fatto: !!n.fatto, inizio: n.inizio || "", fine: n.fine || "", controllati: n.controllati || 0, azioni: n.azioni || 0, lotti: n.lotti || 0, errori: n.errori || []}; })(),
+      copiaEsterna: (await L.DB.meta("backup-esterno")) || null,
       rimborsi: utenti.map(u => ({f: u.f, pg: L.parseOrdine(u.f.Ordine).pagamento || {}, o: L.parseOrdine(u.f.Ordine)})).filter(x => x.pg.rimborso && x.pg.rimborso.daFare && !x.pg.rimborso.fatto)
         .map(x => ({univoco: x.f.Univoco, nome: `${L.nm(x.f.Nome)} ${L.nm(x.f.Cognome)}`, dal: x.pg.rimborso.daFare, importo: (x.pg.pagamenti || []).reduce((a, p) => a + (p.canone || 0) + (p.spedizione || 0), 0) || ((x.o.prezzi || {}).rata || 0) + ((x.o.prezzi || {}).spedizione || 0)})),
       segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))

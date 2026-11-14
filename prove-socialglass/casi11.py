@@ -8,7 +8,7 @@ def coda(): return adm("dati")["coda"]
 def casi(uv): return [(x["tipo"], x["scaduto"]) for x in coda() if x["univoco"]==uv]
 def tempo(uv, **q): urllib.request.urlopen("http://localhost:8824/?u="+uv+"".join(f"&{k}={v}" for k,v in q.items())).read()
 def notte():
-    r=urllib.request.Request(B+"api/scadenze", headers={"Authorization":"Bearer prova"}); import json as J; return [e for e in J.load(urllib.request.urlopen(r))["esiti"] if e.get("univoco")]
+    r=urllib.request.Request(B+"api/scadenze?tutto=1", headers={"Authorization":"Bearer prova"}); import json as J; return [e for e in J.load(urllib.request.urlopen(r))["esiti"] if e.get("univoco")]
 def ott(uv, az, **k): s,r=call("api/ordine",{"univoco":uv,"azione":az,**k},T); return r.get("errore") or "ok"
 
 for m in ["SG-1042","SG-1043","SG-1044"]: adm("magazzino",codice=m,op="carico",qta=6,a="OTT07")
