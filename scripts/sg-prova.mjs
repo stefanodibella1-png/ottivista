@@ -22,6 +22,7 @@ let r = await call("/api/utenti", {cf, nome: "Prova", cognome: "Automatica", pre
 if (r.s !== 200 && /già/i.test(r.d.errore || "")) r = await call("/api/utenti", {azione: "rinnovo", cf}, caf);
 const uv = r.d.univoco || (r.d.link || "").match(/Univoco=([^&]+)/)?.[1]; ok("crea cliente", !!uv, uv || JSON.stringify(r.d));
 const mt = await call("/api/montatura", {univoco: uv, codice: "SG-1042"}); ok("montatura", mt.d.ok || /già confermata/.test(mt.d.errore || ""), mt.d.errore);
+const cs = await call("/api/benvenuto", {azione: "consenso", univoco: uv, si: true}); ok("consenso ricetta", cs.d.ok, cs.d.errore);
 const o = await call("/api/ordine", {univoco: uv, lente: "mono", trattamenti: ["ar"], ricetta: {OD: {sf: "-1,00"}, OS: {sf: "-1,25"}, pd: 63}}, ott); ok("ordine ottico", o.d.ok, o.d.prezzi && `${o.d.prezzi.rata} €/mese`);
 const pg = await call("/api/pagamento", {univoco: uv, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true, residenza: {indirizzo: "Via Etnea 1", cap: "95124", comune: "CATANIA", provincia: "CT"}}); ok("pagamento", pg.s === 200, pg.d.url ? "Stripe Checkout " + pg.d.url.slice(0, 40) : (pg.d.errore ? pg.d.errore + " " + (pg.d.dettaglio || "") : "simulato"));
 ok("clienti CAF", ((await call("/api/clienti", null, caf)).d.clienti || []).length > 0);
