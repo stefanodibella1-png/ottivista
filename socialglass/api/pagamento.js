@@ -2,12 +2,12 @@
 const L = require("./_lib");
 const stripe = (path, params) => L.stripeApi("POST", path, params);
 module.exports = L.wrap(async (req, res) => {
-  if (L.bloccato(req)) return L.send(res, 429, L.TROPPI);
+  if (await L.bloccato(req)) return L.send(res, 429, L.TROPPI);
   if (req.method !== "POST") return L.send(res, 405, {errore: "Metodo non consentito"});
   const b = await L.readBody(req);
   const u = await L.DB.utente("Univoco", String(b.univoco || "").trim());
   if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
-  if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+  if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
   // cambia carta e ricevute: pagina sicura di Stripe e elenco dei pagamenti fatti
   if (b.azione === "carta" || b.azione === "ricevute"){
     const pg = L.parseOrdine(u.f.Ordine).pagamento || {};

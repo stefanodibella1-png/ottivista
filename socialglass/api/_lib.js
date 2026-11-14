@@ -68,7 +68,7 @@ const CFG = {
   tCaf: E.T_CAF_LOGIN || "tblDPTbLXTeS4rEvL",
   tOttLogin: E.T_OTTICI_LOGIN || "tblnW30eNPuyGYkB4",
   tMont: E.T_MONTATURE || "tbluV4ZA9v244YHp1",
-  secret: E.SESSION_SECRET || "solo-per-prova-cambiami",
+  secret: E.SESSION_SECRET || "solo-per-prova-cambiami",   // in produzione è obbligatoria: senza, wrap() risponde 503
   site: (E.SITE_URL || "https://www.socialglass.it").replace(/\/$/, ""),
   smsWebhook: E.SMS_WEBHOOK_URL || "",
   // messaggi automatici ai clienti: WhatsApp Business (Cloud API di Meta) oppure SMS (Twilio o un servizio SMS via webhook)
@@ -176,6 +176,14 @@ const FS = {
   async montatura(codice){ const d = await (await fdb()).collection(COL.mont).doc(String(codice)).get(); return d.exists ? {id: d.id, f: d.data()} : null; },
   async aggiornaMontatura(m, fields){ await (await fdb()).collection(COL.mont).doc(m.id).update(fields); Object.assign(m.f, fields); },
   // lettura e scrittura atomica (due prenotazioni contemporanee non possono prendere lo stesso pezzo)
+  // tentativi sbagliati (login, codici cliente): contati nel database, così valgono per tutte le copie del server
+  async conta(id, aggiungi, finestra){
+    const db = await fdb(), ref = db.collection("sg_tentativi").doc(id), now = Date.now();
+    if (!aggiungi){ const d = await ref.get(); return d.exists ? (d.data().h || []).filter(x => now - x < finestra).length : 0; }
+    return db.runTransaction(async t => { const d = await t.get(ref); const h = (d.exists ? d.data().h || [] : []).filter(x => now - x < finestra).concat(now).slice(-200);
+      t.set(ref, {h, il: new Date(now).toISOString()}); return h.length; });
+  },
+  async pulisciTentativi(){ const db = await fdb(), r = await db.collection("sg_tentativi").where("il", "<", new Date(Date.now() - 864e5).toISOString()).limit(400).get(); for (const d of r.docs) await d.ref.delete(); return r.size; },
   async tx(k, id, fn){
     const db = await fdb(), ref = db.collection(COL[k]).doc(String(id));
     return db.runTransaction(async t => { const d = await t.get(ref); if (!d.exists) return null; const out = fn(d.data()); if (out) t.update(ref, out); return out; });
@@ -300,6 +308,7 @@ if (MODO !== "firestore") Object.assign(AT, MEM);
 
 /* ---------- password: salvate cifrate (scrypt); le vecchie in chiaro restano valide ---------- */
 function hashPw(p){ const salt = crypto.randomBytes(16).toString("hex"); return `scrypt$${salt}$${crypto.scryptSync(String(p), salt, 32).toString("hex")}`; }
+const inChiaro = stored => !!stored && !String(stored).startsWith("scrypt$");
 function checkPw(stored, p){
   stored = String(stored || "");
   if (stored.startsWith("scrypt$")){ const [, salt, h] = stored.split("$"); return safeEq(crypto.scryptSync(String(p), salt, 32).toString("hex"), h); }
@@ -726,6 +735,17 @@ async function partnerSospeso(s){
   const r = s.ruolo === "caf" ? await DB.login("caf", s.id) : await DB.ottico(s.id);
   return r && r.Disattivato ? SOSPESO : null;
 }
+const totp = {
+  B32: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+  nuovo(){ const b = crypto.randomBytes(20); let bits = "", out = ""; for (const x of b) bits += x.toString(2).padStart(8, "0"); for (let i = 0; i + 5 <= bits.length; i += 5) out += this.B32[parseInt(bits.slice(i, i + 5), 2)]; return out; },
+  bytes(s){ let bits = ""; for (const c of String(s).toUpperCase().replace(/[^A-Z2-7]/g, "")) bits += this.B32.indexOf(c).toString(2).padStart(5, "0"); const o = []; for (let i = 0; i + 8 <= bits.length; i += 8) o.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(o); },
+  codice(seg, passo){ const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(passo)); const h = crypto.createHmac("sha1", this.bytes(seg)).update(c).digest(), o = h[h.length - 1] & 15;
+    return String(((h.readUInt32BE(o) & 0x7fffffff) % 1e6)).padStart(6, "0"); },
+  // accetta il codice di adesso e quelli di 30 secondi prima e dopo (orologio del telefono un po' avanti o indietro); restituisce il passo usato
+  verifica(seg, cod, ultimo){ cod = String(cod || "").replace(/\D/g, ""); if (cod.length !== 6) return 0; const ora = Math.floor(Date.now() / 30000);
+    for (const d of [0, -1, 1]){ const p = ora + d; if (p > (ultimo || 0) && safeEq(this.codice(seg, p), cod)) return p; } return 0; },
+  link(seg, nome){ return `otpauth://totp/${encodeURIComponent("SocialGlass:" + nome)}?secret=${seg}&issuer=SocialGlass&algorithm=SHA1&digits=6&period=30`; }
+};
 function safeEq(a, b){ const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); }
 
 /* ---------- nomi delle persone: «Luca De Rosa» invece di «LUCA DE ROSA» (solo in uscita, i dati salvati non cambiano) ---------- */
@@ -752,21 +772,30 @@ async function readRaw(req){
 }
 async function readBody(req){ try { return JSON.parse(await readRaw(req) || "{}"); } catch(e){ return {}; } }
 const hits = global.__sgHits || (global.__sgHits = new Map());
-function tooMany(key, max = 8, windowMs = 10*60e3){
-  const now = Date.now(), arr = (hits.get(key) || []).filter(t => now - t < windowMs);
-  arr.push(now); hits.set(key, arr); return arr.length > max;
+// la chiave si salva cifrata (sha256): niente indirizzi IP in chiaro nel database
+const chiaveTent = k => crypto.createHash("sha256").update(CFG.secret + ":" + k).digest("hex").slice(0, 40);
+const SU_DB = () => MODO === "firestore" && typeof DB.conta === "function";
+function memConta(key, aggiungi, windowMs){ const now = Date.now(), arr = (hits.get(key) || []).filter(t => now - t < windowMs); if (aggiungi){ arr.push(now); hits.set(key, arr); } return arr.length; }
+async function conta(key, aggiungi, windowMs){
+  const m = memConta(key, aggiungi, windowMs);
+  if (!SU_DB()) return m;
+  try { return Math.max(m, await DB.conta(chiaveTent(key), aggiungi, windowMs)); } catch(e){ console.error("tentativi:", e.message); return m; }
 }
+async function tooMany(key, max = 8, windowMs = 10*60e3){ return (await conta(key, true, windowMs)) > max; }
 // tentativi con codici cliente inesistenti: al massimo 10 ogni 10 minuti per indirizzo
 function ipDi(req){ return String(req.headers["x-forwarded-for"] || (req.socket && req.socket.remoteAddress) || "").split(",")[0].trim(); }
 // solo controllo, senza contare un nuovo tentativo
-function giaTroppi(key, max, windowMs = 10*60e3){ return (hits.get(key) || []).filter(t => Date.now() - t < windowMs).length >= max; }
-function bloccato(req){ const a = (hits.get("cod:" + ipDi(req)) || []).filter(t => Date.now() - t < 10*60e3); return a.length >= 10; }
-function codiceErrato(req){ tooMany("cod:" + ipDi(req), 1e9); }
+async function giaTroppi(key, max, windowMs = 10*60e3){ return (await conta(key, false, windowMs)) >= max; }
+async function bloccato(req){ return giaTroppi("cod:" + ipDi(req), 10); }
+async function codiceErrato(req){ await conta("cod:" + ipDi(req), true, 10*60e3); }
 const TROPPI = {errore: "Troppi codici sbagliati. Riprova tra 10 minuti."};
 // chi agisce, in base alla funzione chiamata (poi verify() lo precisa con il ruolo di chi ha fatto l'accesso)
 const CHI_DEFAULT = {"stripe-webhook": "stripe", scadenze: "sistema", benvenuto: "cliente", montatura: "cliente", pagamento: "cliente", "fine-periodo": "cliente"};
+// fuori dai dati di prova la chiave delle sessioni deve esserci ed essere lunga: con quella di prova si falsificherebbero gli accessi
+const CHIAVE_OK = DEMO || (!!E.SESSION_SECRET && E.SESSION_SECRET.length >= 32 && E.SESSION_SECRET !== "solo-per-prova-cambiami");
 function wrap(fn){
   return async (req, res) => {
+    if (!CHIAVE_OK){ console.error("SESSION_SECRET mancante o troppo corta"); res.statusCode = 503; res.setHeader("Content-Type", "application/json; charset=utf-8"); return res.end(JSON.stringify({errore: "Servizio non configurato: manca la chiave delle sessioni. Avvisa l'amministratore."})); }
     const nome = String(req.url || "").split("?")[0].split("/").pop();
     return contesto.run({chi: CHI_DEFAULT[nome] || nome || "sistema"}, async () => {
       try { await fn(req, res); }
@@ -1143,4 +1172,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

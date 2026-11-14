@@ -16,7 +16,7 @@ DEV = {"pc": {"viewport": {"width": 1366, "height": 768}},
        "tel": {"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True, "device_scale_factor": 2}}
 E = []
 async def nuovo(b, d):
-    ctx = await b.new_context(**DEV[d]); pg = await ctx.new_page()
+    ctx = await b.new_context(bypass_csp=True, **DEV[d]); pg = await ctx.new_page()
     pg.on("pageerror", lambda x: E.append(d + ": " + str(x))); pg.on("dialog", lambda x: asyncio.ensure_future(x.accept()))
     await ctx.route("**/*", lambda r: r.fulfill(path=QR, content_type="text/javascript") if "qrcode" in r.request.url else (r.continue_() if re.match(r"^(http://localhost|data:|blob:|about:)", r.request.url) else r.abort()))
     return pg

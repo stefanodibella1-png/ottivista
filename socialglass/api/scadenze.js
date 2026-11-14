@@ -260,6 +260,11 @@ async function fineGiro(ora, esiti, differenze, copia){
   try { await L.DB.meta("differenze-stripe", {il: ora, voci: differenze}); } catch(e){ console.error(e); }
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
   try { const inv = await require("./_fattura").inviaInSospeso(); if (inv.length) esiti.push({fatture: inv}); } catch(e){ esiti.push({errore: "fatture: " + String(e.message).slice(0, 200)}); }
+  // password rimaste in chiaro (CAF, ottiche, laboratorio): si cifrano; tentativi vecchi: si cancellano
+  try { let n = 0; for (const k of ["caf", "ottLogin"]) for (const x of await L.DB.lista(k)) if (L.inChiaro(x.Password)){ await L.DB.salva(k, x.ID || x._id, {Password: L.hashPw(x.Password)}); n++; }
+    const lb = (await L.DB.meta("laboratorio")) || {}; if (L.inChiaro(lb.password)){ await L.DB.meta("laboratorio", {password: L.hashPw(lb.password)}); n++; }
+    if (n) esiti.push({esito: `password cifrate: ${n}`}); } catch(e){ esiti.push({errore: "cifratura password: " + String(e.message).slice(0, 160)}); }
+  try { if (L.DB.pulisciTentativi) await L.DB.pulisciTentativi(); } catch(e){ console.error(e); }
   if (copia) try { esiti.push({copia: await L.copiaNotturna()}); } catch(e){ esiti.push({errore: "copia dei dati: " + String(e.message).slice(0, 200)}); }
 }
 const SECONDI = () => Math.max(5, Number(process.env.NOTTE_SECONDI) || 25);

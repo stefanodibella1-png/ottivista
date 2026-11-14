@@ -1,6 +1,8 @@
 /* SocialGlass · pannello amministratore (si apre toccando 7 volte il logo) */
 (() => {
 "use strict";
+// stampa della finestra appena scritta: la comanda questa pagina (la regola di sicurezza blocca gli script dentro la finestra)
+const stampaDopo = (w, ms) => setTimeout(() => { try { w.focus(); w.print(); } catch(_){} }, ms || 400);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const euro = v => Number(v || 0).toLocaleString("it-IT", {style: "currency", currency: "EUR"});
@@ -141,6 +143,16 @@ function vistaConteggi(){
     ${tabPrevisione(d.previsione)}
     <div class="seg" role="tablist"><button type="button" role="tab" data-seg="caf" class="${segConti === "caf" ? "attivo" : ""}" aria-selected="${segConti === "caf"}">CAF (${d.caf.length})</button><button type="button" role="tab" data-seg="ottici" class="${segConti === "ottici" ? "attivo" : ""}" aria-selected="${segConti === "ottici"}">Ottiche (${d.ottici.length})</button></div>
     <div class="scheda">${segConti === "caf" ? tab("caf", d.caf) : tab("ottico", d.ottici)}</div>`;
+}
+// sicurezza: secondo fattore dell'amministratore e password ancora in chiaro
+function boxSicurezza(d){
+  const z = d.sicurezza || {};
+  const tf = z.secondoFattore
+    ? `<div class="esito ok" style="display:block">Secondo fattore attivo: per entrare servono password e codice dell'app. Codici di riserva rimasti: <b>${z.riserva}</b>.</div>
+       <details style="margin-top:6px"><summary>Disattiva il secondo fattore</summary><form data-f="totpDisattiva"><label class="lbl" for="tdPw">Password del pannello</label><input id="tdPw" name="password" type="password" autocomplete="current-password" required>
+       <label class="lbl" for="tdCod">Codice dell'app</label><input id="tdCod" name="codice" inputmode="numeric" maxlength="6" required><button type="submit" class="grigio">Disattiva</button></form></details>`
+    : `<p style="margin:6px 0">Oltre alla password, chiede un codice di 6 cifre da un'app sul telefono (Google Authenticator, Microsoft Authenticator o simili). Chi ruba la password da solo non entra.</p><div id="totpBox"><button type="button" class="verde" data-totp-nuovo>Attiva il secondo fattore</button></div>`;
+  return `<div class="scheda"><b>Sicurezza dell'accesso</b>${tf}${z.inChiaro ? `<p class="hint" style="margin:8px 0 0">${z.inChiaro === 1 ? "1 accesso ha" : z.inChiaro + " accessi hanno"} la password non ancora cifrata: si cifra al primo accesso o stanotte.</p>` : ""}</div>`;
 }
 // controllo notturno (a lotti) e copia dei dati fuori dal sito
 function boxNotte(d){
@@ -385,7 +397,9 @@ ${o.disattivato ? `<div class="esito err" style="display:block;margin:6px 0">Dis
       <label class="lbl" for="tPec">PEC (facoltativa)</label><input id="tPec" name="pec" value="${esc(t.pec)}">
       <label class="lbl" for="tTel">Telefono (facoltativo)</label><input id="tTel" name="telefono" value="${esc(t.telefono)}">
       <button type="submit" class="verde full">Salva dati del titolare</button></form>
+      ${boxSicurezza(d)}
       <form data-f="cambiaPassword" class="scheda"><b>Cambia la password del pannello</b>
+      <label class="lbl" for="aAp">Password attuale</label><input id="aAp" name="attuale" type="password" autocomplete="current-password" required>
       <label class="lbl" for="aNp">Nuova password (almeno 10 caratteri)</label><input id="aNp" name="nuova" type="password" autocomplete="new-password" required>
       <button type="submit" class="full">Cambia password</button></form>
       <div class="scheda"><b>Occhiale non restituito: addebito dell'usato</b><p style="margin:6px 0">Se l'occhiale non torna entro 30 giorni, 7 giorni prima il cliente riceve un avviso e poi gli addebitiamo il prezzo dell'usato (una volta sola). Vale solo per i contratti firmati con la clausola 5-bis (dal 15/11/2026). <b>Accendilo solo dopo che l'avvocato ha approvato la clausola.</b> Spento: i casi arrivano in «Da risolvere» e decidi tu.</p>
@@ -413,6 +427,15 @@ async function clic(e){
   if (inv){ setTimeout(async () => { const r = await call("ordineFornitore", {op: "invia", id: inv.dataset.inviaOrd}); if (r.ok){ await carica(); msg("Ordine segnato come inviato. Se non l'hai spedito davvero, annullalo e ricrealo."); } }, 400); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.tab){ scheda = b.dataset.tab; schedaCli = null; if (scheda === "clienti") clientiAdm = null; if (scheda === "solleciti") sollecitiAdm = null; disegna(); return; }
+  if (b.hasAttribute("data-ricarica")){ await carica(); return; }
+  if (b.hasAttribute("data-totp-nuovo")){
+    const r = await call("totpNuovo"); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    $("totpBox").innerHTML = `<ol style="margin:6px 0;padding-left:18px"><li>Apri l'app sul telefono e aggiungi un account con il QR.</li><li>Inquadra questo QR (oppure scrivi a mano la chiave sotto).</li><li>Scrivi qui il codice di 6 cifre che vedi nell'app.</li></ol>
+      <div id="totpQr" style="background:#fff;padding:10px;display:inline-block"></div><p class="hint" style="margin:4px 0;word-break:break-all">Chiave: <code>${esc(r.data.segreto.replace(/(.{4})/g, "$1 ").trim())}</code></p>
+      <form data-f="totpAttiva"><label class="lbl" for="taCod">Codice dell'app</label><input id="taCod" name="codice" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required><button type="submit" class="verde">Conferma e attiva</button></form>`;
+    try { await caricaQrLib(); new QRCode($("totpQr"), {text: r.data.link, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M}); } catch(_){ $("totpQr").textContent = "QR non disponibile: usa la chiave scritta."; }
+    return;
+  }
   if (b.hasAttribute("data-vai-coda")){ const x = document.getElementById("admCoda"); if (x) x.scrollIntoView({behavior: "smooth"}); return; }
   // giacenza da correggere: si apre il magazzino sull'articolo; con un secondo tocco si segna come controllata
   if (b.dataset.giacenza){
@@ -563,8 +586,16 @@ async function invio(e){
   if (k === "imposta" || k === "accedi"){
     const pw = $("admPw").value;
     if (k === "imposta" && pw !== $("admPw2").value) return msg("Le due password non coincidono.", "err");
-    const r = await call(k, {password: pw}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
-    tok = r.data.token; sessionStorage.setItem("sg_admin", tok); await carica(); return;
+    const cod = $("admCod") ? $("admCod").value.trim() : "";
+    const r = await call(k, Object.assign({password: pw}, cod ? {codice: cod} : {}));
+    if (!r.ok){
+      // password giusta, serve il codice dell'app: compare il campo (la password resta scritta)
+      if (r.data.secondoFattore && !$("admCod")){ $("admPw").insertAdjacentHTML("afterend", `<label class="lbl" for="admCod">Codice di 6 cifre dell'app sul telefono (o un codice di riserva)</label><input id="admCod" inputmode="numeric" autocomplete="one-time-code" maxlength="14" required>`); $("admCod").focus(); return msg("Password giusta: ora scrivi il codice dell'app.", "info"); }
+      return msg(r.data.errore || "Errore", "err");
+    }
+    tok = r.data.token; sessionStorage.setItem("sg_admin", tok); await carica();
+    if (r.data.riservaRimasti != null && r.data.riservaRimasti <= 2) msg(`Ti restano ${r.data.riservaRimasti} codici di riserva: generane di nuovi disattivando e riattivando il secondo fattore.`, "err");
+    return;
   }
   if (k === "pagaStripe"){
     const btn = f.querySelector("button[type=submit]");
@@ -614,6 +645,13 @@ async function invio(e){
     return msg(k === "correggiDati" ? (r.data.cambiati.length ? "Dati corretti: " + r.data.cambiati.join(", ") + "." : "Nessun dato cambiato.")
       : `Ottica cambiata.${r.data.ripartito ? " Il cliente sceglie di nuovo la montatura nella nuova ottica" + (r.data.montaturaLiberata ? ` (la ${r.data.montaturaLiberata} è di nuovo disponibile nella vecchia)` : "") + "." : ""}${r.data.avviso && r.data.avviso.inviato === false ? " Il cliente non è stato avvisato in automatico: mandagli tu il nuovo link." : " Cliente avvisato."}`);
   }
+  if (k === "totpAttiva"){
+    const r = await call(k, {codice: v.codice}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
+    $("totpBox").innerHTML = `<div class="esito ok" style="display:block"><b>Secondo fattore attivo.</b> Questi sono i codici di riserva: ognuno vale una volta, se perdi il telefono. <b>Copiali adesso in un posto sicuro</b>: non li vedrai più.</div>
+      <pre style="font-size:15px;background:#f5f5f5;padding:10px;border-radius:8px" id="totpRis">${r.data.riserva.map(esc).join("\n")}</pre><button type="button" class="grigio" data-ricarica>Ho copiato i codici</button>`;
+    return msg("Secondo fattore attivo.");
+  }
+  if (k === "totpDisattiva"){ const r = await call(k, {password: v.password, codice: v.codice}); if (!r.ok) return msg(r.data.errore || "Errore", "err"); await carica(); return msg("Secondo fattore disattivato."); }
   if (k === "verificaRestituzione"){
     const r = await call(k, {id: f.dataset.id, nota: v.nota}); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     const x = await call("scheda", {id: f.dataset.id}); if (x.ok) schedaCli = x.data.cliente; disegna(); return msg("Restituzione controllata.");
@@ -848,8 +886,8 @@ async function stampa(elenco){
     .c img{width:${qr}mm;height:${qr}mm;display:block;margin:0 auto;image-rendering:pixelated}
     .c b{display:block;font-size:${pt}pt;line-height:1.1;margin-top:0.6mm;white-space:nowrap}.c small{display:block;font-size:${pt - 2}pt;line-height:1.1;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}</style></head><body>
     <div class="g">${et.map(x => `<div class="c"><img src="${img[x.Codice]}" alt=""><b>${esc(x.Codice)}</b><small>${esc(x.Calibro)}${x.Colore ? " " + esc(x.Colore) : ""}</small></div>`).join("")}</div>
-    <script>window.onload=function(){setTimeout(function(){print()},300)}<\/script></body></html>`);
-  w.document.close();
+    </body></html>`);
+  w.document.close(); stampaDopo(w);
 }
 window.SG_ADMIN = {apri};
 /* ---------- listini: prezzi di lenti, trattamenti e montatura base ---------- */
@@ -898,13 +936,13 @@ async function apriReport(mese){
   w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>Report SocialGlass · ${esc(nomeMese)}</title><style>body{font-family:system-ui,Arial,sans-serif;margin:28px;color:#111}h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 8px}
     .k{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.k div{border:1px solid #ddd;border-radius:10px;padding:10px;font-size:12px;color:#555}.k b{display:block;font-size:20px;color:#111}
     table{border-collapse:collapse;width:100%;font-size:13px}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}@media print{button{display:none}}</style></head><body>
-    <h1>Report di ${esc(nomeMese)}</h1><p style="color:#666;margin:0">SocialGlass · creato il ${new Date().toLocaleString("it-IT")}</p><button onclick="print()" style="margin:12px 0;padding:8px 16px">Stampa o salva PDF</button>
+    <h1>Report di ${esc(nomeMese)}</h1><p style="color:#666;margin:0">SocialGlass · creato il ${new Date().toLocaleString("it-IT")}</p><button data-stampa-qui style="margin:12px 0;padding:8px 16px">Stampa o salva PDF</button>
     <h2>Incassi</h2><div class="k"><div>Totale<b>${euro(x.incassi)}</b></div><div>Canoni<b>${euro(x.canoni)}</b></div><div>Spedizioni<b>${euro(x.spedizioni)}</b></div><div>Riscatti<b>${euro(x.riscatti)}</b></div></div>
     <h2>Clienti</h2><div class="k"><div>Nuovi registrati<b>${x.nuovi}</b></div><div>Abbonamenti attivati<b>${x.attivati}</b></div><div>Occhiali consegnati<b>${x.consegnati}</b></div><div>Abbonamenti chiusi<b>${x.chiusi}</b></div>
       <div>Morosi (oggi)<b>${x.morosi}</b></div><div>Recensioni<b>${x.recensioni}${x.recensioni ? " · ★ " + String(x.media).replace(".", ",") : ""}</b></div><div>Segnalazioni<b>${x.segnalazioni}</b></div><div>Portati da amici<b>${x.amici}</b></div></div>
     <h2>Nuovi clienti per CAF</h2><table>${tab(x.perCaf)}</table><h2>Attivazioni per ottica</h2><table>${tab(x.perOttica)}</table>
     <p style="color:#666;font-size:12px;margin-top:20px">Gli incassi includono i canoni stimati per i mesi registrati prima dello storico dei pagamenti. Occhiali donati nel mese: ${x.donati}.</p></body></html>`);
-  w.document.close();
+  w.document.close(); { const bt = w.document.querySelector("[data-stampa-qui]"); if (bt) bt.addEventListener("click", () => w.print()); }
 }
 /* ---------- importazione montature da Excel o CSV ---------- */
 let impRighe = [];

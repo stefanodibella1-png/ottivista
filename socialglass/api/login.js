@@ -6,7 +6,7 @@ module.exports = L.wrap(async (req, res) => {
   // CAF e ottico cambiano da soli la propria password (serve quella attuale)
   if (corpo.azione === "cambiaPassword"){
     const se = L.verify(req); if (!se || !["caf", "ottico"].includes(se.ruolo)) return L.send(res, 401, L.NOAUTH);
-    if (L.tooMany(`cambiopw:${se.id}`)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
+    if (await L.tooMany(`cambiopw:${se.id}`)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
     const rec = await L.DB.login(se.ruolo, se.id);
     if (!rec || !L.checkPw(rec.Password, String(corpo.attuale || ""))) return L.send(res, 401, {errore: "La password attuale non è corretta."});
     const nuova = String(corpo.nuova || "");
@@ -25,7 +25,7 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {codice: c});
   }
   if (corpo.azione === "recupera"){
-    if (L.tooMany(`recupero:${L.ipDi(req)}`, 5)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
+    if (await L.tooMany(`recupero:${L.ipDi(req)}`, 5)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
     const r = ["caf", "ottico"].includes(corpo.ruolo) ? corpo.ruolo : "", id = String(corpo.codice || "").trim().toUpperCase(), rec = r && id ? await L.DB.login(r, id) : null;
     if (!rec || !rec.Recupero || !L.checkPw(rec.Recupero, pulisci(corpo.recupero))) return L.send(res, 401, {errore: "Codice o codice di recupero non validi. Se non hai un codice di recupero, contatta SocialGlass."});
     const nuova = String(corpo.nuova || ""); if (nuova.length < 8) return L.send(res, 400, {errore: "La nuova password deve avere almeno 8 caratteri."});
@@ -36,8 +36,8 @@ module.exports = L.wrap(async (req, res) => {
   }
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0] || "ip";
   // contano solo gli accessi sbagliati: chi entra correttamente non viene mai bloccato
-  if (L.giaTroppi(`login:${ip}`, 8)) return L.send(res, 429, {errore: "Troppi tentativi sbagliati. Riprova tra 10 minuti."});
-  const sbagliato = (msg) => { L.tooMany(`login:${ip}`); return L.send(res, 401, {errore: msg}); };
+  if (await L.giaTroppi(`login:${ip}`, 8)) return L.send(res, 429, {errore: "Troppi tentativi sbagliati. Riprova tra 10 minuti."});
+  const sbagliato = async (msg) => { await L.tooMany(`login:${ip}`); return L.send(res, 401, {errore: msg}); };
   // laboratorio: un solo accesso, password impostata dall'amministratore
   if (ruolo === "lab"){
     const l = (await L.DB.meta("laboratorio")) || {};
@@ -48,6 +48,8 @@ module.exports = L.wrap(async (req, res) => {
   const id = String(codice).trim().toUpperCase();
   const rec = await L.DB.login(ruolo, id);
   if (!rec || !L.checkPw(rec.Password, password)) return sbagliato("Codice o password non valida.");
+  // password ancora salvata in chiaro (accessi vecchi): si cifra adesso
+  if (L.inChiaro(rec.Password)) try { await L.DB.salva(ruolo === "caf" ? "caf" : "ottLogin", id, {Password: L.hashPw(password)}); } catch(e){ console.error(e); }
   let nome = rec.Nome || id, listino = "";
   if (rec.Disattivato) return L.send(res, 403, L.SOSPESO);
   if (ruolo === "ottico"){ const o = await L.DB.ottico(id); if (o){ if (o.Disattivato) return L.send(res, 403, L.SOSPESO); nome = o.Intestatario || nome; listino = o.Listino || ""; } }

@@ -1,6 +1,8 @@
 // SocialGlass · pagina del laboratorio: buste di lavoro degli ordini pagati
 (() => {
   const $ = id => document.getElementById(id), app = $("app");
+  // stampa della finestra appena scritta: la comanda questa pagina (la regola di sicurezza blocca gli script dentro la finestra)
+  const stampaDopo = (w, ms) => setTimeout(() => { try { w.focus(); w.print(); } catch(_){} }, ms || 400);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const dt = d => d ? new Date(d).toLocaleDateString("it-IT") : "";
   let token = "", buste = [], filtro = "dafare", cerca = "", sel = new Set(), messaggio = null, apri = "", nomeLab = "Laboratorio", chiediCodice = "";
@@ -65,8 +67,8 @@
     w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Giro ritiri · SocialGlass</title><style>@page{margin:12mm}body{font-family:Arial,sans-serif;font-size:11pt}h1{font-size:15pt;color:#0069D9;border-bottom:2px solid #0069D9;padding-bottom:4px}h2{font-size:12pt;margin:14px 0 2px}table{border-collapse:collapse;width:100%;margin-top:4px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eef2f7}</style></head><body>
       <h1>SocialGlass · Giro ritiri montature · ${new Date().toLocaleDateString("it-IT")}</h1>${gruppiRitiro(l).map(g => `<h2>${g.mag ? "Magazzino SocialGlass" : esc(g.ottica.id) + " " + esc(g.ottica.nome)}</h2><div>${g.mag ? "" : esc(g.ottica.indirizzo) + (g.ottica.telefono ? " · tel. " + esc(g.ottica.telefono) : "")}</div>
         <table><tr><th>Montatura</th><th>Modello</th><th>Calibro</th><th>Codice cliente</th><th>Ritirata</th></tr>${g.buste.map(b => { const m = b.montatura || {}; return `<tr><td>${esc(m.codice)}</td><td>${esc(m.modello)} ${esc(m.colore)}</td><td>${esc(m.calibro)}</td><td>${esc(b.univoco)}</td><td style="width:22mm"></td></tr>`; }).join("")}</table>`).join("")}
-      <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
-    w.document.close();
+      </body></html>`);
+    w.document.close(); stampaDopo(w);
   }
   const attesa = b => { const g = Math.floor((Date.now() - new Date(b.lab.creato)) / 864e5); return !finito(b) && !b.chiuso && g >= 4 ? `<span class="chip c-rit">IN ATTESA DA ${g} GIORNI</span>` : ""; };
   const puoRifare = b => !b.chiuso && ["IN LAVORAZIONE", "PRONTO", "SPEDITO", "ARRIVATO"].includes(b.lab.stato) && ["ABBONAMENTO ATTIVO - IN LAVORAZIONE", "PRONTO PER IL RITIRO", "CONSEGNATO"].includes(b.stato);
@@ -142,7 +144,7 @@
       ${l.length ? `<p style="margin:4px 0;color:#666;font-size:13px">${l.length} buste · <button type="button" class="link" id="selTutte">${l.every(b => sel.has(b.univoco)) ? "deseleziona" : "seleziona"} tutte</button></p>` : ""}
       ${filtro === "ritiro" && l.length ? giroRitiri(l) : ""}
       ${l.map(b => `<details class="busta" data-u="${esc(b.univoco)}" ${aperti.has(b.univoco) ? "open" : ""}><summary>
-          <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}" onclick="event.stopPropagation()">
+          <div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sel" data-sel="${esc(b.univoco)}" ${sel.has(b.univoco) ? "checked" : ""} aria-label="Seleziona ${esc(b.univoco)}">
             <div><b>${esc(b.univoco)}</b> · ${esc(b.nome)} ${esc(b.cognome)}<div class="cod">${esc(b.montatura ? b.montatura.codice : "")} · ${esc(b.lenti ? b.lenti.nome : "")} · ottica ${esc(b.ottica.id)}</div></div></div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${statoChip(b)}${prossimo(b)}${b.annulla ? `<button type="button" class="grigio" data-annulla="${esc(b.univoco)}" title="Annulla l'ultimo passaggio (entro le ${ora(b.annulla.fino)})">↶ Annulla «${esc(b.annulla.testo)}»</button>` : ""}</div></summary>
         <div class="corpo">${chiediCodice === b.univoco && inArrivo(b) ? `<div class="box" style="border:2px solid #2e7d32"><h4>Montatura arrivata: controllo</h4><p style="margin:0 0 6px">Scansiona il QR sulla montatura o scrivi il codice (atteso: <b>${esc((b.montatura || {}).codice || "")}</b>).</p>
@@ -220,8 +222,8 @@
     </style></head><body>${l.map(b => `<div class="pag"><header><b>SocialGlass · Busta di lavoro</b><span>stampata il ${new Date().toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"})}</span></header>
       <h1>${esc(b.univoco)}</h1>${corpoBusta(b).replace(/class="msg err"/g, 'class="dove"').replace(/class="dove (lab|ott)"/g, 'class="dove"')}
       <div class="firme"><div>Montatura ricevuta</div><div>Lenti montate e controllate</div><div>Spedito all'ottica</div></div></div>`).join("")}
-      <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
-    w.document.close();
+      </body></html>`);
+    w.document.close(); stampaDopo(w);
   }
 
   // notifiche sul computer o sul telefono del laboratorio a ogni nuovo ordine pagato

@@ -18,6 +18,7 @@ L.demo.utenti.push(
   base("SGMOROSO1", "MARIO", "ROSSI", "RSSMRA80A01C351X", "CAF001", "OTT07", L.STATI.CONSEGNATO, {montatura: mont, prezzi, ricetta: ric,
     pagamento: {stato: "ATTIVO", abbonamento: "sub_2", attivatoIl: iso(ora - 120*864e5), ratePagate: 3, insoluto: {tipo: "canone", dal: iso(ora - 5*864e5), importo: 9.9, tentativi: 2}}, consegnatoIl: iso(ora - 110*864e5)})
 );
+const HDR = (JSON.parse(fs.readFileSync(ROOT + "/vercel.json", "utf8")).headers || [])[0].headers;
 const TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".json": "application/json"};
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
@@ -27,5 +28,5 @@ http.createServer(async (req, res) => {
     return require(f)(req, res);
   }
   let p = path.join(ROOT, decodeURIComponent(u.pathname === "/laboratorio" ? "/laboratorio.html" : /^\/(caf|ottico|admin)$/.test(u.pathname) ? "/index.html" : u.pathname)); if (p.endsWith("/")) p += "index.html";
-  fs.readFile(p, (e, d) => { if (e){ res.statusCode = 404; return res.end("not found"); } res.setHeader("Content-Type", TYPES[path.extname(p)] || "application/octet-stream"); res.end(d); });
+  fs.readFile(p, (e, d) => { if (e){ res.statusCode = 404; return res.end("not found"); } res.setHeader("Content-Type", TYPES[path.extname(p)] || "application/octet-stream"); for (const x of HDR) res.setHeader(x.key, x.value); res.end(d); });
 }).listen(8823, () => console.log("ok 8823"));

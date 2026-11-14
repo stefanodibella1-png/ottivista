@@ -1,6 +1,6 @@
 // Pannello amministratore (si apre toccando 7 volte il logo): accessi CAF e ottici, montature, dati di prova, numeri.
 // La password si sceglie al primo accesso e si può cambiare dal pannello; è salvata cifrata.
-const L = require("./_lib"), F = require("./_fattura");
+const L = require("./_lib"), F = require("./_fattura"), crypto = require("crypto");
 const S = L.STATI;
 const pulito = (v, n = 120) => String(v == null ? "" : v).trim().slice(0, n);
 const gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
@@ -37,16 +37,34 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {token: L.sign({ruolo: "admin", id: "admin"})});
   }
   if (az === "accedi"){
-    if (L.tooMany("admin:" + L.ipDi(req), 5)) return L.send(res, 429, {errore: "Troppi tentativi. Riprova tra 10 minuti."});
-    if (!conf.password || !L.checkPw(conf.password, b.password)) return L.send(res, 401, {errore: "Password non valida."});
-    return L.send(res, 200, {token: L.sign({ruolo: "admin", id: "admin"})});
+    // contano solo gli errori (password o codice sbagliati): chi entra correttamente non viene bloccato
+    if (await L.giaTroppi("admin:" + L.ipDi(req), 5)) return L.send(res, 429, {errore: "Troppi tentativi sbagliati. Riprova tra 10 minuti."});
+    if (!conf.password || !L.checkPw(conf.password, b.password)){ await L.tooMany("admin:" + L.ipDi(req), 5); return L.send(res, 401, {errore: "Password non valida."}); }
+    // secondo fattore: codice di 6 cifre dall'app sul telefono, oppure uno dei codici di riserva (valgono una volta)
+    const tf = conf.totp || {};
+    if (tf.attivo){
+      const cod = String(b.codice || "").trim();
+      if (!cod) return L.send(res, 401, {errore: "Scrivi il codice di 6 cifre dell'app sul telefono.", secondoFattore: true});
+      if (await L.giaTroppi("admin:" + L.ipDi(req), 5)) return L.send(res, 429, {errore: "Troppi tentativi sbagliati. Riprova tra 10 minuti."});
+      const passo = L.totp.verifica(tf.segreto, cod, tf.ultimo);
+      if (passo) await L.DB.meta("admin", {totp: Object.assign({}, tf, {ultimo: passo})});
+      else {
+        const pulito2 = cod.toUpperCase().replace(/[^A-Z0-9]/g, ""), i = (tf.riserva || []).findIndex(h => L.checkPw(h, pulito2));
+        if (i < 0){ await L.tooMany("admin:" + L.ipDi(req), 5); return L.send(res, 401, {errore: "Codice non valido. Controlla l'ora del telefono o usa un codice di riserva.", secondoFattore: true}); }
+        const riserva = tf.riserva.slice(); riserva.splice(i, 1);
+        await L.DB.meta("admin", {totp: Object.assign({}, tf, {riserva})});
+        await L.registra("amministratore", "accesso con codice di riserva", "", `ne restano ${riserva.length}`);
+      }
+    }
+    if (L.inChiaro(conf.password)) await L.DB.meta("admin", {password: L.hashPw(b.password)});
+    return L.send(res, 200, {token: L.sign({ruolo: "admin", id: "admin"}), riservaRimasti: tf.attivo ? ((((await L.DB.meta("admin")) || {}).totp || {}).riserva || []).length : undefined});
   }
   if (!L.verify(req, "admin")) return L.send(res, 401, L.NOAUTH);
   // registro delle operazioni: le azioni che cambiano qualcosa (con il riferimento dell'oggetto)
   const REG = {blocco: "blocco anagrafica", elimina: "eliminazione", liquidazione: "pagamento a CAF/ottica", stripePartner: "pagamento Stripe a partner", salvaCaf: "dati CAF", salvaOttico: "dati ottica",
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
     salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
-    salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", sollecito: "sollecito inviato", legale: "pratica legale",
+    salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", totpAttiva: "secondo fattore attivato", totpDisattiva: "secondo fattore disattivato", sollecito: "sollecito inviato", legale: "pratica legale",
     segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", giacenzaVista: "giacenza ottica controllata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
     [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
@@ -188,6 +206,8 @@ module.exports = L.wrap(async (req, res) => {
       addebitoUsato: ((cfgS || {}).addebitoUsato) || "",
       notte: await (async () => { const n = (await L.DB.meta("notte")) || {}; return {giorno: n.giorno || "", fatto: !!n.fatto, inizio: n.inizio || "", fine: n.fine || "", controllati: n.controllati || 0, azioni: n.azioni || 0, lotti: n.lotti || 0, errori: n.errori || []}; })(),
       copiaEsterna: (await L.DB.meta("backup-esterno")) || null,
+      sicurezza: {secondoFattore: !!((conf.totp || {}).attivo), riserva: ((conf.totp || {}).riserva || []).length,
+        inChiaro: caf.filter(x => L.inChiaro(x.Password)).length + ottLogin.filter(x => L.inChiaro(x.Password)).length + (L.inChiaro(conf.password) ? 1 : 0)},
       rimborsi: utenti.map(u => ({f: u.f, pg: L.parseOrdine(u.f.Ordine).pagamento || {}, o: L.parseOrdine(u.f.Ordine)})).filter(x => x.pg.rimborso && x.pg.rimborso.daFare && !x.pg.rimborso.fatto)
         .map(x => ({univoco: x.f.Univoco, nome: `${L.nm(x.f.Nome)} ${L.nm(x.f.Cognome)}`, dal: x.pg.rimborso.daFare, importo: (x.pg.pagamenti || []).reduce((a, p) => a + (p.canone || 0) + (p.spedizione || 0), 0) || ((x.o.prezzi || {}).rata || 0) + ((x.o.prezzi || {}).spedizione || 0)})),
       segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))
@@ -632,9 +652,28 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {ok: true});
   }
   if (az === "cambiaPassword"){
+    if (!L.checkPw(conf.password, String(b.attuale || ""))) return L.send(res, 401, {errore: "La password attuale non è corretta."});
     if (String(b.nuova || "").length < 10) return L.send(res, 400, {errore: "Usa almeno 10 caratteri."});
     await L.DB.meta("admin", {password: L.hashPw(b.nuova), il: new Date().toISOString()});
     return L.send(res, 200, {ok: true});
+  }
+  // secondo fattore: 1) nuovo segreto (QR da inquadrare), 2) attivazione con il primo codice, 3) disattivazione con password e codice
+  if (az === "totpNuovo"){
+    if ((conf.totp || {}).attivo) return L.send(res, 409, {errore: "Il secondo fattore è già attivo: per cambiarlo prima disattivalo."});
+    const seg = L.totp.nuovo(); await L.DB.meta("admin", {totp: {segreto: seg, attivo: false}});
+    return L.send(res, 200, {segreto: seg, link: L.totp.link(seg, "amministratore")});
+  }
+  if (az === "totpAttiva"){
+    const tf = conf.totp || {}; if (!tf.segreto || tf.attivo) return L.send(res, 409, {errore: "Prima genera il QR."});
+    const passo = L.totp.verifica(tf.segreto, b.codice, 0); if (!passo) return L.send(res, 400, {errore: "Codice non valido: controlla di aver inquadrato il QR e che l'ora del telefono sia giusta."});
+    const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", codici = Array.from({length: 8}, () => { let c = ""; for (const x of crypto.randomBytes(10)) c += A[x % A.length]; return c; });
+    await L.DB.meta("admin", {totp: {segreto: tf.segreto, attivo: true, il: new Date().toISOString(), ultimo: passo, riserva: codici.map(c => L.hashPw(c))}});
+    return L.send(res, 200, {ok: true, riserva: codici.map(c => c.replace(/(.{5})(?=.)/g, "$1-"))});
+  }
+  if (az === "totpDisattiva"){
+    const tf = conf.totp || {}; if (!tf.attivo) return L.send(res, 409, {errore: "Il secondo fattore non è attivo."});
+    if (!L.checkPw(conf.password, String(b.password || "")) || !L.totp.verifica(tf.segreto, b.codice, 0)) return L.send(res, 401, {errore: "Password o codice non validi."});
+    await L.DB.meta("admin", {totp: null}); return L.send(res, 200, {ok: true});
   }
   if (az === "rimuoviProva"){
     // accessi, ottiche e montature libere di prova; clienti creati con gli accessi di prova

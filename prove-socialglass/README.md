@@ -26,6 +26,7 @@ mkdir -p npmqr && (cd npmqr && npm pack qrcodejs@1.0.0 >/dev/null && tar xzf qrc
 - `m1.py` modifiche UX · `m2.py` funzioni cliente · `m3.py` ottica, admin, listini, registro, importazione, copia, report · `m4.py` preventivo con lente nuova · `x1.py` servizi (amico, recensioni, tessera, dona).
 - Percorso completo cliente: `v1.py` … `v11.py` (con `srv-viaggio.js`, in ordine; i salti di tempo sono nei comandi curl).
 - Fine abbonamento: `crea_cliente.py` (crea una cliente consegnata via API) + `f1.py` scelta, `f2.py` pagina cliente, `f3.py` ritiro in ottica.
+- `csp14.py` apre tutte le pagine e le finestre di stampa con la regola di sicurezza attiva (srv.js applica le intestazioni di `vercel.json`); `sic14.py` secondo fattore, password, tentativi; `ui14.py` secondo fattore cliccato.
 - `notte13.py` controllo notturno a lotti (server con `NOTTE_MAX=4`), stato per l'allarme, copia a pezzi; `ui13.py` riquadro nel pannello.
 - `mag12.py` prenotazione nell'ottica del cliente, pezzo già prenotato, giacenza da correggere, elenco esposte con i prenotati.
 - `casi11.py` coda «Da risolvere», rimborso del recesso, restituzione con stato e mancata (D3, con `srv-viaggio.js`), rinnovo bloccato da segnalazione; parte cliccata su tablet e pannello.

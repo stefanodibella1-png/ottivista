@@ -1,6 +1,8 @@
 /* SocialGlass · logica della pagina. Parla con il server (/api); senza server usa dati di prova nel browser. */
 (() => {
 "use strict";
+// stampa della finestra appena scritta: la comanda questa pagina (la regola di sicurezza blocca gli script dentro la finestra)
+const stampaDopo = (w, ms) => setTimeout(() => { try { w.focus(); w.print(); } catch(_){} }, ms || 400);
 const $ = id => document.getElementById(id);
 const P = new URLSearchParams(location.search);
 const par = k => P.get(k) || P.get(k.toLowerCase()) || "";
@@ -30,8 +32,8 @@ function stampaDoc(titolo, corpo, pubblico){
     footer{margin-top:14px;color:#777;font-size:8.5pt;border-top:1px solid #ddd;padding-top:4px}
   </style></head><body><header><b>SocialGlass</b><small>${esc(t.ragione || "")}${pubblico ? "" : (t.ragione ? " · " : "") + "stampato il " + ora}</small></header><h1>${esc(titolo)}</h1>${corpo}
   ${pubblico ? "" : "<footer>Documento riservato: contiene dati personali, da conservare e distruggere secondo il GDPR.</footer>"}
-  <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
-  w.document.close(); return true;
+  </body></html>`);
+  w.document.close(); stampaDopo(w); return true;
 }
 function alertStampa(){ const e = document.querySelector(".popup:not([hidden]) .esito") ; if (e){ e.hidden = false; e.className = "esito err"; e.textContent = "Il browser ha bloccato la finestra di stampa: consenti le finestre popup per questo sito."; } }
 // periodi per i conteggi
@@ -503,8 +505,8 @@ async function stampaVolantino(){
     <div class="incl">${A.servizi.map(x => `<div><em>${ok}</em>${esc(x)}</div>`).join("")}</div>
     <div class="basso"><div class="t"><small>Chiedi qui</small><b>${esc(nome || "Il tuo CAF")}</b><p>Porta la tessera sanitaria e il cellulare: ti registriamo in pochi minuti.</p></div>
       ${qr ? `<div class="qr"><img src="${qr}" alt="">Scopri di più</div>` : ""}</div>
-  </div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);
-  w.document.close();
+  </div></body></html>`);
+  w.document.close(); stampaDopo(w);
 }
 function apriEsposte(){
   const l = (cruDati && cruDati.esposte) || [];
@@ -739,7 +741,8 @@ function copiaFattura(f){
       : `<div class="r-c"><span>Imponibile</span><b>${euro(f.imponibile)}</b></div><div class="r-c"><span>IVA ${String(f.aliquota).replace(".", ",")}%</span><b>${euro(f.imposta)}</b></div>`}
     <div class="r-c"><span><b>Totale pagato</b></span><b>${euro(f.totale)}</b></div>
     <p class="hint" style="margin:8px 0 0">Copia di cortesia. Spesa sanitaria detraibile: noleggio di occhiale da vista (dispositivo medico CE).</p></div>
-    <button type="button" class="full" onclick="window.print()">Stampa o salva in PDF</button>`);
+    <button type="button" class="full" data-stampa-pagina>Stampa o salva in PDF</button>`);
+  const b = $("extraCorpo").querySelector("[data-stampa-pagina]"); if (b) b.onclick = () => window.print();
 }
 // copia del contratto in PDF: condizioni con i dati del cliente e la data delle conferme
 const caricaPdf = () => window.jspdf ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });

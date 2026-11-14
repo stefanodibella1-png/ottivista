@@ -46,14 +46,14 @@ async function tempo(req, res, u, b){
   return L.send(res, 200, {ok: true, esiti: esiti.map(e => e.esito || ("errore: " + e.errore))});
 }
 module.exports = L.wrap(async (req, res) => {
-  if (L.bloccato(req)) return L.send(res, 429, L.TROPPI);
+  if (await L.bloccato(req)) return L.send(res, 429, L.TROPPI);
   const url = new URL(req.url, "http://x"), host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
   if (/^[a-z0-9.-]+(:\d+)?$/i.test(host)) SITO = () => `${/^(localhost|127\.)/.test(host) ? "http" : "https"}://${host}`;
   // azioni del cliente dalla sua pagina: notifiche, recensione, occhiale da donare
   if (req.method === "POST"){
     const b = await L.readBody(req), u = await L.DB.utente("Univoco", String(b.univoco || "").trim().toUpperCase());
     if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
-    if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+    if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
     const ord = L.parseOrdine(u.f.Ordine), ora = new Date().toISOString();
     if (b.azione === "push"){
       const s = b.sub || {}; if (!/^https:\/\//.test(s.endpoint || "") || !s.keys || !s.keys.p256dh || !s.keys.auth) return L.send(res, 400, {errore: "Iscrizione non valida."});
@@ -120,7 +120,7 @@ module.exports = L.wrap(async (req, res) => {
   // orari liberi per l'appuntamento e montature esposte nella sua ottica
   if (url.searchParams.get("slot") || url.searchParams.get("catalogo")){
     const u = await L.DB.utente("Univoco", String(url.searchParams.get("univoco") || "").trim().toUpperCase());
-    if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+    if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
     const ott = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore") || "", o = await L.DB.ottico(ott);
     if (url.searchParams.get("slot")) return L.send(res, 200, {giorni: o ? L.slotLiberi(o, (await L.DB.meta("agenda-" + ott)) || {}) : [], ottica: o ? o.Intestatario : ""});
     const esposte = (await L.DB.lista("mont")).filter(m => !m.Eliminata).map(m => { const {g} = L.scorte(m);
@@ -131,7 +131,7 @@ module.exports = L.wrap(async (req, res) => {
   // chi ti ha consigliato SocialGlass (link «porta un amico»): solo il nome
   if (url.searchParams.get("amico")){
     const a = await L.DB.utente("Univoco", String(url.searchParams.get("amico")).trim().toUpperCase());
-    if (!a){ L.codiceErrato(req); return L.send(res, 404, {errore: "Codice non valido."}); }
+    if (!a){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Codice non valido."}); }
     if (!L.abbonamentoAttivo(a.f)) return L.send(res, 409, {errore: L.PREMIO_NON_ATTIVABILE});
     return L.send(res, 200, {nome: String(a.f.Nome || "").charAt(0) + String(a.f.Nome || "").slice(1).toLowerCase(), codice: a.f.Univoco});
   }
@@ -146,7 +146,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!uv) return L.send(res, 400, {errore: "Codice mancante"});
   const u = await L.DB.utente("Univoco", uv);
   if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
-  if (!u){ L.codiceErrato(req); return L.send(res, 404, {errore: "Link non valido o scaduto."}); }
+  if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Link non valido o scaduto."}); }
   await L.verificaPagamento(u);
   const idOtt = String(u.f.Ottica1 || "").split(" - ")[0] || url.searchParams.get("espositore");
   const o = await L.DB.ottico(idOtt);
