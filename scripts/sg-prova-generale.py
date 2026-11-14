@@ -179,8 +179,9 @@ async def main():
             subid, cus = pgA.get("abbonamento"), pgA.get("cliente")
             pmko = stripe("POST", "payment_methods/pm_card_chargeCustomerFail/attach", {"customer": cus})["id"]
             stripe("POST", f"subscriptions/{subid}", {"default_payment_method": pmko})
-            try: stripe("POST", f"subscriptions/{subid}", {"billing_cycle_anchor": "now", "proration_behavior": "none"})
-            except Exception as e: print("  (rinnovo forzato:", str(e)[:120], ")")
+            try: up = stripe("POST", f"subscriptions/{subid}", {"billing_cycle_anchor": "now", "proration_behavior": "none", "expand[]": "latest_invoice"}); li = up.get("latest_invoice") or {}
+            except Exception as e: li = {}; print("  (rinnovo forzato:", str(e)[:200], ")")
+            print("  rinnovo forzato: abbonamento", up.get("status") if li else "?", "| ultima fattura", li.get("id"), li.get("status"), li.get("billing_reason"), li.get("attempt_count"))
             # la fattura del rinnovo si chiude e si prova a pagare subito (Stripe altrimenti aspetta circa un'ora)
             for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"]:
                 if i["status"] == "draft": i = stripe("POST", f"invoices/{i['id']}/finalize")
@@ -188,6 +189,9 @@ async def main():
                     try: stripe("POST", f"invoices/{i['id']}/pay")
                     except Exception as e: print("  pagamento rifiutato come previsto:", str(e)[:100])
             c = attendi(lambda: (lambda x: x if (x.get("ordine") or {}).get("pagamento", {}).get("insoluto") else None)(stato(uvA)), 120)
+            if not c:
+                for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"]: print("  fattura", i["id"], i["status"], i.get("billing_reason"), i.get("attempt_count"), i.get("amount_due"))
+                for ev in stripe("GET", "events", {"type": "invoice.payment_failed", "limit": 3})["data"]: print("  avviso", ev["id"], ev["data"]["object"].get("id"), "consegne in sospeso:", ev.get("pending_webhooks"))
             esito("B1 canone mensile rifiutato dalla carta → insoluto sul sito", bool(c), ((c or {}).get("ordine") or {}).get("pagamento", {}).get("insoluto"))
             s, d = adm("dati"); esito("B2 il caso compare in «Da risolvere»", any(x["univoco"] == uvA and x["tipo"] == "insoluto" for x in d.get("coda", [])))
             await pg.goto(f"{SITO}/?Univoco={uvA}"); await pg.wait_for_timeout(2500); await pg.screenshot(path=f"{OUT}/B2-telefono-insoluto.png", full_page=True)
@@ -197,6 +201,7 @@ async def main():
             c = attendi(lambda: (lambda x: x if not (x.get("ordine") or {}).get("pagamento", {}).get("insoluto") else None)(stato(uvA)), 120)
             esito("B3 il cliente paga → insoluto chiuso e canone contato", bool(c) and (c["ordine"]["pagamento"].get("ratePagate") or 0) >= 2, (c or {}).get("ordine", {}).get("pagamento", {}).get("ratePagate"))
 
+            if os.environ.get("PG_SOLO") == "B": raise StopAsyncIteration("solo B")
             # ===== C · recesso e rimborso con Stripe (test) =====
             uvB = registra("PRVMRT71A41C351", "MARTA", "1971-01-01")
             call("api/benvenuto", {"azione": "consenso", "univoco": uvB, "si": True}); call("api/montatura", {"univoco": uvB, "codice": "SG-1044"})
@@ -246,6 +251,7 @@ async def main():
             await a.click(f".schede-adm [data-tab=clienti]"); await a.wait_for_timeout(2500); await a.locator(f"[data-scheda={uvA}]").first.click(); await a.wait_for_timeout(2500)
             await a.screenshot(path=f"{OUT}/F1-pc-scheda-cliente-prova.png", full_page=True)
             esito("F2 nessun errore nelle pagine aperte", not ERR, ERR[:5])
+        except StopAsyncIteration: pass
         except Exception as e:
             esito("ERRORE INATTESO", False, f"{type(e).__name__}: {str(e)[:400]}"); traceback.print_exc()
             try:

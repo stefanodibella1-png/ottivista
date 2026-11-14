@@ -1,7 +1,10 @@
 # SocialGlass · prova generale sul sito vero con Stripe in modalità TEST (solo a mano). Alla fine cancella i clienti di prova.
 # Usa: VERCEL_TOKEN (legge SESSION_SECRET), STRIPE_SECRET_KEY (deve essere sk_test_…), FIREBASE_SERVICE_ACCOUNT (spostare le date dei clienti di prova).
 name: socialglass-prova-generale
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      solo: { description: "vuoto = tutto; B = solo pagamento e rinnovo non pagato", default: "" }
 concurrency: socialglass-prova-generale
 permissions: { contents: read }
 jobs:
@@ -13,6 +16,7 @@ jobs:
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       SITO: https://socialglass.vercel.app
+      PG_SOLO: ${{ inputs.solo }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
