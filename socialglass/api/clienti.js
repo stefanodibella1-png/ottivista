@@ -50,10 +50,12 @@ module.exports = L.wrap(async (req, res) => {
       rata: o.prezzi ? o.prezzi.rata : null, ratePagate: o.pagamento ? o.pagamento.ratePagate || 0 : 0, finePeriodo: o.finePeriodo ? o.finePeriodo.descrizione : "", aggiornato: o.aggiornato || f.Creato || "",
       periodo: L.PREZZI.periodo(o), rinnovabile: L.PREZZI.rinnovabile(o), daRitirare: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato),
       esito: o.pagamento && o.pagamento.esito || "", rinnovo: !!o.rinnovo, consenso: !!(f.ConsensoSanitario && f.ConsensoSanitario.il), annulla: isOtt ? L.annullabileDa(f, "ottica " + s.id) : null, lenteTipo: o.lenti ? o.lenti.id || "" : "", registratoDa: f.RegistratoDa || (f.CAF ? "caf " + f.CAF : ""),
-      link: L.linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino),
+      // link della scheda: al CAF solo prima dell'attivazione; a nessuno se il cliente è bloccato (pagamenti e solleciti li segue SocialGlass)
+      link: L.situazione(f).bloccato || (!isOtt && ![L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(f.Stato)) ? "" : L.linkCliente(f.Univoco, String(f.Ottica1 || "").split(" - ")[0], f.CAF, f.Listino),
       recedibile: L.annullabile(o, f.Stato),
       ritiroInRitardo: !!(o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato && Date.now() - new Date(o.ritiro.dal) > 15*864e5),
-      avviso: (() => { const a = Object.entries(o.avvisi || {}).filter(([k, x]) => !x.inviato && !/^insoluto/.test(k)).map(([, x]) => x).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()}, tecnico);
+      // gli avvisi da mandare al cliente (occhiale arrivato, ritiro, scadenze…) li segue l'ottica, non il CAF
+      avviso: !isOtt ? null : (() => { const a = Object.entries(o.avvisi || {}).filter(([k, x]) => !x.inviato && !/^insoluto/.test(k)).map(([, x]) => x).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()}, tecnico);
   }).sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)));
   // conteggi economici con SocialGlass secondo l'accordo impostato dall'amministratore
   let acc = null; try { acc = isOtt ? await L.DB.ottico(s.id) : await L.DB.login("caf", s.id); } catch(e){ console.error(e); }

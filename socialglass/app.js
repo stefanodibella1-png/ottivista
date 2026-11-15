@@ -392,7 +392,6 @@ function disegnaCruscotto(isOtt, d){
     f(n(SIT_P.fermi), "Non hanno ancora scelto la montatura", "Registrati da più di 3 giorni: reinvia il link", 'data-vai="sit:fermi"');
     f(n(c => c.stato === STATI.PAGAMENTO), "Devono attivare l'abbonamento", "Hanno il preventivo: un promemoria aiuta", `data-vai="stato:${STATI.PAGAMENTO}"`);
     f(n(SIT_P.scadenza), "Abbonamenti in scadenza", "Proponi il rinnovo con un occhiale nuovo", 'data-vai="sit:scadenza"');
-    f(n(c => c.avviso), "Avvisi da inviare ai clienti", "Messaggio già pronto: basta un tocco", 'data-vai="sit:avvisi"', true);
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
     tess = tessera("cf", "Verifica codice fiscale", "È già cliente?", 'data-open="codiceFiscalePopup"')
       + tessera("rinnovo", "Rinnovo occhiale", "Per chi è a fine periodo", 'data-open="rinnovoPopup"') + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
@@ -1003,7 +1002,11 @@ function rinnovoBtn(c, attr){
 }
 // prima dell'attivazione serve rimandare il link; dopo basta un messaggio
 // reinvia al cliente il link della sua scheda personale (WhatsApp)
+// il CAF lo rimanda solo finché il cliente non ha attivato l'abbonamento; a un cliente bloccato (moroso) nessuno lo rimanda:
+// pagamenti e solleciti li segue SocialGlass
+const PRIMA_ATTIVAZIONE = s => [STATI.REGISTRATO, STATI.MONTATURA, STATI.PAGAMENTO].includes(s);
 function linkBtn(c){
+  if (c.bloccato || (ruolo() !== "ottico" && !PRIMA_ATTIVAZIONE(c.stato))) return "";
   const n = String(c.cellulare || "").replace(/\D/g, ""); if (!n || !c.link) return "";
   const testo = `SocialGlass: ciao ${c.nome}, ecco il link della tua scheda personale: ${c.link}`;
   return `<a class="btn-link" style="flex:0 0 auto" target="_blank" rel="noopener" href="https://wa.me/39${esc(n)}?text=${encodeURIComponent(testo)}">Reinvia link</a>`;
@@ -1066,6 +1069,8 @@ function stampaElencoClienti(){
       <td>${dIt(c.attivatoIl)}</td><td>${c.periodo ? dIt(c.periodo.scadenza) : ""}</td><td>${dIt(c.consegnatoIl)}</td><td>${c.bloccato ? "ANAGRAFICA BLOCCATA" : ""}${c.esito ? esc(c.esito) : ""}</td></tr>`).join("")}</table>`);
 }
 function disegnaClienti(){
+  // al CAF non servono i filtri del lavoro dell'ottica (avvisi ai clienti, laboratorio)
+  for (const v of ["avvisi", "lab", "arrivo"]){ const o = $("filtroSit").querySelector(`option[value="${v}"]`); if (o) o.hidden = o.disabled = ruolo() !== "ottico"; }
   const q = $("filtroClienti").value.trim().toUpperCase(), st = $("filtroStato").value, sit = $("filtroSit").value, isOtt = ruolo() === "ottico";
   const aperti = new Set([...document.querySelectorAll("#clientiLista details[open]")].map(d => d.dataset.u));
   const l = clienti.filter(c => (!st || c.stato === st) && (!sit || SIT_P[sit](c)) && (!q || `${c.nome} ${c.cognome} ${c.univoco} ${c.cf || ""}`.includes(q)));
@@ -1074,7 +1079,7 @@ function disegnaClienti(){
   $("clientiLista").innerHTML = l.length ? l.map(c => {
     const p = c.periodo, sc = p && !c.esito ? (p.scaduto ? '<span class="chip s2">MESE PER MESE</span>' : p.aperto ? `<span class="chip s2">SCADE TRA ${p.giorni} GG</span>` : "") : "";
     const ultimato = p ? (p.scaduto ? `sì, il ${dIt(p.scadenza)}` : `no, scade il ${dIt(p.scadenza)}`) : "";
-    const az = c.bloccato ? linkBtn(c) : isOtt
+    const az = c.bloccato ? "" : isOtt
       ? (c.stato === STATI.MONTATURA || c.stato === STATI.PAGAMENTO ? `<button type="button" data-ord="${esc(c.univoco)}">Inserisci lenti e ricetta</button>` : "")
         + (c.stato === STATI.ATTIVO && !c.lab ? `<button type="button" class="verde" data-azione="pronto" data-u="${esc(c.univoco)}">Segna pronto</button>` : "")
         + (SIT_P.arrivo(c) ? `<button type="button" class="verde" data-azione="arrivato" data-u="${esc(c.univoco)}">Occhiale arrivato</button>` : "")
@@ -1091,7 +1096,7 @@ function disegnaClienti(){
     // ritiro e recesso restano possibili anche con l'anagrafica bloccata
     const azBlocco = c.bloccato && isOtt ? (c.daRitirare ? `<button type="button" data-ritiro="${esc(c.univoco)}">Occhiale ritirato</button>` : "") + (c.recedibile ? `<button type="button" class="grigio" data-recesso="${esc(c.univoco)}">Annulla (prima della lavorazione)</button>` : "") : "";
     return `<details class="cli" data-u="${esc(c.univoco)}" ${aperti.has(c.univoco) ? "open" : ""}><summary><div class="top"><div><b>${esc(c.nome)} ${esc(c.cognome)}</b><div class="cod">${esc(c.univoco)}${c.cf ? " · " + esc(c.cf) : ""}</div></div>
-        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}${c.scadeLink ? `<span class="chip" title="Il link del cliente scade se non attiva l'abbonamento">link fino al ${new Date(c.scadeLink).toLocaleDateString("it-IT", {day: "2-digit", month: "2-digit"})}</span>` : ""}</div></div></summary>
+        <div class="bad" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${c.bloccato ? '<span class="chip s3">BLOCCATO</span>' : ""}${isOtt && c.avviso ? '<span class="chip s1">AVVISO</span>' : ""}${c.dona && c.daRitirare ? '<span class="chip s4">DA DONARE</span>' : ""}${c.voto ? `<span class="chip" title="Recensione del cliente">${"★".repeat(c.voto)}</span>` : ""}${sc}${chip(c.stato)}${c.scadeLink ? `<span class="chip" title="Il link del cliente scade se non attiva l'abbonamento">link fino al ${new Date(c.scadeLink).toLocaleDateString("it-IT", {day: "2-digit", month: "2-digit"})}</span>` : ""}</div></div></summary>
       <div class="corpo">
       ${c.bloccato ? contattoAdmin() : ""}
       <dl class="dl">${voce("Cellulare", esc(c.cellulare))}${voce(isOtt ? "CAF" : "Ottica", esc(isOtt ? c.caf : c.ottica))}${voce("Registrato il", dIt(c.creato))}
@@ -1109,7 +1114,7 @@ function disegnaClienti(){
       ${isOtt && SIT_P.lab(c) ? `<div class="avviso-cli">📦 <b>Il laboratorio ${esc((labInfo || {}).nome || "")} chiede questa montatura${c.lab.richiesta ? " (" + dIt(c.lab.richiesta) + ")" : ""}.</b> Mettila da parte con la scheda stampata, in attesa del corriere.<br><button type="button" data-stampa-lab="${esc(c.univoco)}">Stampa scheda per il laboratorio</button></div>` : ""}
       ${c.daRitirare ? `<div class="avviso-cli">💚 L'occhiale restituito va messo da parte per SocialGlass: verrà rigenerato e donato a un'associazione benefica.</div>` : ""}
       ${c.rinnovo && [STATI.ATTIVO, STATI.PRONTO].includes(c.stato) ? `<div class="avviso-cli">Rinnovo: alla consegna del nuovo occhiale riprendi quello precedente.</div>` : ""}
-      ${c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
+      ${isOtt && c.avviso ? (c.avviso.whatsapp ? `<div class="avviso-cli">Avviso da inviare al cliente: ${esc(c.avviso.testo)}<br><a class="btn-link" target="_blank" rel="noopener" data-avvisato="${esc(c.univoco)}" href="${esc(c.avviso.whatsapp)}">Invia su WhatsApp</a></div>`
         : `<div class="avviso-cli"><b>Da fare:</b> ${esc(c.avviso.testo)} <button type="button" class="linkbtn" data-avvisato="${esc(c.univoco)}">Fatto</button></div>`) : ""}
       <div class="az">${az}${azBlocco}<button type="button" class="grigio" data-stampa-cli="${esc(c.univoco)}">Stampa scheda</button></div></div></details>`;
   }).join("") : `<div class="vuoto">${clienti.length ? "Nessun cliente con questi filtri." : `Nessun cliente${isOtt ? " assegnato a questa ottica. Per registrarne uno tocca «Nuovo cliente» nel cruscotto." : "."}`}</div>`;
@@ -1685,6 +1690,14 @@ $("formManuale").addEventListener("submit", e => { e.preventDefault(); const c =
       let tx = +s.el.dataset.cx + (+s.el.dataset.ax) * Math.sin(t / 2300), ty = +s.el.dataset.cy + 4 * Math.sin(t / 1500), k = .1;
       if (s.presa || t < s.fino){ tx = s.tx; ty = s.ty; k = s.presa ? .45 : .2; }
       else if (t - quando < 2500 && mx < r.right + 80 && my > r.top - 80){ tx = Math.max(2, Math.min(98, (mx - r.left) / r.width * 100)); ty = Math.max(4, Math.min(96, (my - r.top) / r.height * 100)); }
+      // su PC la lente resta sulle persone: non passa sotto le scritte a destra né sul riquadro «L'occhiale sociale»
+      if (s.el.classList.contains("scena-pc")){
+        const rr = (s.el.querySelector(".lente").getBoundingClientRect().width || 0) / 2, testo = document.querySelector(".hero-testo"), soc = document.querySelector(".sociale");
+        const tr = testo && testo.getBoundingClientRect(), sr = soc && soc.getBoundingClientRect();
+        if (tr && tr.width && tr.left < r.right) tx = Math.min(tx, (tr.left - 16 - rr - r.left) / r.width * 100);
+        if (sr && sr.width && sr.bottom > r.top && sr.top < r.top + r.height / 2 && sr.left < (tr && tr.width ? tr.left : r.right)) ty = Math.max(ty, (sr.bottom + 10 + rr - r.top) / r.height * 100);
+        tx = Math.max(rr / r.width * 100, tx); ty = Math.min(ty, 100 - rr / r.height * 100);
+      }
       s.x += (tx - s.x) * k; s.y += (ty - s.y) * k;
       s.el.style.setProperty("--lx", s.x.toFixed(2) + "%"); s.el.style.setProperty("--ly", s.y.toFixed(2) + "%");
     }

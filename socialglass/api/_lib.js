@@ -991,7 +991,7 @@ async function riordinoAuto(fornitore){
 // Blocco.stato: "bloccato" (deciso dall'amministratore), "sbloccato" (sblocco forzato nonostante la morosità), assente = automatico.
 const dataIt = d => d ? new Date(d).toLocaleDateString("it-IT", {timeZone: "Europe/Rome"}) : "";
 function situazione(f){
-  const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, b = f.Blocco || {};
+  const o = parseOrdine(f.Ordine), pg = pgVivo(o), b = f.Blocco || {};
   const chiusoMoroso = /MANCATO PAGAMENTO/.test(pg.esito || "");
   const moroso = !!pg.insoluto || chiusoMoroso, motivi = [];
   if (pg.insoluto) motivi.push(`${pg.insoluto.tipo === "riscatto" ? "Riscatto" : "Canone"} non pagato dal ${dataIt(pg.insoluto.dal)}${pg.insoluto.importo ? ` (${Number(pg.insoluto.importo).toFixed(2).replace(".", ",")} €)` : ""}`);
