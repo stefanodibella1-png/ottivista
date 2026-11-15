@@ -1647,4 +1647,30 @@ $("qr-riprova").addEventListener("click", () => { $("popup").hidden = true; star
 { const m = location.pathname.match(/\/(caf|ottico|admin)\/?$/);
   if (m && !UNIVOCO) ready.finally(() => m[1] === "admin" ? apriAdmin() : entra(m[1])); }
 $("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; const d = scanDopo; stopScan(); d ? d.onCodice(c) : verificaQR(c); });
+/* ---------- effetti della home: la lente mette a fuoco l'illustrazione, le schede si inclinano, un alone segue il mouse ---------- */
+(() => {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const scene = [...document.querySelectorAll(".scena")].map(el => ({el, x: +el.dataset.cx, y: +el.dataset.cy}));
+  let mx = 0, my = 0, quando = -1e9;
+  addEventListener("pointermove", e => { if (e.pointerType !== "mouse") return; mx = e.clientX; my = e.clientY; quando = performance.now();
+    document.body.style.setProperty("--px", mx + "px"); document.body.style.setProperty("--py", my + "px"); }, {passive: true});
+  const giro = t => {
+    if (!document.hidden) for (const s of scene){
+      const r = s.el.getBoundingClientRect(); if (!r.width) continue;
+      // senza mouse (telefono) o dopo 2,5 secondi fermi la lente passa da sola sui volti
+      let tx = +s.el.dataset.cx + (+s.el.dataset.ax) * Math.sin(t / 2300), ty = +s.el.dataset.cy + 4 * Math.sin(t / 1500);
+      if (t - quando < 2500 && mx < r.right + 80 && my > r.top - 80){ tx = Math.max(2, Math.min(98, (mx - r.left) / r.width * 100)); ty = Math.max(4, Math.min(96, (my - r.top) / r.height * 100)); }
+      s.x += (tx - s.x) * .1; s.y += (ty - s.y) * .1;
+      s.el.style.setProperty("--lx", s.x.toFixed(2) + "%"); s.el.style.setProperty("--ly", s.y.toFixed(2) + "%");
+    }
+    requestAnimationFrame(giro);
+  };
+  requestAnimationFrame(giro);
+  if (matchMedia("(hover:hover)").matches) document.querySelectorAll(".tre-passi li, .sociale").forEach(el => {
+    el.addEventListener("pointermove", e => { const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      el.style.setProperty("--ry", ((x - .5) * 12).toFixed(1) + "deg"); el.style.setProperty("--rx", ((.5 - y) * 12).toFixed(1) + "deg");
+      el.style.setProperty("--mx", (x * 100).toFixed(0) + "%"); el.style.setProperty("--my", (y * 100).toFixed(0) + "%"); el.classList.add("inclina"); });
+    el.addEventListener("pointerleave", () => { el.classList.remove("inclina"); el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); });
+  });
+})();
 })();
