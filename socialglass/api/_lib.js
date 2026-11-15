@@ -546,7 +546,7 @@ async function portaleStripe(){
 /* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
 async function rinnova(u, {otticoId, caf, cambioCaf} = {}){
   const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
-  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, consegnato: ord.consegnatoIl || "", mesi: ord.prezzi && ord.prezzi.mesi, caf: ord.caf || u.f.CAF || "", ottica: ord.ottica || String(u.f.Ottica1 || "").split(" - ")[0], chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
+  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, consegnato: ord.consegnatoIl || "", mesi: ord.prezzi && ord.prezzi.mesi, caf: ord.caf != null ? ord.caf : u.f.CAF || "", ottica: ord.ottica || String(u.f.Ottica1 || "").split(" - ")[0], chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
   // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
   // le fatture già contate restano segnate: i canoni del vecchio periodo non si ricontano mai in quello nuovo
@@ -554,7 +554,7 @@ async function rinnova(u, {otticoId, caf, cambioCaf} = {}){
   const idPrecedenti = [...new Set([...((prima && prima.idPrecedenti) || []), ...((prima && prima.pagamenti) || []).map(x => x.id), ...((pg && pg.pagamenti) || []).map(x => x.id)])].filter(Boolean).slice(-200);
   const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl, idPrecedenti, ...(pg.insoluto ? {insoluto: pg.insoluto} : {})}
     : (!pg && prima) || null;   // rinnovo già in corso (ordine non ancora confermato): stesso abbonamento, stessi canoni e insoluti
-  const campi = {Stato: STATI.REGISTRATO, Ordine: JSON.stringify({storico, rinnovo: {il: new Date().toISOString(), da: caf ? "CAF " + caf : "ottico " + (otticoId || ""), prosegue}})};
+  const campi = {Stato: STATI.REGISTRATO, Ordine: JSON.stringify({storico, caf: caf || "", rinnovo: {il: new Date().toISOString(), da: caf ? "CAF " + caf : "ottico " + (otticoId || ""), prosegue}})};
   // cambio CAF autorizzato dal cliente (codice cliente mostrato allo sportello): da questo occhiale il cliente è del nuovo CAF;
   // gli occhiali di prima restano al CAF che li ha commissionati (storico.caf)
   if (cambioCaf && caf && caf !== u.f.CAF){ campi.CAF = caf; campi.CambiCaf = (u.f.CambiCaf || []).concat([{il: new Date().toISOString(), da: u.f.CAF || "", a: caf}]).slice(-20); }
@@ -1204,6 +1204,7 @@ function compensoPrevisto(utenti, acc, ruolo){
     if (f.Archiviato) continue;
     const {o, pg, pr, periodi} = periodiCliente(f), cur = pg.attivatoIl && pg.stato !== "SIMULATO" ? periodi[periodi.length - 1] : null;
     if (pg.chiuso || pg.esito || f.Stato === STATI.CHIUSO) continue;
+    if (ruolo === "caf" && o.caf === "") continue;   // occhiale rinnovato direttamente in ottica: al CAF non spetta niente
     const consegnato = !!(cur && cur.consegnato), rata = Number(pr.rata) || 0, mesi = Number(pr.mesi) || 12;
     let imp = null;
     if (ac.tipo === "fisso") imp = consegnato ? 0 : Number(ac.valore);

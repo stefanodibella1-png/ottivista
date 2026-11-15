@@ -13,9 +13,9 @@ const U = [
 const acc = t => ({Accordi: [{dal: "2000-01-01", tipo: t[0], valore: t[1]}]});
 (async () => {
   // rinnovo: B chiede il rinnovo (periodo vecchio consegnato), E rinnova senza aver mai ricevuto l'occhiale
-  const uB2 = JSON.parse(JSON.stringify(U[1])); uB2.Univoco = "B2"; L.demo.utenti.push(uB2); await L.rinnova(await L.DB.utente("Univoco", "B2"), {otticoId: ""});
+  const uB2 = JSON.parse(JSON.stringify(U[1])); uB2.Univoco = "B2"; L.demo.utenti.push(uB2); await L.rinnova(await L.DB.utente("Univoco", "B2"), {otticoId: "", caf: "CAF001"});   // rinnovo dal CAF (dall'ottica: niente al CAF)
   const B2 = (await L.DB.utente("Univoco", "B2")).f;
-  const uE = JSON.parse(JSON.stringify(U[0])); uE.Univoco = "E"; L.demo.utenti.push(uE); await L.rinnova(await L.DB.utente("Univoco", "E"), {otticoId: ""});
+  const uE = JSON.parse(JSON.stringify(U[0])); uE.Univoco = "E"; L.demo.utenti.push(uE); await L.rinnova(await L.DB.utente("Univoco", "E"), {otticoId: "", caf: "CAF001"});
   const E = (await L.DB.utente("Univoco", "E")).f;
   const tutti = U.concat([B2, E]);
   let e = L.estratto(tutti, acc(["fisso", 3]), "", "", "caf");

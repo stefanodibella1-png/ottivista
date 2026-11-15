@@ -216,7 +216,7 @@ function disegnaScheda(c){
       ${(c.correzioni || []).length ? `<p class="hint" style="margin:6px 0 0">Correzioni fatte: ${c.correzioni.slice().reverse().map(x => `${new Date(x.il).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"})} · ${esc(Object.keys(x.prima || {}).join(", "))}${x.motivo ? " · " + esc(x.motivo) : ""}`).join("<br>")}</p>` : ""}</details>
 
     <details class="scheda"><summary><b>Cambia l'ottica del cliente</b></summary>
-      <p class="hint" style="margin:4px 0">Si può prima del pagamento (il cliente sceglie di nuovo la montatura nella nuova ottica), quando l'occhiale è in laboratorio, o dopo la consegna. Il cliente riceve il messaggio con il nuovo indirizzo.</p>
+      <p class="hint" style="margin:4px 0">Ottica e CAF si cambiano al rinnovo, se il cliente lo chiede. Da qui solo prima del pagamento (il cliente sceglie di nuovo la montatura nella nuova ottica) o, dopo la consegna, se la vecchia ottica è chiusa. Mai con l'occhiale ordinato e non ancora consegnato. Il cliente riceve il messaggio con il nuovo indirizzo.</p>
       <form data-f="cambiaOttica" data-id="${esc(c.univoco)}"><label class="lbl" for="coOtt">Nuova ottica</label><select id="coOtt" name="ottica" required><option value="">Scegli…</option>${(dati.ottici || []).filter(x => !x.disattivato && !String(c.ottica || "").startsWith(x.ID + " ")).map(x => `<option value="${esc(x.ID)}">${esc(x.ID)} · ${esc(x.Intestatario)}</option>`).join("")}</select>
       <label class="lbl" for="coMot">Motivo</label><input id="coMot" name="motivo" maxlength="200" placeholder="es. ottica chiusa, il cliente si è trasferito">
       <button type="submit" class="verde">Cambia ottica</button></form></details>

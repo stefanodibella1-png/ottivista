@@ -621,9 +621,17 @@ module.exports = L.wrap(async (req, res) => {
     const f = u.f, o = L.parseOrdine(f.Ordine), vecchia = String(f.Ottica1 || "").split(" - ")[0], st = f.Stato, ls = (o.lab && o.lab.stato) || "";
     if (nuova.ID === vecchia) return L.send(res, 400, {errore: "Il cliente è già di questa ottica."});
     const prima = [L.STATI.REGISTRATO, L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(st), dopo = [L.STATI.CONSEGNATO, L.STATI.CHIUSO].includes(st);
-    const inLab = st === L.STATI.ATTIVO && ["DA FARE", "IN LAVORAZIONE", "PRONTO"].includes(ls);
+    // regola: ottica e CAF si cambiano solo al rinnovo (dai 30 giorni prima della scadenza, lo fa chi rinnova).
+    // Dal pannello: prima del pagamento (errore di registrazione o rinnovo non ancora confermato) oppure, dopo la consegna, se la vecchia ottica è chiusa.
+    // Mai con l'occhiale ordinato e non ancora consegnato.
+    if (!prima && !dopo) return L.send(res, 409, {errore: "L'occhiale è ordinato e non ancora consegnato: l'ottica non si cambia. Si potrà cambiare al rinnovo, se il cliente lo chiede."});
+    if (dopo){ const vo = await L.DB.ottico(vecchia); if (vo && !vo.Disattivato) return L.send(res, 409, {errore: "Dopo la consegna l'ottica si cambia solo al rinnovo (dai 30 giorni prima della scadenza), se il cliente lo chiede. Dal pannello si può solo se la vecchia ottica è chiusa (disattivata)."}); }
+    const inLab = false;
     if (!prima && !dopo && !inLab) return L.send(res, 409, {errore: st === L.STATI.VERIFICA ? "Pagamento in verifica: aspetta la conferma della banca." : st === L.STATI.PRONTO || ["SPEDITO", "ARRIVATO"].includes(ls) ? "L'occhiale è nella vecchia ottica o in viaggio verso di lei: si cambia dopo la consegna." : "La montatura è ancora nella vecchia ottica o va verificata dal laboratorio: si cambia quando è in laboratorio."});
     const ora = new Date().toISOString(), campi = {Ottica1: `${nuova.ID} - ${nuova.Intestatario} - ${nuova.Indirizzo || ""}${nuova.Citta || ""}`};
+    // gli occhiali già consegnati restano (per i compensi) all'ottica e al CAF di prima: si fissano se mancano (ordini vecchi)
+    if (dopo){ if (o.consegnatoIl && !o.ottica) o.ottica = vecchia; if (o.consegnatoIl && o.caf == null) o.caf = f.CAF || "";
+      (o.storico || []).forEach(x => { if (!x.ottica) x.ottica = vecchia; if (x.caf == null) x.caf = f.CAF || ""; }); }
     let libera = "";
     if (prima){
       // prima del pagamento: montatura e preventivo erano della vecchia ottica; il cliente sceglie di nuovo nella nuova

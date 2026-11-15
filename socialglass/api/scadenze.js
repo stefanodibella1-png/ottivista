@@ -101,7 +101,8 @@ async function esegui(u, ord, p, ora){
     if (L.segnalazioniAperte(u.f).length) return null;
     fp.eseguita = ora; ord.aggiornato = ora;
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
-    await L.rinnova(u, {otticoId: String(u.f.Ottica1 || "").split(" - ")[0], caf: u.f.CAF});
+    // il cliente ha scelto «occhiale nuovo» dalla sua pagina: va direttamente in ottica, al CAF non spetta compenso
+    await L.rinnova(u, {otticoId: String(u.f.Ottica1 || "").split(" - ")[0], caf: ""});
     return "rinnovato";
   }
   if (scelta === "riscatta"){
