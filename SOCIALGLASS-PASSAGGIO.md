@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799400000**, prossimo 1799500000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799500000**, prossimo 1799600000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -80,7 +80,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 - Verifica anagrafica del CAF (15/11/2026, v1799300000): la tessera «Verifica codice fiscale» diventa «Verifica anagrafica» e interroga `GET api/utenti?cf=` (per il CAF ora anche `creato`, `attivatoIl` del primo abbonamento, `periodi`, `consegnatoIl`, `moroso`, `bloccoAdmin`, `esito`, `scadenza`, `rinnovoInCorso`, `mio`). Esiti: nessuna anagrafica → «Registra nuovo cliente» con CF precompilato; moroso/bloccato → contatta SocialGlass; pratica in corso → nessuna nuova richiesta; finita e rinnovabile → «Avvia il rinnovo» (apre il rinnovo già cercato); altrimenti «potrà fare richiesta dal…». Prove: `cf20.py` (server `srv20.js`).
 
-- Scelta di fine abbonamento (15/11/2026, v1799400000): si fa solo dagli ultimi 30 giorni della durata minima (`per.aperto`, dal `preavviso`) o dopo. Prima la pagina del cliente dice solo da quando potrà scegliere (le regole restano nel riquadro chiuso, senza pulsanti) e `api/fine-periodo` risponde 409. Prova: `fine21.py` (server `srv20.js`).
+- Scelta di fine abbonamento (15/11/2026, v1799400000): si fa solo dagli ultimi 30 giorni della durata minima (`per.aperto`, dal `preavviso`) o dopo. Prima i tre pulsanti restano (nel riquadro «Cosa succede alla scadenza») ma il tocco apre un popup «Questa scelta sarà attiva dal <preavviso>» con la spiegazione della scelta, senza registrare nulla (v1799500000); `api/fine-periodo` risponde comunque 409. Prova: `fine21.py` (server `srv20.js`).
 
 ## Laboratorio: verifica della montatura (13/11/2026)
 - Al pagamento (`avviaLavorazione`) la busta nasce «DA VERIFICARE» (`ord.lab.verifica`) e il laboratorio riceve una notifica push (iscrizione con «🔔 Attiva notifiche» in `laboratorio.html`; meta `push-lab`). La ricetta resta nascosta finché la montatura non è disponibile; le azioni ritirata/inizia/pronto sono rifiutate prima.

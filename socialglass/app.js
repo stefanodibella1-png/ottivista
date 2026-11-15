@@ -1396,7 +1396,7 @@ function boxAbbonamento(od){
   const fp = od.finePeriodo;
   const stato = per.scaduto ? `La durata minima è finita il ${dt(per.scadenza)}: l'abbonamento continua mese per mese.`
     : per.aperto ? `<b>Mancano ${per.giorni} giorni</b> alla fine della durata minima (${dt(per.scadenza)}). Scegli cosa fare:`
-    : `Dal <b>${dt(per.preavviso)}</b>, 30 giorni prima della fine, ti scriviamo e scegli qui cosa fare.`;
+    : `Dal <b>${dt(per.preavviso)}</b>, 30 giorni prima della fine, ti scriviamo e potrai scegliere qui cosa fare.`;
   const aperte = per.aperto || per.scaduto;
   const bottoni = fp && fp.eseguita ? "" : `<div class="scelte" style="margin-top:8px">
         <button type="button" class="${fp && fp.scelta === "rinnova" ? "verde" : "grigio"} full" data-fine="rinnova">Occhiale nuovo</button>
@@ -1408,7 +1408,7 @@ function boxAbbonamento(od){
       ${fp ? `<div class="esito ok" style="margin-top:8px">Hai scelto: <b>${esc(fp.descrizione)}</b>.${fp.eseguita ? "" : per.scaduto ? " La eseguiamo a breve." : ` Vale dal ${dt(per.scadenza)}: puoi cambiare idea fino ad allora.`}</div>` : ""}
       ${per.aperto && !per.chiuso && !(fp && fp.eseguita) && !(fp && fp.scelta !== "rinnova") ? `<button type="button" class="grigio full" id="mpRinnovaCat" style="margin:6px 0">Guarda le montature nuove nella tua ottica</button>` : ""}
       ${aperte ? regoleFine(p, per) + bottoni
-        : `<details class="regole-box"><summary>Cosa succede alla scadenza</summary>${regoleFine(p, per)}</details>`}
+        : `<details class="regole-box"><summary>Cosa succede alla scadenza</summary>${regoleFine(p, per)}${bottoni}</details>`}
     </div>`;
 }
 function disegnaMio(){
@@ -1548,7 +1548,12 @@ function disegnaMio(){
     const T = {rinnova: "Vuoi un occhiale nuovo? Passa dal tuo ottico (puoi prenotare da questa pagina): scegli la montatura e l'abbonamento continua con il nuovo canone. Il vecchio lo riconsegni quando ritiri il nuovo.",
       riscatta: `Vuoi comprare l'occhiale usato? Alla scadenza paghi ${euro((mio.ordine.prezzi || {}).riscatto)} una volta, il noleggio si chiude e l'occhiale è tuo.`,
       restituisci: "Vuoi restituire l'occhiale? Alla scadenza lo riporti in ottica entro 15 giorni e l'abbonamento si chiude a fine mese."};
-    const box = $("fineConferma");
+    const box = $("fineConferma"), per = (mio.ordine || {}).periodo;
+    // prima degli ultimi 30 giorni la scelta non si registra: si dice da quando sarà attiva
+    if (per && !per.aperto){
+      apriExtra("Scelta non ancora attiva", `<p><b>Questa scelta sarà attiva dal ${dt(per.preavviso)}</b>, 30 giorni prima della fine dei ${per.mesi || 12} mesi minimi (${dt(per.scadenza)}). Quel giorno ti scriviamo e potrai sceglierla da questa pagina.</p><p class="hint" style="margin-top:8px">${esc(T[b.dataset.fine])}</p><button type="button" class="full" data-close style="margin-top:10px">Ho capito</button>`);
+      return;
+    }
     if (box && !b.dataset.ok){
       box.innerHTML = `<div class="conferma">${esc(T[b.dataset.fine])}<div class="riga"><button type="button" class="verde" id="fineSi">Confermo</button><button type="button" class="grigio" id="fineNo">Annulla</button></div></div>`;
       $("fineNo").onclick = () => { box.innerHTML = ""; };
