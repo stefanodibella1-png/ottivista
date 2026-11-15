@@ -10,7 +10,9 @@ async function elabora(u, ev){
   if (ev.id && (u.f.EventiStripe || []).includes(ev.id)) return {gia: true};
   // ordine non ancora attivato: i rifiuti della banca li gestisce il passaggio «pagamento rifiutato», non i solleciti
   const attivabili = [L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO, L.STATI.CHIUSO];
-  if (!attivabili.includes(u.f.Stato) && !(u.f.Stato === L.STATI.VERIFICA && ev.type === "invoice.paid")) return {ignorato: true};
+  // primo pagamento: Stripe spesso manda «fattura pagata» prima di «pagamento completato» → si registra subito (canone e fattura), lo stato lo cambia l'attivazione
+  const primo = ev.type === "invoice.paid" && u.f.Stato === L.STATI.PAGAMENTO && ((L.parseOrdine(u.f.Ordine).pagamento || {}).stato === "IN CORSO");
+  if (!attivabili.includes(u.f.Stato) && !(u.f.Stato === L.STATI.VERIFICA && ev.type === "invoice.paid") && !primo) return {ignorato: true};
   const o = ev.data.object, meta = metaDi(o);
   const ord = L.parseOrdine(u.f.Ordine); ord.pagamento = ord.pagamento || {};
   const pg = ord.pagamento, ora = new Date().toISOString(), giaPagata = (pg.pagamenti || []).some(x => x.id === o.id);
