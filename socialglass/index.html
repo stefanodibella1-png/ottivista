@@ -60,24 +60,67 @@ input:disabled,select:disabled{background:#f1f3f7;opacity:.7}
 .hero-testo{width:min(560px,48vw)}
 .hero-testo>*{animation:sale .6s cubic-bezier(.2,.8,.2,1) both}
 .hero-testo>*:nth-child(2){animation-delay:.06s}.hero-testo>*:nth-child(3){animation-delay:.12s}.hero-testo>*:nth-child(4){animation-delay:.18s}.hero-testo>*:nth-child(5){animation-delay:.24s}.hero-testo>*:nth-child(6){animation-delay:.3s}
+body::before{content:"";position:fixed;inset:-20% -10% auto auto;width:70vw;height:70vh;z-index:0;pointer-events:none;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(0,105,217,.16),transparent 70%),radial-gradient(closest-side at 30% 70%,rgba(46,125,50,.12),transparent 70%);filter:blur(10px);animation:aurora 16s ease-in-out infinite alternate}
+@keyframes aurora{from{transform:translate(0,0) scale(1)}to{transform:translate(-6vw,5vh) scale(1.12)}}
+.occhiello::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--verde);margin-right:8px;vertical-align:1px;animation:pulsaV 2.4s ease-in-out infinite}
+@keyframes pulsaV{0%,100%{box-shadow:0 0 0 0 rgba(46,125,50,.5)}50%{box-shadow:0 0 0 7px rgba(46,125,50,0)}}
 .occhiello{display:inline-block;margin:0 0 14px;padding:5px 12px;border-radius:999px;background:#fff;border:1px solid var(--bordo);color:var(--notte);font-size:13px;font-weight:600;box-shadow:var(--ombra-s)}
 .hero h1{margin:0;font-size:clamp(34px,4.6vw,60px);line-height:1.04;font-weight:800;color:var(--notte);letter-spacing:-.03em}
-.hero h1 span{display:block;padding-bottom:.08em;background:linear-gradient(90deg,#0069D9,#2E7D32);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero h1 span{display:block;padding-bottom:.08em;background:linear-gradient(90deg,#0069D9,#2E7D32,#0069D9);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:scorre 7s linear infinite}
+@keyframes scorre{to{background-position:-200% 0}}
 .sotto{font-size:clamp(16px,1.35vw,19px);line-height:1.5;color:var(--tenue);margin:14px 0 18px;max-width:34em}
-.prezzo{display:inline-flex;align-items:baseline;gap:8px;padding:10px 18px;border-radius:16px;background:var(--notte);color:#fff;box-shadow:var(--ombra)}
+.prezzo{position:relative;overflow:hidden;display:inline-flex;align-items:baseline;gap:8px;padding:11px 20px;border-radius:16px;background:linear-gradient(120deg,#0A1F5C,#0B3A8F 60%,#0A1F5C);color:#fff;box-shadow:0 10px 28px rgba(10,31,92,.28)}
+.prezzo::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.22) 50%,transparent 60%);transform:translateX(-100%);animation:riflesso 5.5s ease-in-out infinite}
 .prezzo b{font-size:clamp(20px,2vw,26px);letter-spacing:-.02em}.prezzo small{font-size:14px;opacity:.85}
 .cta{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 22px}
 .cta button{margin:0;padding:13px 22px;font-size:16px;border-radius:14px}
+#come-funziona{background:linear-gradient(135deg,#0069D9,#0052AA);box-shadow:0 8px 20px rgba(0,82,170,.28)}
+#come-funziona::after{content:"→";display:inline-block;margin-left:8px;transition:transform .18s}
+@media (hover:hover){ #come-funziona:hover::after{transform:translateX(4px)} }
 #hoCodice{background:#fff;color:var(--notte);border-color:var(--bordo)}
 #hoCodice:hover{border-color:var(--blu);color:var(--blu)}
 .tre-passi{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .tre-passi li{background:rgba(255,255,255,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--bordo);border-radius:var(--raggio);padding:12px 14px;font-size:14px;line-height:1.4;color:var(--tenue);box-shadow:var(--ombra-s);transition:transform .18s,box-shadow .18s}
 @media (hover:hover){ .tre-passi li:hover{transform:translateY(-3px);box-shadow:var(--ombra)} }
 .tre-passi b{display:block;color:var(--notte);font-size:15px;margin-bottom:2px}
-.tre-passi i{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--campo);color:var(--blu);font-style:normal;font-weight:800;margin-bottom:8px}
-.ill{display:block;position:fixed;left:0;bottom:0;width:min(70vw,1200px);height:auto;z-index:0;pointer-events:none;user-select:none;mix-blend-mode:multiply}
-.ill-mobile{display:none}
-@media (max-width:1100px){ .hero-testo{width:min(520px,56vw)} .tre-passi{grid-template-columns:1fr} .ill{width:52vw} }
+.tre-passi i{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#0069D9,#0A1F5C);color:#fff;font-style:normal;font-weight:800;margin-bottom:8px}
+/* illustrazione animata: le persone «respirano», gli occhiali brillano, dai telefoni salgono piccole notifiche */
+.scena{pointer-events:none;user-select:none;mix-blend-mode:multiply;container-type:inline-size;--b:3.4cqw;--su:-9cqw}
+.scena-m{--b:8cqw;--su:-20cqw}
+.scena img{display:block;width:100%;height:auto}
+.scena-pc{display:block;position:fixed;left:0;bottom:0;width:min(70vw,1200px);aspect-ratio:1920/1080;z-index:0}
+.scena-pc .meta{position:absolute;inset:0;animation:respiro 5.5s ease-in-out infinite}
+.scena-pc .m1{clip-path:inset(0 64.1% 0 0)}
+.scena-pc .m2{clip-path:inset(0 0 0 35.9%);animation-delay:-2.6s;animation-duration:6.4s}
+.scena-m{display:none;position:relative}
+.scena-m img{animation:respiro 6s ease-in-out infinite}
+@keyframes respiro{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.brillio{position:absolute;width:20px;height:20px;width:calc(var(--b)*.6);height:calc(var(--b)*.6);margin:-10px 0 0 -10px;margin:calc(var(--b)*-.3) 0 0 calc(var(--b)*-.3);background:#F5B301;opacity:0;clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);animation:brilla 4.6s ease-in-out infinite}
+@keyframes brilla{0%,62%,100%{opacity:0;transform:scale(.2) rotate(0)}74%{opacity:1;transform:scale(1.15) rotate(40deg)}86%{opacity:0;transform:scale(.3) rotate(90deg)}}
+.bolla{position:absolute;display:grid;place-items:center;width:34px;height:34px;width:var(--b);height:var(--b);margin-left:-17px;margin-left:calc(var(--b)*-.5);border-radius:50% 50% 50% 18%;background:#D9E8FF;color:#0052AA;font-size:16px;font-size:calc(var(--b)*.47);font-weight:800;line-height:1;opacity:0;animation:vola 7s ease-out infinite}
+@keyframes vola{0%{opacity:0;transform:translateY(0) scale(.5)}12%{opacity:1;transform:translateY(calc(var(--su,-92px)*.15)) scale(1)}55%{opacity:1}80%,100%{opacity:0;transform:translateY(var(--su,-92px)) scale(.9)}}
+@media (prefers-reduced-motion:reduce){ .scena *,body::before,.hero h1 span,.prezzo::after,.occhiello::before{animation:none!important} }
+
+/* l'occhiale sociale */
+.sociale{background:rgba(255,255,255,.86);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--bordo);border-radius:22px;padding:18px 20px;box-shadow:var(--ombra);animation:sale .7s .25s cubic-bezier(.2,.8,.2,1) both;text-align:left}
+.sociale h2{margin:0;font-size:clamp(22px,2.1vw,28px);font-weight:800;color:var(--verde-scuro);letter-spacing:-.02em}
+.sociale h2 span{color:var(--notte)}
+.soc-lead{margin:4px 0 12px;font-size:clamp(16px,1.3vw,18px);font-weight:650;color:var(--notte);line-height:1.35}
+.sociale ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.sociale li{display:grid;grid-template-columns:34px 1fr;gap:11px;align-items:start;font-size:14.5px;line-height:1.42;color:var(--tenue);animation:sale .6s cubic-bezier(.2,.8,.2,1) both}
+.sociale li:nth-child(1){animation-delay:.45s}.sociale li:nth-child(2){animation-delay:.6s}.sociale li:nth-child(3){animation-delay:.75s}
+.sociale li b{color:var(--notte)}
+.sociale li i{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;font-style:normal;font-weight:800;font-size:17px;color:#fff;background:linear-gradient(135deg,#0069D9,#0A1F5C)}
+.sociale li:nth-child(2) i{background:linear-gradient(135deg,#1F8A4C,#1B5E20)}.sociale li:nth-child(3) i{background:linear-gradient(135deg,#E0553C,#B3261E)}
+body.cliente .sociale{display:none}
+@media (min-width:1101px) and (min-height:800px){
+  .hero{grid-template-columns:minmax(0,1fr) auto;column-gap:40px;align-items:start}
+  .hero-testo{grid-column:2;grid-row:1}
+  .sociale{grid-column:1;grid-row:1;justify-self:start;width:min(470px,100%);margin-top:6px}
+}
+@media (min-width:769px) and (max-width:1100px), (min-width:1101px) and (max-height:799.98px){ .sociale{width:min(560px,48vw);margin-top:16px} }
+@media (max-width:1100px){ .hero-testo{width:min(520px,56vw)} .sociale{width:min(520px,56vw)} .tre-passi{grid-template-columns:1fr} .scena-pc{width:52vw} }
 @media (max-width:768px){
   .testata{display:none}
   #mobile-image{display:block;width:min(64vw,260px);height:auto;margin:calc(env(safe-area-inset-top,0px) + 18px) auto 10px;animation:scende .7s cubic-bezier(.2,.8,.2,1) both}
@@ -88,8 +131,9 @@ input:disabled,select:disabled{background:#f1f3f7;opacity:.7}
   .cta{justify-content:center}.cta button{flex:1 1 150px}
   .tre-passi{text-align:left}
   .tre-passi li{display:grid;grid-template-columns:28px 1fr;column-gap:12px;align-items:start}.tre-passi i{margin:2px 0 0;grid-row:span 2}.tre-passi li span{grid-column:2}
-  .ill{display:none}
-  .ill-mobile{display:block;width:100%;max-width:440px;height:auto;margin:18px auto 0}
+  .scena-pc{display:none}
+  .scena-m{display:block;width:100%;max-width:440px;margin:18px auto 0}
+  .sociale{width:auto;margin-top:16px}
   body{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 66px)}
   .area-mobile{display:flex}
 }
@@ -105,7 +149,7 @@ body.con-scan:not(.cliente) .azioni-cliente{position:fixed;left:0;right:0;bottom
 #scan-btn{background-color:var(--verde)}#scan-btn:hover{background-color:var(--verde-scuro)}
 #mio-ordine{background-color:var(--notte)}
 body.cliente{padding-bottom:0}
-@media (min-width:769px){ body.cliente .testata{justify-content:center} body.cliente .ill{opacity:.5} }
+@media (min-width:769px){ body.cliente .testata{justify-content:center} body.cliente .scena-pc{opacity:.5} }
 
 /* finestre: scheda centrata su computer, foglio dal basso su telefono */
 .popup{position:fixed;inset:0;background-color:rgba(10,31,92,.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:20;overflow:auto;animation:velo .2s both}
@@ -398,9 +442,29 @@ summary{min-height:24px}
         <li><i>3</i><b>Attivi dal telefono</b><span>Paghi il primo mese e li ritiri in ottica.</span></li>
       </ol>
     </div>
-    <img class="ill-mobile" src="assets/sfondo-mobile-socialglass.jpg" alt="" width="720" height="870">
+    <section class="sociale" aria-labelledby="socTit">
+      <h2 id="socTit"><span>L'occhiale</span> sociale</h2>
+      <p class="soc-lead">Vedere bene è un diritto di tutti, non un lusso.</p>
+      <ul>
+        <li><i aria-hidden="true">€</i><span><b>Alla portata di tutti.</b> Un piccolo canone al mese, invece di una grossa spesa tutta insieme.</span></li>
+        <li><i aria-hidden="true">⌂</i><span><b>Vicino a te.</b> Ti seguono il tuo CAF e l'ottico sotto casa.</span></li>
+        <li><i aria-hidden="true">♥</i><span><b>Niente si butta.</b> Gli occhiali restituiti vengono rigenerati e donati a un'associazione benefica.</span></li>
+      </ul>
+    </section>
+    <div class="scena scena-m" aria-hidden="true">
+      <img src="assets/sfondo-mobile-socialglass.jpg" alt="" width="720" height="870">
+      <b class="brillio" style="left:29.4%;top:9.2%"></b><b class="brillio" style="left:68.6%;top:10.2%;animation-delay:1.7s"></b>
+      <b class="bolla" style="left:40%;top:13%">👓</b><b class="bolla" style="left:63%;top:16.5%;animation-delay:2.6s">💙</b>
+    </div>
   </main>
-  <img class="ill" src="assets/sfondo-socialglass.jpg" alt="" width="1920" height="1080">
+  <div class="scena scena-pc" aria-hidden="true">
+    <img class="meta m1" src="assets/sfondo-socialglass.jpg" alt="" width="1920" height="1080">
+    <img class="meta m2" src="assets/sfondo-socialglass.jpg" alt="" width="1920" height="1080">
+    <b class="brillio" style="left:10.4%;top:22.6%"></b><b class="brillio" style="left:25.4%;top:21.8%;animation-delay:1.1s"></b>
+    <b class="brillio" style="left:44.7%;top:21.3%;animation-delay:2.3s"></b><b class="brillio" style="left:59.3%;top:21.8%;animation-delay:3.2s"></b>
+    <b class="bolla" style="left:9.6%;top:27%">👓</b><b class="bolla" style="left:21%;top:23.5%;animation-delay:1.8s">💙</b>
+    <b class="bolla" style="left:48.4%;top:22.5%;animation-delay:3.4s">✓</b><b class="bolla" style="left:57%;top:25.5%;animation-delay:5s">⭐</b>
+  </div>
 
   <!-- azioni del cliente (link personale) -->
   <div class="azioni-cliente">
@@ -688,9 +752,9 @@ summary{min-height:24px}
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1798500000"></script>
-<script src="listini.js?v=1798500000"></script>
-<script src="app.js?v=1798500000"></script>
-<script src="prove-tempo.js?v=1798500000"></script>
+<script src="cf.js?v=1798600000"></script>
+<script src="listini.js?v=1798600000"></script>
+<script src="app.js?v=1798600000"></script>
+<script src="prove-tempo.js?v=1798600000"></script>
 </body>
 </html>
