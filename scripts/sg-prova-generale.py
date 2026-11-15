@@ -186,7 +186,7 @@ async def main():
                 print("  rinnovo forzato non possibile:", pulito(e))
                 # come un rinnovo: fattura del canone legata all'abbonamento, addebitata subito sulla carta che rifiuta
                 stripe("POST", "invoiceitems", {"customer": cus, "subscription": subid, "currency": "eur", "amount": 990, "description": "Canone mensile (prova generale)"})
-                inv0 = stripe("POST", "invoices", {"customer": cus, "subscription": subid, "collection_method": "charge_automatically", "pending_invoice_items_behavior": "include", "default_payment_method": pmko})
+                inv0 = stripe("POST", "invoices", {"customer": cus, "subscription": subid, "collection_method": "charge_automatically", "default_payment_method": pmko})
                 print("  fattura di rinnovo creata:", inv0["id"], inv0["status"])
             # la fattura del rinnovo si chiude e si prova a pagare subito (Stripe altrimenti aspetta circa un'ora)
             for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"]:
