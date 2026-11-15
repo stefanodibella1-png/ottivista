@@ -291,7 +291,8 @@ const local = {
     if (name === "fine-periodo"){
       const u = s.utenti.find(x => x.Univoco === b.univoco); if (!u) return ko(404, "Cliente non trovato.");
       const D = {rinnova: "Rinnovo con occhiale nuovo", riscatta: "Riscatto: tiene l'occhiale", restituisci: "Restituzione e chiusura"};
-      const od = ord(u); od.finePeriodo = {scelta: b.scelta, descrizione: D[b.scelta], il: new Date().toISOString()}; u.Ordine = JSON.stringify(od);
+      const od = ord(u), pp = LISTINI.periodo(od); if (pp && !pp.aperto) return ko(409, `La scelta si fa dal ${new Date(pp.preavviso).toLocaleDateString("it-IT")}.`);
+      od.finePeriodo = {scelta: b.scelta, descrizione: D[b.scelta], il: new Date().toISOString()}; u.Ordine = JSON.stringify(od);
       return done({ok: true, descrizione: D[b.scelta]});
     }
     return ko(404, "Non trovato");
@@ -1395,8 +1396,8 @@ function boxAbbonamento(od){
   const fp = od.finePeriodo;
   const stato = per.scaduto ? `La durata minima è finita il ${dt(per.scadenza)}: l'abbonamento continua mese per mese.`
     : per.aperto ? `<b>Mancano ${per.giorni} giorni</b> alla fine della durata minima (${dt(per.scadenza)}). Scegli cosa fare:`
-    : `Dal ${dt(per.preavviso)} ti scriviamo e scegli cosa fare. Se vuoi, puoi scegliere già adesso.`;
-  const aperte = per.aperto || per.scaduto || !!fp;
+    : `Dal <b>${dt(per.preavviso)}</b>, 30 giorni prima della fine, ti scriviamo e scegli qui cosa fare.`;
+  const aperte = per.aperto || per.scaduto;
   const bottoni = fp && fp.eseguita ? "" : `<div class="scelte" style="margin-top:8px">
         <button type="button" class="${fp && fp.scelta === "rinnova" ? "verde" : "grigio"} full" data-fine="rinnova">Occhiale nuovo</button>
         <button type="button" class="${fp && fp.scelta === "riscatta" ? "verde" : "grigio"} full" data-fine="riscatta">Lo compro usato${p.riscatto ? ` (${euro(p.riscatto)})` : ""}</button>
@@ -1407,7 +1408,7 @@ function boxAbbonamento(od){
       ${fp ? `<div class="esito ok" style="margin-top:8px">Hai scelto: <b>${esc(fp.descrizione)}</b>.${fp.eseguita ? "" : per.scaduto ? " La eseguiamo a breve." : ` Vale dal ${dt(per.scadenza)}: puoi cambiare idea fino ad allora.`}</div>` : ""}
       ${per.aperto && !per.chiuso && !(fp && fp.eseguita) && !(fp && fp.scelta !== "rinnova") ? `<button type="button" class="grigio full" id="mpRinnovaCat" style="margin:6px 0">Guarda le montature nuove nella tua ottica</button>` : ""}
       ${aperte ? regoleFine(p, per) + bottoni
-        : `<details class="regole-box"><summary>Cosa succede alla scadenza</summary>${regoleFine(p, per)}${bottoni}</details>`}
+        : `<details class="regole-box"><summary>Cosa succede alla scadenza</summary>${regoleFine(p, per)}</details>`}
     </div>`;
 }
 function disegnaMio(){

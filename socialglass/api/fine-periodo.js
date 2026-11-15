@@ -12,6 +12,9 @@ module.exports = L.wrap(async (req, res) => {
   if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'abbonamento non è attivo."});
   if (ord.finePeriodo && ord.finePeriodo.eseguita) return L.send(res, 409, {errore: "La scelta è già stata eseguita."});
   const ora = new Date().toISOString();
+  // la scelta si fa negli ultimi 30 giorni della durata minima (o dopo), non prima
+  const p0 = L.PREZZI.periodo(ord, ora);
+  if (p0 && !p0.aperto) return L.send(res, 409, {errore: `La scelta si fa dal ${new Date(p0.preavviso).toLocaleDateString("it-IT", {timeZone: "Europe/Rome"})}, 30 giorni prima della fine dei mesi minimi: ti scriviamo noi.`});
   ord.finePeriodo = {scelta: b.scelta, descrizione: SCELTE[b.scelta], il: ora};
   ord.aggiornato = ora;
   // a durata minima già finita la scelta si esegue subito
