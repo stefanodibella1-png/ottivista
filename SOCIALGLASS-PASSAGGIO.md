@@ -104,13 +104,15 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Prova locale: `prove-socialglass/tempo.py [riscatta|restituisci|rinnova]` (PC, tablet, telefono e laboratorio).
 
 ## In sospeso (decide Stefano)
-- Idee rimandate: 4 mappa delle ottiche, 8 prova virtuale dal vivo; punti UX 4, 5, 7 della lista del 12/11 (ordine consegnato compatto, icone in fondo, home con soli 3 passi).
-- IBAN/bonifico ai partner: rimandato. Il rimborso del recesso parte dal pannello dopo il controllo (D2, modifica 11).
-- **Da ricordare a Stefano:** creare la password delle copie e aggiungerla come secret GitHub `SG_BACKUP_PASSWORD` (conservarla anche fuori da GitHub); accendere l'addebito dell'usato (D3) solo dopo l'ok dell'avvocato sulla clausola 5-bis.
-- **Passaggio ai pagamenti veri (modifica 17):** Stefano attiva l'account Stripe e mette la chiave `sk_live_` nel secret `STRIPE_SECRET_KEY` → rilancio `socialglass-deploy` (webhook creato da solo) → «Rimuovi i dati di prova» dal pannello guardando l'elenco → pagamento vero di controllo fatto da Stefano e rimborsato → ricollegare i conti Stripe dei partner. Prima del passaggio, `socialglass-dati-prova` con `anteprima-pulizia` dice quali clienti toglierebbe.
-- WhatsApp/SMS automatici: codice pronto, servono gli account (WhatsApp Business o Twilio) e le chiavi come secrets; poi «Prova dei messaggi» in Impostazioni.
-- Da provare una volta con Stripe vero (carta di prova 4242…): cambia carta/ricevute, rinnovo che prosegue senza ripagare, riscatto addebitato, restituzione che chiude a fine mese.
-- Clienti di prova sul sito vero: SGPROVAREC, SGPROVAANN, SGPROVARIT, SGPROVALAB, SGPROVAVOT (workflow `socialglass-dati-prova`, azione `clienti-elimina` per toglierli).
+**Bloccanti prima dei clienti veri** (aggiornato 15/11/2026 sera):
+1. Stripe vero: attivare l'account (dati, documento, IBAN) e mettere `sk_live_` nel secret `STRIPE_SECRET_KEY` → rilascio (webhook da solo) → «Rimuovi i dati di prova» guardando l'elenco (oggi tutti i clienti sono di prova, Lula compresa) → pagamento vero di controllo e rimborso → ricollegare i conti Stripe di CAF e ottiche.
+2. Dati del titolare nel pannello (Impostazioni): ragione sociale, P.IVA, indirizzo, email, PEC, telefono. Oggi vuoti: compaiono in contratto, informativa e fatture.
+3. Fatture: impostazioni di fatturazione (regime, aliquota, dati fiscali) confermate dal commercialista e Aruba (secret `ARUBA_USER`, `ARUBA_PASSWORD`), poi invio in produzione.
+4. Avvocato: condizioni e informativa privacy (dati sanitari, «inizio lavorazione», clausola 5-bis per D3).
+5. Pilota: 1 CAF, 1-2 ottiche vere con giacenze delle montature esposte e il laboratorio; 4 settimane con il riquadro «Pilota» senza differenze, poi apertura a tutti.
+**Da fare presto, non bloccanti:** password delle copie (`SG_BACKUP_PASSWORD`); secondo fattore dell'amministratore; decisione su SEPA; WhatsApp Business o Twilio (finché manca, gli avvisi li manda a mano l'ottica e i solleciti l'amministratore); Vercel Pro all'apertura a tutti (scelta di Stefano: piano gratuito durante il pilota).
+**Rimandati:** mappa delle ottiche, prova virtuale dal vivo, punti UX 4, 5, 7 del 12/11, bonifico ai partner. Il rimborso del recesso parte dal pannello dopo il controllo (D2).
+**Limiti noti:** due omonimi nati lo stesso giorno vengono bloccati (sblocco a mano); i rinnovi fatti prima del 15/11 non hanno la data di consegna del periodo vecchio (nessun compenso per quel periodo; solo clienti di prova).
 
 ## Prove in locale
 Cartella `prove-socialglass/` (vedi il suo README).
