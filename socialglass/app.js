@@ -1647,20 +1647,42 @@ $("qr-riprova").addEventListener("click", () => { $("popup").hidden = true; star
 { const m = location.pathname.match(/\/(caf|ottico|admin)\/?$/);
   if (m && !UNIVOCO) ready.finally(() => m[1] === "admin" ? apriAdmin() : entra(m[1])); }
 $("formManuale").addEventListener("submit", e => { e.preventDefault(); const c = $("codiceManuale").value.trim(); if (!c) return; const d = scanDopo; stopScan(); d ? d.onCodice(c) : verificaQR(c); });
-/* ---------- effetti della home: la lente mette a fuoco l'illustrazione, le schede si inclinano, un alone segue il mouse ---------- */
+/* ---------- effetti della home: lente che mette a fuoco (mouse, dito o da sola), titolo che cambia, tre passi a turno, schede 3D ---------- */
 (() => {
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const scene = [...document.querySelectorAll(".scena")].map(el => ({el, x: +el.dataset.cx, y: +el.dataset.cy}));
+  const fermo = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // tre passi: si accendono a turno; un tocco (o il mouse sopra) sceglie il passo e ferma il giro
+  const passi = [...document.querySelectorAll(".tre-passi li")], ol = document.querySelector(".tre-passi"); let giroPassi = 0;
+  const passo = n => { passi.forEach((li, i) => li.classList.toggle("attivo", i === n)); if (ol) ol.dataset.passo = n + 1; };
+  passi.forEach((li, i) => { const scelgo = () => { clearInterval(giroPassi); passo(i); }; li.addEventListener("click", scelgo); li.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") scelgo(); }); });
+  if (passi.length){ passo(0); if (!fermo){ let n = 0; giroPassi = setInterval(() => { if (!document.hidden) passo(n = (n + 1) % passi.length); }, 3200); } }
+  if (fermo) return;
+  // titolo: la seconda riga cambia parola
+  const parole = [...document.querySelectorAll(".hero h1 .gira em")]; let pi = 0;
+  if (parole.length > 1) setInterval(() => { if (document.hidden) return; const prima = parole[pi]; pi = (pi + 1) % parole.length;
+    prima.classList.remove("on"); prima.classList.add("via"); parole[pi].classList.remove("via"); parole[pi].classList.add("on"); setTimeout(() => prima.classList.remove("via"), 700); }, 2800);
+  // lente
+  const scene = [...document.querySelectorAll(".scena")].map(el => ({el, x: +el.dataset.cx, y: +el.dataset.cy, tx: 0, ty: 0, presa: false, fino: 0}));
   let mx = 0, my = 0, quando = -1e9;
   addEventListener("pointermove", e => { if (e.pointerType !== "mouse") return; mx = e.clientX; my = e.clientY; quando = performance.now();
     document.body.style.setProperty("--px", mx + "px"); document.body.style.setProperty("--py", my + "px"); }, {passive: true});
+  for (const s of scene){
+    const dove = e => { const r = s.el.getBoundingClientRect(); s.tx = Math.max(2, Math.min(98, (e.clientX - r.left) / r.width * 100)); s.ty = Math.max(4, Math.min(96, (e.clientY - r.top) / r.height * 100)); };
+    const lente = s.el.querySelector(".lente"), resp = s.el.querySelector(".resp");
+    // con il dito (o tenendo premuto il mouse) la lente si trascina; lasciata, resta ferma 5 secondi e poi riparte da sola
+    lente.addEventListener("pointerdown", e => { e.preventDefault(); try { lente.setPointerCapture(e.pointerId); } catch(_){} s.presa = true; s.el.classList.add("presa"); dove(e); });
+    lente.addEventListener("pointermove", e => { if (s.presa) dove(e); });
+    const lascia = () => { if (!s.presa) return; s.presa = false; s.el.classList.remove("presa"); s.fino = performance.now() + 5000; };
+    lente.addEventListener("pointerup", lascia); lente.addEventListener("pointercancel", lascia);
+    // un tocco sull'immagine porta lì la lente
+    resp.addEventListener("click", e => { if (e.target === lente) return; dove(e); s.fino = performance.now() + 5000; });
+  }
   const giro = t => {
     if (!document.hidden) for (const s of scene){
       const r = s.el.getBoundingClientRect(); if (!r.width) continue;
-      // senza mouse (telefono) o dopo 2,5 secondi fermi la lente passa da sola sui volti
-      let tx = +s.el.dataset.cx + (+s.el.dataset.ax) * Math.sin(t / 2300), ty = +s.el.dataset.cy + 4 * Math.sin(t / 1500);
-      if (t - quando < 2500 && mx < r.right + 80 && my > r.top - 80){ tx = Math.max(2, Math.min(98, (mx - r.left) / r.width * 100)); ty = Math.max(4, Math.min(96, (my - r.top) / r.height * 100)); }
-      s.x += (tx - s.x) * .1; s.y += (ty - s.y) * .1;
+      let tx = +s.el.dataset.cx + (+s.el.dataset.ax) * Math.sin(t / 2300), ty = +s.el.dataset.cy + 4 * Math.sin(t / 1500), k = .1;
+      if (s.presa || t < s.fino){ tx = s.tx; ty = s.ty; k = s.presa ? .45 : .2; }
+      else if (t - quando < 2500 && mx < r.right + 80 && my > r.top - 80){ tx = Math.max(2, Math.min(98, (mx - r.left) / r.width * 100)); ty = Math.max(4, Math.min(96, (my - r.top) / r.height * 100)); }
+      s.x += (tx - s.x) * k; s.y += (ty - s.y) * k;
       s.el.style.setProperty("--lx", s.x.toFixed(2) + "%"); s.el.style.setProperty("--ly", s.y.toFixed(2) + "%");
     }
     requestAnimationFrame(giro);

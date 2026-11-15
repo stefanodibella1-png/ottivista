@@ -70,7 +70,18 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 @keyframes pulsaV{0%,100%{box-shadow:0 0 0 0 rgba(46,125,50,.5)}50%{box-shadow:0 0 0 7px rgba(46,125,50,0)}}
 .occhiello{display:inline-block;margin:0 0 14px;padding:5px 12px;border-radius:999px;background:#fff;border:1px solid var(--bordo);color:var(--notte);font-size:13px;font-weight:600;box-shadow:var(--ombra-s)}
 .hero h1{margin:0;font-size:clamp(34px,4.6vw,60px);line-height:1.04;font-weight:800;color:var(--notte);letter-spacing:-.03em}
-.hero h1 span{display:block;padding-bottom:.08em;background:linear-gradient(90deg,#0069D9,#2E7D32,#0069D9);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:scorre 7s linear infinite}
+.hero h1 .riga1{display:block;white-space:nowrap}
+.occhialino{display:inline-block;width:1.25em;height:.6em;vertical-align:.02em;margin-left:.08em;fill:none;stroke:#0069D9;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.occhialino path,.occhialino rect{stroke-dasharray:100;animation:disegna 1.5s .7s ease-out backwards}
+.occhialino rect{fill:rgba(0,105,217,.10)}
+.occhialino .luccica{stroke:#7FB2F5;stroke-width:2.4;stroke-dasharray:none;animation:luccica 3.6s 2.2s ease-in-out infinite backwards}
+@keyframes disegna{from{stroke-dashoffset:100;fill-opacity:0}}
+@keyframes luccica{0%,70%,100%{opacity:.25}82%{opacity:1}}
+.hero h1 .gira{display:grid;padding-bottom:.08em;overflow:hidden}
+.hero h1 .gira em{grid-area:1/1;font-style:normal;background:linear-gradient(90deg,#0069D9,#2E7D32,#0069D9);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:scorre 7s linear infinite;
+  opacity:0;transform:translateY(60%);filter:blur(8px);transition:opacity .55s,transform .55s cubic-bezier(.2,.8,.2,1),filter .55s}
+.hero h1 .gira em.on{opacity:1;transform:none;filter:none}
+.hero h1 .gira em.via{opacity:0;transform:translateY(-60%);filter:blur(8px)}
 @keyframes scorre{to{background-position:-200% 0}}
 .sotto{font-size:clamp(16px,1.35vw,19px);line-height:1.5;color:var(--tenue);margin:14px 0 18px;max-width:34em}
 .prezzo{position:relative;overflow:hidden;display:inline-flex;align-items:baseline;gap:8px;padding:11px 20px;border-radius:16px;background:linear-gradient(120deg,#0A1F5C,#0B3A8F 60%,#0A1F5C);color:#fff;box-shadow:0 10px 28px rgba(10,31,92,.28)}
@@ -88,6 +99,11 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 .tre-passi li,.sociale{position:relative;transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out,box-shadow .18s;will-change:transform}
 .tre-passi li::after,.sociale::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .25s;
   background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(0,105,217,.16),rgba(46,125,50,.06) 45%,transparent 70%)}
+.tre-passi li{cursor:pointer}
+.tre-passi li.attivo{border-color:#8DB9F2;box-shadow:0 0 0 3px rgba(0,105,217,.14),0 12px 28px rgba(0,82,170,.16)}
+.tre-passi li.attivo i{animation:batte 1.6s ease-in-out infinite}
+.tre-passi li:not(.attivo) i{background:var(--campo);color:var(--blu)}
+@keyframes batte{0%,100%{transform:scale(1)}50%{transform:scale(1.16)}}
 .inclina{box-shadow:0 18px 40px rgba(10,31,92,.18)!important}.inclina::after{opacity:1!important}
 .tre-passi b{display:block;color:var(--notte);font-size:15px;margin-bottom:2px}
 .tre-passi i{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#0069D9,#0A1F5C);color:#fff;font-style:normal;font-weight:800;margin-bottom:8px}
@@ -100,10 +116,14 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 .scena-m{display:none;position:relative}
 .scena .sfoc{filter:blur(.42cqw) saturate(.5) brightness(1.04)}
 .scena-m .sfoc{filter:blur(.9cqw) saturate(.5) brightness(1.04)}
-.scena .fuoco{position:absolute;inset:0;clip-path:circle(var(--r) at var(--lx) var(--ly));transform-origin:var(--lx) var(--ly);transform:scale(1.12);background:#fff}
+.scena .fuoco{position:absolute;inset:0;clip-path:circle(calc(var(--r)*.87) at var(--lx) var(--ly));transform-origin:var(--lx) var(--ly);transform:scale(1.12);background:#fff}
 .lente{position:absolute;left:var(--lx);top:var(--ly);width:calc(var(--r)*2);height:calc(var(--r)*2);margin:calc(var(--r)*-1) 0 0 calc(var(--r)*-1);border-radius:50%;
   border:calc(var(--r)*.075) solid #0A1F5C;box-shadow:inset 0 0 0 calc(var(--r)*.03) #7FB2F5,0 calc(var(--r)*.1) calc(var(--r)*.25) rgba(10,31,92,.25);
   background:radial-gradient(circle at 30% 26%,rgba(140,190,255,.38),transparent 34%),radial-gradient(circle at 72% 78%,rgba(120,220,160,.22),transparent 40%)}
+.scena .lente{pointer-events:auto;touch-action:none;cursor:grab;transition:width .2s,height .2s,margin .2s}
+.scena .resp{pointer-events:auto}
+.scena.presa{--r:13cqw}.scena-m.presa{--r:25cqw}.scena.presa .lente{cursor:grabbing}
+.hero{pointer-events:none}.hero>*{pointer-events:auto}
 .lente::after{content:"";position:absolute;left:84%;top:84%;width:46%;height:13%;border-radius:99px;background:#0A1F5C;transform:rotate(45deg);transform-origin:0 50%}
 .dida{position:absolute;left:36%;bottom:.3cqw;transform:translateX(-50%);margin:0;white-space:nowrap;font-size:clamp(11px,1.25cqw,14px);font-weight:700;color:#0A1F5C;letter-spacing:.01em}
 .scena-m .dida{position:static;transform:none;text-align:center;font-size:13px;margin-top:6px;white-space:normal}
@@ -111,7 +131,7 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 .bolla{position:absolute;display:grid;place-items:center;width:var(--b);height:var(--b);margin-left:calc(var(--b)*-.5);border-radius:50% 50% 50% 18%;background:#D9E8FF;color:#0052AA;font-size:calc(var(--b)*.47);font-weight:800;line-height:1;opacity:0;animation:vola 7s ease-out infinite}
 @keyframes vola{0%{opacity:0;transform:translateY(0) scale(.5)}12%{opacity:1;transform:translateY(calc(var(--su,-92px)*.15)) scale(1)}55%{opacity:1}80%,100%{opacity:0;transform:translateY(var(--su,-92px)) scale(.9)}}
 @media (prefers-reduced-motion:reduce){
-  .scena *,body::before,body::after,.hero h1 span,.prezzo::after,.occhiello::before{animation:none!important}
+  .scena *,body::before,body::after,.hero h1 .gira em,.occhialino *,.prezzo::after,.occhiello::before,.tre-passi li.attivo i{animation:none!important}
   .scena .sfoc{filter:none}.scena .fuoco,.lente,.dida{display:none}
 }
 
@@ -141,9 +161,18 @@ body.cliente .sociale{display:none}
   .hero-testo{width:auto}
   .hero h1{font-size:clamp(32px,9.6vw,44px)}
   .sotto{margin:12px auto 16px}
-  .cta{justify-content:center}.cta button{flex:1 1 150px}
-  .tre-passi{text-align:left}
-  .tre-passi li{display:grid;grid-template-columns:28px 1fr;column-gap:12px;align-items:start}.tre-passi i{margin:2px 0 0;grid-row:span 2}.tre-passi li span{grid-column:2}
+  .cta{justify-content:center}.cta button{flex:1 1 150px;padding:13px 8px;font-size:15px;white-space:nowrap}
+  .tre-passi{position:relative;grid-template-columns:repeat(3,1fr);gap:8px;padding-bottom:58px;text-align:center}
+  .tre-passi::before,.tre-passi::after{content:"";position:absolute;left:16.6%;top:26px;height:3px;border-radius:3px;background:var(--bordo);width:66.8%;z-index:0}
+  .tre-passi::after{background:linear-gradient(90deg,#0069D9,#2E7D32);width:0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+  .tre-passi[data-passo="2"]::after{width:33.4%}.tre-passi[data-passo="3"]::after{width:66.8%}
+  .tre-passi li{position:static;transform:none;will-change:auto;background:none;border:0;box-shadow:none!important;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0;display:grid;justify-items:center}
+  .tre-passi li::after{display:none}
+  .tre-passi i{position:relative;z-index:1;width:40px;height:40px;border-radius:50%;font-size:17px;margin:6px 0 6px;box-shadow:0 0 0 5px #fff}
+  .tre-passi b{font-size:13px;line-height:1.25}
+  .tre-passi li span{position:absolute;left:0;right:0;bottom:0;min-height:48px;display:grid;place-items:center;padding:6px 12px;border-radius:14px;background:#fff;border:1px solid var(--bordo);box-shadow:var(--ombra-s);font-size:14px;line-height:1.35;color:var(--testo);
+    opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s;pointer-events:none}
+  .tre-passi li.attivo span{opacity:1;transform:none}
   .scena-pc{display:none}
   .scena-m{display:block;width:100%;max-width:440px;margin:18px auto 0}
   .sociale{width:auto;margin-top:16px}
@@ -445,12 +474,13 @@ summary{min-height:24px}
   <main class="hero">
     <div class="hero-testo">
       <p class="occhiello">Tramite il tuo CAF e l'ottico convenzionato</p>
-      <h1>Occhiali nuovi <span>ogni anno</span></h1>
+      <h1 aria-label="Occhiali nuovi ogni anno, per tutti, vicino a te"><span class="riga1" aria-hidden="true">Occhiali nuovi <svg class="occhialino" viewBox="0 0 66 30" aria-hidden="true"><path pathLength="100" d="M2 9h6M58 9h6M27 13c2-3 10-3 12 0"/><rect pathLength="100" x="6" y="5" width="22" height="19" rx="8"/><rect pathLength="100" x="38" y="5" width="22" height="19" rx="8"/><path class="luccica" d="M11 17l6-8M43 17l6-8"/></svg></span>
+        <span class="gira" aria-hidden="true"><em class="on">ogni anno</em><em>per tutti</em><em>vicino a te</em></span></h1>
       <p class="sotto">Montatura e lenti graduate in abbonamento, controllo della vista incluso.</p>
       <div class="prezzo"><b>Paghi un mese alla volta, senza pensieri</b></div>
       <div class="cta"><button id="come-funziona" type="button">Come funziona</button><button id="hoCodice" type="button">Ho già il mio codice</button></div>
       <ol class="tre-passi">
-        <li><i>1</i><b>Ti registri al CAF</b><span>Ricevi sul telefono il tuo link personale.</span></li>
+        <li class="attivo"><i>1</i><b>Ti registri al CAF</b><span>Ricevi sul telefono il tuo link personale.</span></li>
         <li><i>2</i><b>Scegli dall'ottico</b><span>Montatura e lenti su misura per te.</span></li>
         <li><i>3</i><b>Attivi dal telefono</b><span>Paghi il primo mese e li ritiri in ottica.</span></li>
       </ol>
@@ -467,7 +497,7 @@ summary{min-height:24px}
     <div class="scena scena-m" aria-hidden="true" data-cx="49" data-ax="27" data-cy="13">
       <div class="resp"><img class="sfoc" src="assets/sfondo-mobile-socialglass.jpg" alt="" width="720" height="870"><img class="fuoco" src="assets/sfondo-mobile-socialglass.jpg" alt="" width="720" height="870"><i class="lente"></i>
       <b class="bolla" style="left:40%;top:13%">👓</b><b class="bolla" style="left:63%;top:16.5%;animation-delay:2.6s">💙</b></div>
-      <p class="dida">Con gli occhiali giusti è tutta un'altra vista</p>
+      <p class="dida">👆 Sposta la lente con il dito: con gli occhiali giusti è tutta un'altra vista</p>
     </div>
   </main>
   <div class="scena scena-pc" aria-hidden="true" data-cx="36" data-ax="27" data-cy="24">
@@ -763,9 +793,9 @@ summary{min-height:24px}
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1798700000"></script>
-<script src="listini.js?v=1798700000"></script>
-<script src="app.js?v=1798700000"></script>
-<script src="prove-tempo.js?v=1798700000"></script>
+<script src="cf.js?v=1798800000"></script>
+<script src="listini.js?v=1798800000"></script>
+<script src="app.js?v=1798800000"></script>
+<script src="prove-tempo.js?v=1798800000"></script>
 </body>
 </html>
