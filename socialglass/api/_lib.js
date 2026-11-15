@@ -513,7 +513,7 @@ async function portaleStripe(){
 /* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
 async function rinnova(u, {otticoId, caf} = {}){
   const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
-  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
+  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, consegnato: ord.consegnatoIl || "", mesi: ord.prezzi && ord.prezzi.mesi, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
   // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
   // le fatture già contate restano segnate: i canoni del vecchio periodo non si ricontano mai in quello nuovo
@@ -1028,7 +1028,7 @@ function liquidazioniDi(acc){
 }
 // storico degli accordi: ogni accordo vale dal giorno in cui è stato impostato, quelli vecchi restano per i movimenti precedenti
 // compenso di base quando l'amministratore non ha impostato un accordo (importi IVA compresa):
-// ottica = una rata + la spedizione del cliente per ogni abbonamento attivato; CAF = 3 € per ogni abbonamento attivato
+// ottica = una rata + la spedizione del cliente per ogni occhiale consegnato; CAF = 3 € per ogni occhiale consegnato
 const COMPENSO_BASE = {ottica: {tipo: "rata", valore: 0}, caf: {tipo: "fisso", valore: 3}};
 function accordiDi(acc, ruolo){
   let l = Array.isArray(acc && acc.Accordi) ? acc.Accordi.slice() : [];
@@ -1038,20 +1038,54 @@ function accordiDi(acc, ruolo){
   return l.sort((x, y) => String(x.dal).localeCompare(String(y.dal)));
 }
 function accordoAl(l, d){ const g = String(d || "").slice(0, 10); let r = null; for (const x of l) if (String(x.dal) <= g) r = x; return r && r.tipo && (Number(r.valore) || r.tipo === "rata") ? r : null; }
+// periodi di abbonamento del cliente (quelli prima dei rinnovi più quello in corso), ognuno con la sua consegna e i suoi canoni
+function periodiCliente(f){
+  const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, pr = o.prezzi || {};
+  const l = (o.storico || []).filter(st => st.inizio).map(st => ({inizio: st.inizio, consegnato: st.consegnato || "", prec: true, rata: Number(st.rata) || 0,
+    sped: st.spedizione != null ? Number(st.spedizione) || 0 : Number(pr.spedizione) || 0, mesi: Number(st.mesi) || 12, incassi: st.incassi || []}));
+  if (pg.attivatoIl && pg.stato !== "SIMULATO") l.push({inizio: pg.attivatoIl, consegnato: o.consegnatoIl || "", rata: Number(pr.rata) || 0, sped: Number(pr.spedizione) || 0, mesi: Number(pr.mesi) || 12,
+    incassi: incassi(Object.assign({}, o, {storico: []})), chiuso: !!pg.chiuso});
+  return {o, pg, pr, periodi: l};
+}
+// Il compenso matura solo quando l'occhiale è consegnato al cliente (data di consegna):
+// fisso o «una rata + spedizione» alla consegna; a percentuale, ogni canone del periodo dalla consegna in poi (quelli pagati prima maturano il giorno della consegna).
 function righeCompenso(utenti, acc, ruolo){
   const l = accordiDi(acc, ruolo), out = []; if (!l.length) return out;
   const pc = v => String(v).replace(".", ",");
   for (const f of utenti){
-    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, base = {univoco: f.Univoco, cliente: `${nm(f.Nome)} ${nm(f.Cognome)}`.trim()};
-    const pr = o.prezzi || {};
-    const attivazioni = (o.storico || []).filter(st => st.inizio).map(st => ({il: st.inizio, prec: true, rata: Number(st.rata) || 0, sped: st.spedizione != null ? Number(st.spedizione) || 0 : Number(pr.spedizione) || 0}))
-      .concat(pg.attivatoIl && pg.stato !== "SIMULATO" ? [{il: pg.attivatoIl, rata: Number(pr.rata) || 0, sped: Number(pr.spedizione) || 0}] : []);
-    for (const x of attivazioni){ const ac = accordoAl(l, x.il), dopo = x.prec ? " (periodo precedente)" : "";
-      if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${dopo} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base));
-      if (ac && ac.tipo === "rata") out.push(Object.assign({il: x.il, descrizione: `Abbonamento attivato${dopo} · una rata ${e2(x.rata)} + spedizione ${e2(x.sped)}`, importo: Math.round((x.rata + x.sped) * 100) / 100}, base)); }
-    for (const x of incassi(o)) if (x.canone > 0){ const ac = accordoAl(l, x.il); if (ac && ac.tipo === "percentuale") out.push(Object.assign({il: x.il, descrizione: `Canone pagato ${e2(x.canone)} × ${pc(ac.valore)}%`, importo: Math.round(x.canone * ac.valore) / 100, stima: !!x.stima}, base)); }
+    const base = {univoco: f.Univoco, cliente: `${nm(f.Nome)} ${nm(f.Cognome)}`.trim()};
+    for (const x of periodiCliente(f).periodi){
+      if (!x.consegnato) continue;
+      const ac = accordoAl(l, x.consegnato), dopo = x.prec ? " (periodo precedente)" : "";
+      if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.consegnato, descrizione: `Occhiale consegnato${dopo} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base));
+      if (ac && ac.tipo === "rata") out.push(Object.assign({il: x.consegnato, descrizione: `Occhiale consegnato${dopo} · una rata ${e2(x.rata)} + spedizione ${e2(x.sped)}`, importo: Math.round((x.rata + x.sped) * 100) / 100}, base));
+      for (const y of x.incassi) if (y.canone > 0){
+        const il = String(y.il) < String(x.consegnato) ? x.consegnato : y.il, ap = accordoAl(l, il);
+        if (ap && ap.tipo === "percentuale") out.push(Object.assign({il, descrizione: `Canone pagato ${e2(y.canone)} × ${pc(ap.valore)}%${il !== y.il ? " (pagato prima della consegna)" : ""}`, importo: Math.round(y.canone * ap.valore) / 100, stima: !!y.stima}, base));
+      }
+    }
   }
   return out;
+}
+// Compensi previsti: quelli che matureranno dai clienti di oggi se l'occhiale verrà consegnato e i canoni pagati fino alla durata minima (con l'accordo in vigore oggi).
+function compensoPrevisto(utenti, acc, ruolo){
+  const l = accordiDi(acc, ruolo), ac = accordoAl(l, new Date().toISOString()), r2 = x => Math.round(x * 100) / 100;
+  const out = {totale: 0, clienti: 0, senzaPreventivo: 0, righe: []}; if (!ac) return out;
+  for (const f of utenti){
+    if (f.Archiviato) continue;
+    const {o, pg, pr, periodi} = periodiCliente(f), cur = pg.attivatoIl && pg.stato !== "SIMULATO" ? periodi[periodi.length - 1] : null;
+    if (pg.chiuso || pg.esito || f.Stato === STATI.CHIUSO) continue;
+    const consegnato = !!(cur && cur.consegnato), rata = Number(pr.rata) || 0, mesi = Number(pr.mesi) || 12;
+    let imp = null;
+    if (ac.tipo === "fisso") imp = consegnato ? 0 : Number(ac.valore);
+    else if (ac.tipo === "rata") imp = consegnato ? 0 : (rata ? rata + (Number(pr.spedizione) || 0) : null);
+    else { const pagati = cur ? cur.incassi.filter(x => x.canone > 0).length : 0, maturati = consegnato ? pagati : 0;
+      imp = rata ? Math.max(0, mesi - maturati) * rata * ac.valore / 100 : null; }
+    if (imp === null){ out.senzaPreventivo++; continue; }
+    if (imp <= 0) continue;
+    out.clienti++; out.totale += imp; out.righe.push({univoco: f.Univoco, cliente: `${nm(f.Nome)} ${nm(f.Cognome)}`.trim(), stato: f.Stato || "", importo: r2(imp)});
+  }
+  out.totale = r2(out.totale); return out;
 }
 function estratto(utenti, acc, da, a, ruolo){
   const g = d => String(d || "").slice(0, 10), r2 = x => Math.round(x * 100) / 100, c = (acc && acc.Compenso) || {};
@@ -1070,7 +1104,8 @@ function estratto(utenti, acc, da, a, ruolo){
   }
   let prog = saldoIniziale; righe.forEach(x => { prog += (x.tipo === "compenso" ? 1 : -1) * x.importo; x.saldo = r2(prog); });
   const storia = accordiDi(acc, ruolo), att = storia[storia.length - 1];
-  return {accordo: att && att.tipo ? {tipo: att.tipo, valore: Number(att.valore) || 0, dal: att.dal, base: !!att.base} : null, accordi: storia, periodo: {da: da || "", a: a || ""}, righe, stima,
+  const prev = compensoPrevisto(utenti, acc, ruolo);
+  return {accordo: att && att.tipo ? {tipo: att.tipo, valore: Number(att.valore) || 0, dal: att.dal, base: !!att.base} : null, accordi: storia, periodo: {da: da || "", a: a || ""}, righe, stima, previsto: prev.totale, previstoClienti: prev.clienti, previstoSenzaPreventivo: prev.senzaPreventivo, previstoRighe: prev.righe,
     saldoIniziale: r2(saldoIniziale), maturato: r2(maturato), pagato: r2(pagato), saldoFinale: r2(saldoIniziale + maturato - pagato),
     maturatoTot: r2(maturatoTot), pagatoTot: r2(pagatoTot), saldoAttuale: r2(maturatoTot - pagatoTot)};
 }
@@ -1096,7 +1131,7 @@ function previsione(utenti, cafs, ottici, ora){
   return {mesi: mesi.map(m => ({mese: m.mese, canoni: m.canoni, clienti: m.clienti.size, importo: r2(m.importo), rischio: r2(m.rischio), compensi: r2(m.compensi), netto: r2(m.importo - m.compensi)})), oltre: r2(oltre), ultimo};
 }
 // Conteggi con CAF e ottiche, filtrabili per periodo (da/a = AAAA-MM-GG, inclusi).
-// Compenso secondo l'accordo: fisso per abbonamento attivato nel periodo, oppure percentuale sui canoni incassati nel periodo.
+// Compenso secondo l'accordo: matura alla consegna dell'occhiale (fisso o una rata + spedizione), oppure percentuale sui canoni dalla consegna in poi.
 function conteggi(utenti, acc, da, a, ruolo){
   const dentro = d => d && (!da || String(d).slice(0, 10) >= da) && (!a || String(d).slice(0, 10) <= a);
   const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, r2 = x => Math.round(x * 100) / 100;
