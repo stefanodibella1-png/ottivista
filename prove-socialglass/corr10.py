@@ -41,7 +41,7 @@ print("D — correzioni dell'amministratore")
 c=scheda(uv3); print("6 cf modificabile dopo l'attivazione?", c["cfModificabile"], "| cambio cf:", adm("correggiDati",id=uv3,cf=cf("PRVLRA60A41C352")).get("errore","ok")[:60])
 print("  cellulare e residenza:", adm("correggiDati",id=uv3,cellulare="3471234567",residenza={"indirizzo":"Via Roma 2","cap":"95100","comune":"CATANIA","provincia":"CT"},motivo="numero sbagliato"))
 print("  nome incoerente col cf:", adm("correggiDati",id=uv3,nome="PAOLA").get("errore"))
-s,r=call("api/utenti",{"cf":cf("PRVNNA60A41C351"),"nome":"ANNA","cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C); uv4=r["univoco"]
+s,r=call("api/utenti",{"cf":cf("PRVNNA60A41C351"),"nome":"ANNA","cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C); uv4=r["univoco"]
 print("  prima dell'attivazione cf corretto (ANNA→ANNA nata il 2/1):", adm("correggiDati",id=uv4,cf=cf("PRVNNA60A42C351"),data="1960-01-02"), "| correzioni:", len(scheda(uv4)["correzioni"]))
 
 print("E — cambio ottica")

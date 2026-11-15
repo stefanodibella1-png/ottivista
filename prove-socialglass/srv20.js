@@ -7,6 +7,6 @@ const pg = (giorni, x) => Object.assign({stato: "ATTIVO", abbonamento: "sub_x", 
 L.demo.utenti.push(
   base("SGV20A", "RSSMRA80A01C351O", "MARIO", L.STATI.ATTIVO, {montatura: {modello: "A"}, prezzi: pr, pagamento: pg(5)}),
   base("SGV20B", "BNCLGU75B12C351C", "LUIGI", L.STATI.CONSEGNATO, {montatura: {modello: "A"}, prezzi: pr, consegnatoIl: iso(ora - 90*864e5), pagamento: pg(100, {insoluto: {tipo: "canone", importo: 11.9, dal: iso(ora - 8*864e5)}})}),
-  base("SGV20C", "VRDNNA90C41C351H", "ANNA", L.STATI.CONSEGNATO, {montatura: {modello: "A"}, prezzi: pr, consegnatoIl: iso(ora - 350*864e5), pagamento: pg(360)}, "CAF009"),
+  Object.assign(base("SGV20C", "VRDNNA90C41C351H", "ANNA", L.STATI.CONSEGNATO, {montatura: {modello: "A"}, prezzi: pr, consegnatoIl: iso(ora - 350*864e5), pagamento: pg(360), finePeriodo: {scelta: "restituisci", descrizione: "Restituzione e chiusura", il: iso(ora - 864e5)}}, "CAF009"), {Cognome: "VERDI", "Data Nascita": "1990-03-01", Genere: "F"}),
   base("SGV20D", "NREPLA85D15C351U", "PAOLA", L.STATI.CONSEGNATO, {montatura: {modello: "A"}, prezzi: pr, consegnatoIl: iso(ora - 100*864e5), pagamento: pg(110)}));
 require("./srv.js");

@@ -181,7 +181,7 @@ async function archivia(u, ora){
 }
 async function anonimizza(u, ora, perche){
   const o = L.parseOrdine(u.f.Ordine);
-  await L.DB.aggiorna(u, {Nome: "", Cognome: "", Cellulare: "", "Codice Fiscale": "", "Nato a": "", Genere: "", "Data Nascita": "", Residenza: null, Push: [],
+  await L.DB.aggiorna(u, {Nome: "", Cognome: "", Cellulare: "", "Codice Fiscale": "", CFBase: "", Persona: "", "Nato a": "", Genere: "", "Data Nascita": "", Residenza: null, Push: [],
     Stato: L.STATI.ANONIMO, Anonimizzato: ora, Ordine: JSON.stringify({archiviato: o.archiviato || {il: u.f.Archiviato}, anonimizzato: ora})});
   await L.registra("controllo giornaliero", "dati cancellati", u.f.Univoco, perche || `${L.GIORNI_ARCHIVIO} giorni in archivio`);
   return "dati cancellati";
@@ -232,6 +232,8 @@ async function insolutoNelRinnovo(u, ora){
 }
 // controllo di un cliente (usato dal controllo giornaliero e dalla barra del tempo delle prove)
 async function controlla(u, ora, esiti){
+  // clienti registrati prima del controllo dei codici fiscali «di comodo»: si aggiungono i campi per riconoscere la stessa persona
+  if (!u.f.CFBase && u.f["Codice Fiscale"] && !u.f.Archiviato) try { await L.DB.aggiorna(u, L.campiCF(u.f["Codice Fiscale"], u.f.Nome, u.f.Cognome, u.f["Data Nascita"])); } catch(e){ console.error(e); }
   // chi non ha mai attivato: link valido 30 giorni dalla registrazione (poi archivio e, dopo altri 30, dati cancellati)
   try { const r = await linkInScadenza(u, ora); if (r !== undefined){ if (r) esiti.push({univoco: u.f.Univoco, esito: r}); return; } }
   catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); return; }

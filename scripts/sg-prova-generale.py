@@ -51,7 +51,7 @@ def attendi(cond, sec=90, passo=3):
     return None
 def registra(base, nome, data):
     s, r = call("api/utenti", {"cf": cf(base), "nome": nome, "cognome": "PROVA", "nato": "CATANIA", "datanascita": data, "sesso": "F", "prefisso": "+39", "cellulare": "3330000099",
-        "ottica": "OTT07", "amico": "", "gdpr": True, "residenza": {"indirizzo": "Via Etnea 1", "cap": "95124", "comune": "CATANIA", "provincia": "CT"}}, C)
+        "ottica": "OTT07", "amico": "", "gdpr":True,"documento":True, "residenza": {"indirizzo": "Via Etnea 1", "cap": "95124", "comune": "CATANIA", "provincia": "CT"}}, C)
     if s != 200: raise RuntimeError(f"registrazione {nome}: {s} {r}")
     CLIENTI.append(r["univoco"]); return r["univoco"]
 RICETTA = {"OD": {"sf": -1.25, "cil": -0.5, "ax": 90}, "OS": {"sf": -1}, "pd": 63}

@@ -576,13 +576,15 @@ module.exports = L.wrap(async (req, res) => {
     if (cf !== f["Codice Fiscale"]){
       if (!mai) return L.send(res, 409, {errore: "Il codice fiscale non si cambia dopo l'attivazione dell'abbonamento (c'è un contratto con quel codice): contatta il commercialista e, se serve, registra di nuovo il cliente."});
       if (!L.CF.valido(cf)) return L.send(res, 400, {errore: "Codice fiscale non valido."});
-      const gia = await L.DB.utente("Codice Fiscale", cf); if (gia && gia.id !== u.id) return L.send(res, 409, {errore: `Codice fiscale già usato dal cliente ${gia.f.Univoco}.`});
+      const gia = await L.clientePerCF(cf); if (gia && gia.id !== u.id) return L.send(res, 409, {errore: `Codice fiscale già usato dal cliente ${gia.f.Univoco}.`});
       d["Codice Fiscale"] = cf;
     }
-    if (!L.CF.coerente(cf, d.Nome, d.Cognome, d["Data Nascita"], d.Genere)) return L.send(res, 400, {errore: "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso."});
+    { const e = L.controlloCF({cf, nome: d.Nome, cognome: d.Cognome, data: d["Data Nascita"], sesso: d.Genere, nato: d["Nato a"]}); if (e) return L.send(res, 400, {errore: e}); }
+    { const p = await L.stessaPersona(d.Nome, d.Cognome, d["Data Nascita"], cf, u.id); if (p) return L.send(res, 409, {errore: `Con questi dati c'è già il cliente ${p.f.Univoco} (codice fiscale ${p.f["Codice Fiscale"]}): due codici per la stessa persona non sono ammessi.`}); }
     if (b.residenza){ const r = L.residenza(b.residenza); if (r.errore) return L.send(res, 400, r); d.Residenza = r; }
     const prima = {}; for (const k of Object.keys(d)) if (JSON.stringify(d[k]) !== JSON.stringify(f[k])) prima[k] = f[k] === undefined ? null : f[k];
     if (!Object.keys(prima).length) return L.send(res, 200, {ok: true, cambiati: []});
+    Object.assign(d, L.campiCF(cf, d.Nome, d.Cognome, d["Data Nascita"]));
     d.Correzioni = (Array.isArray(f.Correzioni) ? f.Correzioni : []).concat({il: new Date().toISOString(), chi: "amministratore", motivo: pulito(b.motivo, 200), prima}).slice(-30);
     await L.DB.aggiorna(u, d);
     return L.send(res, 200, {ok: true, cambiati: Object.keys(prima)});

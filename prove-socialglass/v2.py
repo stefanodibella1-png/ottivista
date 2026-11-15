@@ -13,7 +13,7 @@ async def main():
         await pg.fill("#codiceFiscale","BNCMRA85M41C351U"); await pg.click("#attivaCodiceFiscale"); await pg.wait_for_timeout(700)
         await pg.fill("#nome","Maria"); await pg.fill("#cognome","Bianchi"); await pg.fill("#nato","Catania"); await pg.fill("#datanascita","1985-08-01"); await pg.select_option("#sesso", index=2)
         print("sesso opzioni:", await pg.eval_on_selector("#sesso","s=>[...s.options].map(o=>o.value)"), "scelto", await pg.input_value("#sesso"))
-        await pg.fill("#cellulare","3331112233"); await pg.select_option("#ottica","OTT07"); await pg.check("#gdprAcceptance")
+        await pg.fill("#cellulare","3331112233"); await pg.select_option("#ottica","OTT07"); await pg.check("#gdprAcceptance"); await pg.check("#docVerificato")
         print("convenzione:", await pg.input_value("#listinoTextBox"))
         await pg.click("#inviaLink"); await pg.wait_for_timeout(1500)
         if await pg.is_visible("#formErr"): print("ERR form:", await pg.inner_text("#formErr"))

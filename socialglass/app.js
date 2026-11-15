@@ -865,7 +865,7 @@ function linkAmico(){
 }
 
 /* ---------- nuovo utente (CAF) ---------- */
-const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","residenza","cap","comune","provincia","ottica","gdprAcceptance"];
+const campi = ["nome","cognome","nato","datanascita","sesso","prefisso","cellulare","residenza","cap","comune","provincia","ottica","gdprAcceptance","docVerificato"];
 function resetForm(){
   $("formCliente").reset(); $("codiceFiscale").disabled = false; $("attivaCodiceFiscale").hidden = false; $("segnoDiSpunta").hidden = true;
   campi.forEach(id => $(id).disabled = true); $("listinoTextBox").value = ""; $("inviaLink").disabled = true;
@@ -919,11 +919,11 @@ function residenzaMancante(r){
 $("formCliente").addEventListener("submit", async e => {
   e.preventDefault();
   const v = id => $(id).value.trim();
-  const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), amico: v("amico").toUpperCase(), gdpr: $("gdprAcceptance").checked,
+  const d = {cf: v("codiceFiscale"), nome: v("nome"), cognome: v("cognome"), nato: v("nato"), datanascita: v("datanascita"), sesso: v("sesso"), prefisso: v("prefisso"), cellulare: v("cellulare"), ottica: v("ottica"), amico: v("amico").toUpperCase(), gdpr: $("gdprAcceptance").checked, documento: $("docVerificato").checked,
     residenza: {indirizzo: v("residenza"), cap: v("cap"), comune: v("comune").toUpperCase(), provincia: v("provincia").toUpperCase()}};
   const manca = [["nome","Nome"],["cognome","Cognome"],["nato","Luogo di nascita"],["datanascita","Data di nascita"],["sesso","Sesso"],["cellulare","Cellulare"],["ottica","Ottica"]].filter(([k]) => !d[k]).map(([, n]) => n)
     .concat(residenzaMancante(d.residenza));
-  if (manca.length || !d.gdpr){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : "Metti la spunta: hai mostrato l'informativa privacy al cliente.", "err"); return; }
+  if (manca.length || !d.gdpr || !d.documento){ esito($("formErr"), manca.length ? `Mancano: ${manca.join(", ")}.` : !d.documento ? "Metti la spunta: hai controllato il codice fiscale sulla tessera sanitaria o sul documento." : "Metti la spunta: hai mostrato l'informativa privacy al cliente.", "err"); return; }
   if (!CF.coerente(d.cf, d.nome, d.cognome, d.datanascita, d.sesso)){ esito($("formErr"), "Il codice fiscale non corrisponde a nome, cognome, data di nascita e sesso: controlla i dati.", "err"); return; }
   $("inviaLink").disabled = true;
   const r = await post("api/utenti", d);
@@ -959,19 +959,24 @@ $("formVerifica").addEventListener("submit", async e => {
     box.innerHTML = `<b>✓ Nessuna anagrafica con questo codice fiscale.</b><br>Non ha mai usufruito della promozione: puoi registrarlo adesso.<br><button type="button" class="verde" data-cf-nuovo="${esc(cf)}" style="margin-top:8px">Registra nuovo cliente</button>`;
     return;
   }
-  // esito: moroso → contattare SocialGlass; pratica in corso → niente nuova richiesta; finita → rinnovo ora o dalla data
+  box.className = "esito " + schedaAnagrafica(d, cf).cl; box.innerHTML = schedaAnagrafica(d, cf).html;
+});
+// scheda del cliente trovato per codice fiscale (verifica anagrafica e rinnovo): esito, promozione già usata, situazione
+function schedaAnagrafica(d, cf, perRinnovo){
+  const riga = (t, v) => v ? `<div class="r"><span>${t}</span><b>${v}</b></div>` : "";
   let titolo, cl, az = "";
   if (d.bloccato){ titolo = d.moroso ? "⛔ Cliente moroso: pagamenti non regolari" : "⛔ Anagrafica bloccata da SocialGlass"; cl = "err"; }
   else if (!FINITO(d.stato) || d.rinnovoInCorso){ titolo = "⏳ Pratica in corso: non può fare una nuova richiesta adesso"; cl = "info"; }
-  else if (d.rinnovabile){ titolo = "✓ Può fare richiesta adesso: occhiale nuovo con il rinnovo"; cl = "ok"; az = `<button type="button" class="verde" data-cf-rinnovo="${esc(cf)}" style="margin-top:8px">Avvia il rinnovo</button>`; }
+  else if (d.rinnovabile){ titolo = "✓ Può fare richiesta adesso: occhiale nuovo con il rinnovo"; cl = "ok"; if (!perRinnovo) az = `<button type="button" class="verde" data-cf-rinnovo="${esc(cf)}" style="margin-top:8px">Avvia il rinnovo</button>`; }
   else { titolo = d.rinnovoDal ? `⏳ Potrà fare richiesta dal ${dIt(d.rinnovoDal)}` : "⏳ Non può ancora fare una nuova richiesta"; cl = "info"; }
-  box.className = "esito " + cl;
-  box.innerHTML = `<b>${titolo}</b><div class="riepilogo" style="margin:8px 0 0;background:#fff">
+  const scelta = d.scelta && d.scelta.scelta !== "rinnova" ? `<div class="avviso-cli" style="margin-top:8px">⚠ Il cliente ha scelto per la fine dell'abbonamento: <b>${esc(d.scelta.descrizione)}</b>. Avvia il rinnovo solo se ha cambiato idea.</div>` : "";
+  return {cl, html: `<b>${titolo}</b><div class="riepilogo" style="margin:8px 0 0;background:#fff">
       ${riga("Cliente", esc(d.nome))}${riga("Codice", esc(d.univoco))}${riga("Ottica", esc(d.ottica || ""))}${riga("CAF", d.mio ? "il tuo" : "un altro CAF")}
       ${riga("Promozione già usata", d.attivatoIl ? `sì, dal ${dIt(d.attivatoIl)}${d.periodi > 1 ? ` (${d.periodi} abbonamenti)` : ""}` : "no: registrato ma non ha mai attivato")}
-      ${riga("Situazione", esc(d.esito || FASE[d.stato] || d.stato))}${d.consegnatoIl ? riga("Occhiale consegnato", dIt(d.consegnatoIl)) : ""}${d.scadenza ? riga("Durata minima fino al", dIt(d.scadenza)) : ""}</div>
-    ${d.bloccato ? contattoAdmin() : ""}${az}`;
-});
+      ${riga("Situazione", esc(d.esito || FASE[d.stato] || d.stato))}${d.consegnatoIl ? riga("Occhiale consegnato", dIt(d.consegnatoIl)) : ""}${d.scadenza ? riga("Durata minima fino al", dIt(d.scadenza)) : ""}
+      ${d.scelta ? riga("Scelta del cliente a fine abbonamento", esc(d.scelta.descrizione)) : ""}</div>
+    ${d.bloccato ? contattoAdmin() : ""}${d.rinnovabile && !d.bloccato ? scelta : ""}${az}`};
+}
 $("verificaEsito").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.cfRinnovo){ open("rinnovoPopup"); $("cfRinnovo").value = b.dataset.cfRinnovo; $("formRinnovo").requestSubmit(); }
@@ -982,19 +987,20 @@ $("formRinnovo").addEventListener("submit", async e => {
   const cf = $("cfRinnovo").value.trim(), box = $("rinnovoEsito"); $("rinnovoScelta").hidden = true;
   if (!CF.valido(cf)){ esito(box, "Codice fiscale non valido", "err"); return; }
   const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
-  if (!r.data.stato){ esito(box, "Nessun cliente con questo codice fiscale: inseriscilo come nuovo utente.", "info"); return; }
-  const d = r.data;
-  if (d.bloccato){ box.hidden = false; box.className = "esito"; box.removeAttribute("role"); box.innerHTML = `${esc(d.nome)} · codice ${esc(d.univoco)}` + contattoAdmin(); return; }
-  if (!d.rinnovabile){
-    const perche = !FINITO(d.stato) ? "ha un ordine in corso: il rinnovo si fa dopo la consegna degli occhiali."
-      : d.rinnovoDal ? `il rinnovo è possibile dal ${new Date(d.rinnovoDal).toLocaleDateString("it-IT")} (30 giorni prima della scadenza).` : "il rinnovo non è ancora possibile.";
-    esito(box, `${d.nome} · codice ${d.univoco} · ${d.stato}: ${perche}`, "info"); return;
-  }
-  esito(box, `${d.nome} · codice ${d.univoco} · ${d.stato}. Scegli l'ottica (anche diversa dalla precedente) e avvia il rinnovo.`, "ok");
+  if (!r.ok){ esito(box, r.data.errore || "Ricerca non riuscita: riprova.", "err"); return; }
+  if (!r.data.stato){ esito(box, "Nessun cliente con questo codice fiscale: non ha mai usato la promozione, registralo come nuovo cliente.", "info"); return; }
+  const d = r.data, sch = schedaAnagrafica(d, cf, true);
+  box.hidden = false; box.removeAttribute("role"); box.className = "esito " + sch.cl; box.innerHTML = sch.html;
+  if (!d.rinnovabile || d.bloccato) return;
+  box.insertAdjacentHTML("beforeend", `<p style="margin:8px 0 0">Scegli l'ottica per l'occhiale nuovo (anche diversa da quella di prima) e avvia il rinnovo: il cliente riceve il link per scegliere la montatura; l'abbonamento continua senza interruzioni.</p>`);
   await loadOttici();
   const sel = $("rinnovoOttica"); sel.innerHTML = $("ottica").innerHTML; [...sel.options].forEach(op => { if (!op.value) op.remove(); }); sel.value = d.ottica || "";
   $("rinnovoScelta").hidden = false;
+  // se il cliente aveva scelto di comprare l'usato o di restituirlo, il rinnovo va confermato (ha cambiato idea)
+  const diverso = d.scelta && d.scelta.scelta !== "rinnova"; let confermato = !diverso;
+  $("rinnovoAvvia").textContent = diverso ? "Il cliente ha cambiato idea: avvia il rinnovo" : "Avvia il rinnovo e invia il nuovo link";
   $("rinnovoAvvia").onclick = async () => {
+    if (!confermato){ confermato = true; $("rinnovoAvvia").textContent = "Confermi? La sua scelta precedente viene annullata: tocca di nuovo"; return; }
     $("rinnovoAvvia").disabled = true;
     const x = await post("api/utenti", {azione: "rinnovo", cf, ottica: sel.value}); $("rinnovoAvvia").disabled = false; if (scaduta(x)) return;
     if (x.ok){ $("rinnovoScelta").hidden = true; mostraLink(x.data, ""); } else esito(box, x.data.errore, "err");

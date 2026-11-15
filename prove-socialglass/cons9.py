@@ -4,7 +4,7 @@ exec(open("conc.py").read().split("import sys\nbase")[0])
 C=call("api/login",{"ruolo":"caf","codice":"CAF001","password":"demo"})[1]["token"]
 RES={"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}
 def reg(base, nome, tok, ottica="OTT07"):
-    return call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":ottica,"amico":"","gdpr":True,"residenza":RES},tok)
+    return call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":ottica,"amico":"","gdpr":True,"documento":True,"residenza":RES},tok)
 def prev(uv):
     s,r=call("api/ordine",{"univoco":uv,"lente":"mono","trattamenti":[],"ricetta":{"OD":{"sf":-1},"OS":{"sf":-1},"pd":63}},T); return s, r.get("errore") or "ok"
 s,r=reg("PRVGLI60A41C351","GIULIA",C); uvC=r["univoco"]; c=scheda(uvC)
@@ -42,7 +42,7 @@ async def ui():
         for k,v in {"nome":"LAURA","cognome":"PROVA","nato":"CATANIA","cellulare":"3330000099","residenza":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}.items(): await o.fill("#"+k, v)
         await o.click("#inviaLink"); await o.wait_for_timeout(500); print("  senza spunta:", (await o.inner_text("#formErr")).strip())
         print("  testo spunta:", (await o.inner_text("label.gdpr")).strip()[:90])
-        await o.check("#gdprAcceptance"); await o.screenshot(path="c9_2_modulo.png"); await o.click("#inviaLink"); await o.wait_for_timeout(1200)
+        await o.check("#gdprAcceptance"); await o.check("#docVerificato"); await o.screenshot(path="c9_2_modulo.png"); await o.click("#inviaLink"); await o.wait_for_timeout(1200)
         uv=(await o.inner_text("#inviatoCodice")).strip(); link=(await o.inner_text("#inviatoLink")).strip(); print("  registrato:", uv, "| link:", link.split("?")[1][:60])
         # cliente sul telefono: riquadro del consenso in alto
         c=await b.new_page(viewport={"width":390,"height":844}); c.on("pageerror", lambda e: E.append(str(e)))

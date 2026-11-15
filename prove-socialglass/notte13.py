@@ -5,7 +5,7 @@ exec(open("conc.py").read().split("import sys\nbase")[0])
 def sc(q=""):
     r=urllib.request.Request(B+"api/scadenze"+q, headers={"Authorization":"Bearer prova"}); x=urllib.request.urlopen(r); return x.status, x.read().decode(), dict(x.headers)
 for i,(b,n) in enumerate([("PRVGLI60A41C351","GIULIA"),("PRVMRT60A41C351","MARTA"),("PRVLRA60A41C351","LAURA"),("PRVNNA60A41C351","ANNA"),("PRVLSE60A41C351","ELISA"),("PRVCRL60A41C351","CARLA")]):
-    call("api/utenti",{"cf":cf(b),"nome":n,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
+    call("api/utenti",{"cf":cf(b),"nome":n,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
 print("0 senza chiave:", call("api/scadenze")[0])
 giri=[]
 for k in range(10):

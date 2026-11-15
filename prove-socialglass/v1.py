@@ -23,7 +23,7 @@ async def main():
         await pg.fill("#cellulare","3331112233")
         opts=await pg.eval_on_selector("#ottica","s=>[...s.options].map(o=>o.value+'|'+o.text)"); print("ottiche:", opts)
         await pg.select_option("#ottica", index=1)
-        await pg.check("#gdprAcceptance"); await pg.screenshot(path="v03_form_pieno.png", full_page=True)
+        await pg.check("#gdprAcceptance"); await pg.check("#docVerificato"); await pg.screenshot(path="v03_form_pieno.png", full_page=True)
         await pg.click("#inviaLink"); await pg.wait_for_timeout(1500)
         print("dopo invio visibili:", [x for x in ["#inviatoPopup","#popupForm","#formErr"] if await pg.is_visible(x)])
         if await pg.is_visible("#formErr"): print("ERR form:", await pg.inner_text("#formErr"))

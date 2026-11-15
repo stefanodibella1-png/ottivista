@@ -1,6 +1,34 @@
 // SocialGlass · funzioni comuni del server (Vercel). Le chiavi restano qui, mai nel browser.
 const crypto = require("crypto");
 const CF = require("../cf.js");
+/* ---------- codice fiscale falso o «di comodo» ----------
+   Oltre a controllo e coerenza con nome, cognome, data e sesso: il comune (o stato estero) di nascita nel codice deve esistere
+   e corrispondere al luogo di nascita dichiarato; la stessa persona non può avere due codici (varianti con omocodia o con un altro comune). */
+const COMUNI = require("./_comuni");
+const normLuogo = s => String(s || "").toUpperCase().normalize("NFD").replace(/[^A-Z]/g, "");
+const normNome = s => String(s || "").toUpperCase().normalize("NFD").replace(/[^A-Z]/g, "");
+const chiavePersona = (nome, cognome, data) => `${normNome(cognome)}|${normNome(nome)}|${String(data || "").slice(0, 10)}`;
+function luoghiCF(cf){ const c = CF.canonico(cf), v = COMUNI[c.slice(11, 15)]; return v ? v.split(";").map(x => { const [nome, prov] = x.split("|"); return {nome, prov}; }) : []; }
+function controlloCF(d){
+  if (!CF.valido(d.cf)) return "CODICE FISCALE NON VALIDO";
+  if (!CF.coerente(d.cf, d.nome, d.cognome, d.data, d.sesso)) return "Codice fiscale non conforme a nome, cognome, data di nascita e sesso.";
+  const luoghi = luoghiCF(d.cf), cod = CF.canonico(d.cf).slice(11, 15);
+  if (!luoghi.length) return `Il codice fiscale indica un luogo di nascita che non esiste (${cod}): controlla il codice sulla tessera sanitaria.`;
+  if (d.nato && !luoghi.some(x => normLuogo(x.nome) === normLuogo(d.nato)))
+    return `Il luogo di nascita non corrisponde al codice fiscale: il codice indica ${luoghi.map(x => x.nome + (x.prov !== "EE" ? ` (${x.prov})` : "")).join(" o ")}. Controlla sul documento.`;
+  return null;
+}
+// cliente già registrato con lo stesso codice (anche scritto con l'omocodia)
+async function clientePerCF(cf){
+  const c = CF.canonico(cf); if (!c) return null;
+  return (await DB.utente("CFBase", c)) || (await DB.utente("Codice Fiscale", c)) || (c !== String(cf).toUpperCase().trim() ? await DB.utente("Codice Fiscale", String(cf).toUpperCase().trim()) : null);
+}
+// stessa persona (nome, cognome e data di nascita) già registrata con un codice fiscale diverso
+async function stessaPersona(nome, cognome, data, cf, escludi){
+  const u = await DB.utente("Persona", chiavePersona(nome, cognome, data));
+  return u && !u.f.Archiviato && u.id !== escludi && CF.canonico(u.f["Codice Fiscale"]) !== CF.canonico(cf) ? u : null;
+}
+const campiCF = (cf, nome, cognome, data) => ({CFBase: CF.canonico(cf), Persona: chiavePersona(nome, cognome, data)});
 const PREZZI = require("../listini.js");
 const {AsyncLocalStorage} = require("async_hooks");
 
@@ -1266,4 +1294,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, controlloPilota, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, controlloPilota, controlloCF, clientePerCF, stessaPersona, campiCF, luoghiCF, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

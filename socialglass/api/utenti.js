@@ -24,7 +24,7 @@ module.exports = L.wrap(async (req, res) => {
       const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
       if (!sc && !so) return L.send(res, 401, L.NOAUTH);
       if (!L.CF.valido(cf)) return L.send(res, 200, {valido: false});
-      const u = await L.DB.utente("Codice Fiscale", cf);
+      const u = await L.clientePerCF(cf);
       // all'ottica che registra basta sapere se il codice fiscale è libero: nome e codice solo per i suoi clienti
       if (so){
         const mio = u && String(u.f.Ottica1 || "").startsWith(so.id + " ");
@@ -39,7 +39,8 @@ module.exports = L.wrap(async (req, res) => {
         ...(u ? (() => { const si = L.situazione(u.f), pg = o.pagamento || {}, p0 = (o.storico || []).find(x => x.inizio);
           return {creato: u.f.Creato || "", attivatoIl: (p0 && p0.inizio) || pg.attivatoIl || "", periodi: (o.storico || []).filter(x => x.inizio).length + (pg.attivatoIl ? 1 : 0),
             consegnatoIl: o.consegnatoIl || "", moroso: si.moroso, bloccoAdmin: !!(si.blocco && si.blocco.stato === "bloccato"), esito: pg.esito || "", scadenza: per ? per.scadenza : null,
-            rinnovoInCorso: !!o.rinnovo && !pg.attivatoIl, mio: u.f.CAF === sc.id}; })() : {})});
+            rinnovoInCorso: !!o.rinnovo && !pg.attivatoIl, mio: u.f.CAF === sc.id,
+            scelta: o.finePeriodo && !o.finePeriodo.eseguita ? {scelta: o.finePeriodo.scelta, descrizione: o.finePeriodo.descrizione} : null}; })() : {})});
     }
     if (uv){
       const s = L.verify(req, "ottico"); if (!s) return L.send(res, 401, L.NOAUTH);
@@ -56,7 +57,7 @@ module.exports = L.wrap(async (req, res) => {
   if (b.azione === "rinnovo"){
     const sc = L.verify(req, "caf"), so = sc ? null : L.verify(req, "ottico");
     if (!sc && !so) return L.send(res, 401, L.NOAUTH);
-    const u = b.univoco ? await L.DB.utente("Univoco", String(b.univoco).toUpperCase().trim()) : await L.DB.utente("Codice Fiscale", String(b.cf || "").toUpperCase().trim());
+    const u = b.univoco ? await L.DB.utente("Univoco", String(b.univoco).toUpperCase().trim()) : await L.clientePerCF(String(b.cf || ""));
     if (!u) return L.send(res, 404, {errore: "Cliente non trovato. Controlla il codice fiscale."});
     // l'ottico può rinnovare per codice univoco solo i propri clienti; per un cliente di un'altra ottica serve il codice fiscale
     if (so && b.univoco && !String(u.f.Ottica1 || "").startsWith(so.id + " ")) return L.send(res, 404, {errore: "Cliente non trovato tra i tuoi clienti."});
@@ -87,14 +88,20 @@ module.exports = L.wrap(async (req, res) => {
     prefisso: String(b.prefisso || "+39"), cellulare: String(b.cellulare || "").replace(/\D/g, ""), nato: String(b.nato || "").toUpperCase().trim(),
     sesso: b.sesso === "F" ? "F" : "M", data: String(b.datanascita || ""), ottica: String(b.ottica || ""), gdpr: !!b.gdpr};
   if (!d.cf || !d.nome || !d.cognome || !d.cellulare || !d.nato || !d.data || !d.ottica || !d.gdpr) return L.send(res, 400, {errore: "Per favore, compila tutti i campi obbligatori."});
-  if (!L.CF.valido(d.cf)) return L.send(res, 400, {errore: "CODICE FISCALE NON VALIDO"});
-  if (!L.CF.coerente(d.cf, d.nome, d.cognome, d.data, d.sesso)) return L.send(res, 400, {errore: "Codice fiscale non conforme a nome, cognome, data di nascita e sesso."});
+  // codice fiscale falso o di comodo: controllo, coerenza con i dati, luogo di nascita esistente e uguale a quello dichiarato
+  { const e = L.controlloCF(d); if (e) return L.send(res, 400, {errore: e}); }
+  // chi registra conferma di aver controllato il codice sul documento del cliente (tessera sanitaria o carta d'identità)
+  if (!b.documento) return L.send(res, 400, {errore: "Conferma di aver controllato il codice fiscale sulla tessera sanitaria o sul documento del cliente."});
   if (d.cellulare.length < 6) return L.send(res, 400, {errore: "Numero di cellulare non valido."});
   const res_ = L.residenza(b.residenza); if (res_.errore) return L.send(res, 400, res_);
-  let gia = await L.DB.utente("Codice Fiscale", d.cf);
+  let gia = await L.clientePerCF(d.cf);
   // pratica precedente scaduta (link oltre i 30 giorni): i suoi dati si cancellano subito e il cliente riparte da capo
   if (gia && gia.f.Archiviato){ await require("./scadenze").anonimizza(gia, new Date().toISOString(), "nuova registrazione"); gia = null; }
-  if (gia) return L.send(res, 409, {errore: `ATTENZIONE ! CODICE FISCALE ${gia.f.Stato || "GIÀ REGISTRATO"}`, univoco: gia.f.Univoco});
+  if (gia) return L.send(res, 409, {errore: `ATTENZIONE ! CODICE FISCALE ${gia.f.Stato || "GIÀ REGISTRATO"}${gia.f["Codice Fiscale"] !== d.cf ? " (scritto in un'altra forma: è lo stesso codice)" : ""}`, univoco: gia.f.Univoco});
+  // stessa persona già cliente con un altro codice fiscale: possibile codice falso per aggirare un blocco o avere più occhiali
+  { const p = await L.stessaPersona(d.nome, d.cognome, d.data, d.cf);
+    if (p){ await L.registra(sc ? "caf " + sc.id : "ottica " + so.id, "codice fiscale sospetto", p.f.Univoco, `${d.cf} per ${d.nome} ${d.cognome} ${d.data}: già cliente con ${p.f["Codice Fiscale"]}`);
+      return L.send(res, 409, {errore: `ATTENZIONE: ${d.nome} ${d.cognome}, nato il ${d.data.split("-").reverse().join("/")}, è già cliente con un altro codice fiscale (codice cliente ${p.f.Univoco}). Due codici per la stessa persona non sono ammessi: controlla il documento o contatta SocialGlass.`, univoco: p.f.Univoco}); } }
   const o = await L.DB.ottico(d.ottica);
   if (!o) return L.send(res, 400, {errore: "Ottica non trovata."});
   if (o.Disattivato) return L.send(res, 400, {errore: "Questa ottica non è più attiva: scegline un'altra."});
@@ -103,7 +110,7 @@ module.exports = L.wrap(async (req, res) => {
   if (amico){ const a = await L.DB.utente("Univoco", amico); if (!a) return L.send(res, 400, {errore: "Codice amico non trovato: controllalo o lascia il campo vuoto."}); if (a.f["Codice Fiscale"] === d.cf) return L.send(res, 400, {errore: "Il codice amico è dello stesso cliente."});
     if (!L.abbonamentoAttivo(a.f)) return L.send(res, 400, {errore: L.PREMIO_NON_ATTIVABILE + " Lascia vuoto il campo «Codice amico» per registrare il cliente."}); }
   const fields = {"CAF": cafId, "RegistratoDa": sc ? "caf " + sc.id : "ottica " + so.id, "InformativaMostrata": new Date().toISOString(), "Nome": d.nome, "Cognome": d.cognome, "Cellulare": d.cellulare, "Codice Fiscale": d.cf,
-    "Ottica1": `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`, "Nato a": d.nato, "Genere": d.sesso, "Data Nascita": d.data,
+    "Ottica1": `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`, "Nato a": d.nato, "Genere": d.sesso, "Data Nascita": d.data, ...L.campiCF(d.cf, d.nome, d.cognome, d.data), DocumentoVerificato: {il: new Date().toISOString(), da: sc ? "caf " + sc.id : "ottica " + so.id},
     "Listino": o.Listino || "", "Stato": L.STATI.REGISTRATO, "Residenza": res_, "LinkFino": new Date(Date.now() + L.GIORNI_LINK * 864e5).toISOString(), ...(amico ? {PresentatoDa: amico} : {})};
   const uv = await L.DB.creaUtente(fields);
   const link = L.linkCliente(uv, o.ID, cafId, o.Listino);

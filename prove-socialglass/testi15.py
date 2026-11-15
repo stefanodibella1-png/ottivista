@@ -4,7 +4,7 @@ exec(open("conc.py").read().split("import sys\nbase")[0])
 from playwright.async_api import async_playwright
 from crea_cliente import crea
 def reg(base,nome):
-    return call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)[1]["univoco"]
+    return call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)[1]["univoco"]
 for m in ["SG-1042","SG-1043","SG-1044"]: call("api/admin",{"azione":"magazzino","codice":m,"op":"carico","qta":6,"a":"OTT07"},A)
 u1=reg("PRVGLI60A41C351","GIULIA")
 u2=reg("PRVMRT60A41C351","MARTA"); call("api/montatura",{"univoco":u2,"codice":"SG-1042"})

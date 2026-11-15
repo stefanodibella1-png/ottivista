@@ -2,7 +2,7 @@
 import sys, asyncio; sys.argv=[sys.argv[0]]
 exec(open("conc.py").read().split("import sys\nbase")[0])
 def fino_alla_montatura(base, nome, mont):
-    s,r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
+    s,r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)
     uv=r["univoco"]; call("api/montatura",{"univoco":uv,"codice":mont}); call("api/benvenuto",{"azione":"consenso","univoco":uv,"si":True}); return uv
 def prev(uv, lente, **rx):
     ric={"OD":{"sf":-1,"add":2},"OS":{"sf":-1,"add":2},"pd":63, **rx}

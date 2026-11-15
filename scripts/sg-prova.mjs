@@ -23,7 +23,7 @@ if (!caf){
 ok("login CAF", !!caf);
 const ott = (await call("/api/login", {ruolo: "ottico", codice: "OTT07", password: "demo"})).d.token; ok("login ottico", !!ott);
 const p = CF.prefisso("Prova", "Automatica", "1980-01-15", "M") + "C351", cf = p + CF.control(p);
-let r = await call("/api/utenti", {cf, nome: "Prova", cognome: "Automatica", prefisso: "+39", cellulare: "3330000001", nato: "Catania", sesso: "M", datanascita: "1980-01-15", ottica: "OTT07", gdpr: true, residenza: {indirizzo: "Via Etnea 1", cap: "95124", comune: "CATANIA", provincia: "CT"}}, caf);
+let r = await call("/api/utenti", {cf, nome: "Prova", cognome: "Automatica", prefisso: "+39", cellulare: "3330000001", nato: "Catania", sesso: "M", datanascita: "1980-01-15", ottica: "OTT07", gdpr: true, documento: true, residenza: {indirizzo: "Via Etnea 1", cap: "95124", comune: "CATANIA", provincia: "CT"}}, caf);
 if (r.s !== 200 && /già/i.test(r.d.errore || "")) r = await call("/api/utenti", {azione: "rinnovo", cf}, caf);
 const uv = r.d.univoco || (r.d.link || "").match(/Univoco=([^&]+)/)?.[1]; ok("crea cliente", !!uv, uv || JSON.stringify(r.d));
 const mt = await call("/api/montatura", {univoco: uv, codice: "SG-1042"}); ok("montatura", mt.d.ok || /già confermata/.test(mt.d.errore || ""), mt.d.errore);

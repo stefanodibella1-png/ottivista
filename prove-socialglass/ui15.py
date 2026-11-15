@@ -38,7 +38,7 @@ async def main():
         print("  QR della tessera → consegna:", (await o.inner_text("#demoNota")).strip()[:60], "|", scheda(uv)["stato"])
         # cliente: il lettore normale della montatura non è cambiato
         c=await b.new_page(viewport={"width":390,"height":844}); await c.context.grant_permissions(["camera"]); c.on("pageerror", lambda e: E.append("cli "+str(e)))
-        uv2=call("api/utenti",{"cf":cf("PRVMRT60A41C351"),"nome":"MARTA","cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)[1]["univoco"]
+        uv2=call("api/utenti",{"cf":cf("PRVMRT60A41C351"),"nome":"MARTA","cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":"OTT07","amico":"","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C)[1]["univoco"]
         await c.goto(B+"?Univoco="+uv2); await c.wait_for_timeout(1500); await c.click("#mpScan"); await c.wait_for_timeout(1000)
         print("4 cliente · lettore:", (await c.inner_text("#video-container p")).strip()[:60], "| etichetta:", (await c.inner_text("label[for=codiceManuale]")).strip()[:60])
         print("errori:", E); await b.close()

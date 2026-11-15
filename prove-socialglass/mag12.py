@@ -4,7 +4,7 @@ exec(open("conc.py").read().split("import sys\nbase")[0])
 def adm(az, **k): s,r=call("api/admin",{"azione":az,**k},A); return r
 def mont(c): m=[x for x in adm("dati")["montature"] if x["Codice"]==c][0]; return m["giacenze"], [(x["ottica"], x["univoco"][-4:], bool(x.get("mancante"))) for x in m.get("riservate", m.get("Riservate", []))]
 def reg(base, nome, ottica="OTT07"):
-    s,r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":ottica,"amico":"","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C); return r["univoco"]
+    s,r=call("api/utenti",{"cf":cf(base),"nome":nome,"cognome":"PROVA","nato":"CATANIA","datanascita":"1960-01-01","sesso":"F","prefisso":"+39","cellulare":"3330000099","ottica":ottica,"amico":"","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"}},C); return r["univoco"]
 def scan(uv, c): s,r=call(f"api/montatura?codice={c}&univoco={uv}"); return r.get("disponibile"), r.get("motivo","")
 def scegli(uv, c): s,r=call("api/montatura",{"univoco":uv,"codice":c}); return r.get("errore") or "ok"
 def giacenza(): return [(x["univoco"][-4:], x["codice"], x["ottica"]) for x in adm("dati")["coda"] if x["tipo"]=="giacenza"]

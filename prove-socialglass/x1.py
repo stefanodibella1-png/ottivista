@@ -36,10 +36,10 @@ async def main():
         print("box dona (solo testo):", await pg.locator(".dona").count(), await pg.locator("#mpDona").count())
         # amico: registrazione dal CAF con codice amico + attivazione
         C=post("api/login",{"ruolo":"caf","codice":"CAF001","password":"demo"})["token"]
-        r=post("api/utenti",{"cf":"RSSGNN80A01C351H","nome":"GIANNI","cognome":"ROSSI","nato":"CATANIA","datanascita":"1980-01-01","sesso":"M","prefisso":"+39","cellulare":"3331231234","ottica":"OTT07","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"},"amico":"SG8BAXXXX"},C)
+        r=post("api/utenti",{"cf":"RSSGNN80A01C351H","nome":"GIANNI","cognome":"ROSSI","nato":"CATANIA","datanascita":"1980-01-01","sesso":"M","prefisso":"+39","cellulare":"3331231234","ottica":"OTT07","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"},"amico":"SG8BAXXXX"},C)
         print("amico errato:", r.get("errore"))
         import itertools
-        r=post("api/utenti",{"cf":"RSSGNN80A01C351H","nome":"GIANNI","cognome":"ROSSI","nato":"CATANIA","datanascita":"1980-01-01","sesso":"M","prefisso":"+39","cellulare":"3331231234","ottica":"OTT07","gdpr":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"},"amico":"sg8ba2115"},C)
+        r=post("api/utenti",{"cf":"RSSGNN80A01C351H","nome":"GIANNI","cognome":"ROSSI","nato":"CATANIA","datanascita":"1980-01-01","sesso":"M","prefisso":"+39","cellulare":"3331231234","ottica":"OTT07","gdpr":True,"documento":True,"residenza":{"indirizzo":"Via Etnea 1","cap":"95124","comune":"CATANIA","provincia":"CT"},"amico":"sg8ba2115"},C)
         uv=r.get("univoco"); print("nuovo:", uv, r.get("errore"))
         O=post("api/login",{"ruolo":"ottico","codice":"OTT07","password":"demo"})["token"]
         print(post("api/montatura",{"univoco":uv,"codice":"SG-1043"}).get("errore")); post("api/benvenuto",{"azione":"consenso","univoco":uv,"si":True})

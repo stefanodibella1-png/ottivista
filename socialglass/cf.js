@@ -34,6 +34,8 @@
     const oggi = new Date().getFullYear() % 100, anno = (aa > oggi ? 1900 : 2000) + aa, giorno = g > 40 ? g - 40 : g;
     return {data: `${anno}-${String(m).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`, sesso: g > 40 ? "F" : "M"};
   }
-  const api = {valido, coerente, prefisso, control, dati};
+  // forma unica del codice fiscale: senza omocodia (lettere al posto delle cifre) e con il carattere di controllo ricalcolato
+  function canonico(cf){ const d = deomo(String(cf || "").toUpperCase().trim()).slice(0, 15); return d.length === 15 ? d + control(d) : ""; }
+  const api = {valido, coerente, prefisso, control, dati, deomo, canonico};
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.CF = api;
 })(this);
