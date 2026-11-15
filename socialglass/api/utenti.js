@@ -34,7 +34,12 @@ module.exports = L.wrap(async (req, res) => {
       const o = u ? L.parseOrdine(u.f.Ordine) : null, per = o ? L.PREZZI.periodo(o) : null;
       return L.send(res, 200, {valido: true, stato: u ? u.f.Stato || "REGISTRATO" : null, nome: u ? `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}` : null, univoco: u ? u.f.Univoco : null,
         ottica: u ? String(u.f.Ottica1 || "").split(" - ")[0] : null, rinnovabile: u ? [L.STATI.CONSEGNATO, L.STATI.CHIUSO].includes(u.f.Stato) && L.PREZZI.rinnovabile(o) : false,
-        rinnovoDal: per && !per.chiuso ? per.preavviso : null, bloccato: u ? L.situazione(u.f).bloccato : false});
+        rinnovoDal: per && !per.chiuso ? per.preavviso : null, bloccato: u ? L.situazione(u.f).bloccato : false,
+        // verifica anagrafica del CAF: promozione già usata, morosità, pratica in corso
+        ...(u ? (() => { const si = L.situazione(u.f), pg = o.pagamento || {}, p0 = (o.storico || []).find(x => x.inizio);
+          return {creato: u.f.Creato || "", attivatoIl: (p0 && p0.inizio) || pg.attivatoIl || "", periodi: (o.storico || []).filter(x => x.inizio).length + (pg.attivatoIl ? 1 : 0),
+            consegnatoIl: o.consegnatoIl || "", moroso: si.moroso, bloccoAdmin: !!(si.blocco && si.blocco.stato === "bloccato"), esito: pg.esito || "", scadenza: per ? per.scadenza : null,
+            rinnovoInCorso: !!o.rinnovo && !pg.attivatoIl, mio: u.f.CAF === sc.id}; })() : {})});
     }
     if (uv){
       const s = L.verify(req, "ottico"); if (!s) return L.send(res, 401, L.NOAUTH);

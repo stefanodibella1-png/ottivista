@@ -393,7 +393,7 @@ function disegnaCruscotto(isOtt, d){
     f(n(c => c.stato === STATI.PAGAMENTO), "Devono attivare l'abbonamento", "Hanno il preventivo: un promemoria aiuta", `data-vai="stato:${STATI.PAGAMENTO}"`);
     f(n(SIT_P.scadenza), "Abbonamenti in scadenza", "Proponi il rinnovo con un occhiale nuovo", 'data-vai="sit:scadenza"');
     f(n(c => c.bloccato), "Anagrafiche bloccate", "Contatta SocialGlass prima di operare", 'data-vai="sit:bloccati"', true);
-    tess = tessera("cf", "Verifica codice fiscale", "È già cliente?", 'data-open="codiceFiscalePopup"')
+    tess = tessera("cf", "Verifica anagrafica", "Dal codice fiscale: promozione e stato", 'data-open="codiceFiscalePopup"')
       + tessera("rinnovo", "Rinnovo occhiale", "Per chi è a fine periodo", 'data-open="rinnovoPopup"') + tessera("clienti", "I miei clienti", `${l.length} in elenco`, "data-clienti")
       + tessera("conti", "I miei conteggi", "Compensi e pagamenti", "data-conti") + tessera("stampa", "Locandina da appendere", "Stampa la locandina A4", "data-volantino")
       + tessera("chiave", "Cambia password", "Del tuo accesso", 'data-open="passwordCambioPopup"') + tessera("aiuto", "Contatta SocialGlass", "Telefono ed email", "data-contatti");
@@ -941,7 +941,41 @@ function mostraLink(data, numero){
 }
 
 /* ---------- verifica e rinnovo (CAF) ---------- */
-$("formVerifica").addEventListener("submit", e => { e.preventDefault(); const ok = CF.valido($("cfVerifica").value); esito($("verificaEsito"), ok ? "Codice fiscale valido" : "Codice fiscale non valido", ok ? "ok" : "err"); });
+// verifica anagrafica dal codice fiscale (CAF): se ha già usato la promozione e in che situazione è adesso
+const FASE = {[STATI.REGISTRATO]: "registrato: deve ancora scegliere la montatura dal suo link", [STATI.MONTATURA]: "ha scelto la montatura: l'ottica deve inserire lenti e ricetta",
+  [STATI.PAGAMENTO]: "preventivo pronto: deve attivare l'abbonamento dal suo link", [STATI.VERIFICA]: "pagamento in verifica", [STATI.ATTIVO]: "abbonamento attivo: occhiale in lavorazione",
+  [STATI.PRONTO]: "occhiale pronto in ottica, da ritirare", [STATI.CONSEGNATO]: "occhiale consegnato, abbonamento in corso", [STATI.CHIUSO]: "abbonamento chiuso"};
+$("formVerifica").addEventListener("submit", async e => {
+  e.preventDefault();
+  const cf = $("cfVerifica").value.trim().toUpperCase(), box = $("verificaEsito");
+  if (!CF.valido(cf)){ esito(box, "Codice fiscale non valido: controlla le 16 lettere e cifre.", "err"); return; }
+  const r = await api(`api/utenti?cf=${encodeURIComponent(cf)}`); if (scaduta(r)) return;
+  if (!r.ok){ esito(box, r.data.errore || "Verifica non riuscita: riprova.", "err"); return; }
+  const d = r.data, riga = (t, v) => v ? `<div class="r"><span>${t}</span><b>${v}</b></div>` : "";
+  box.hidden = false; box.removeAttribute("role");
+  if (!d.stato){
+    box.className = "esito ok";
+    box.innerHTML = `<b>✓ Nessuna anagrafica con questo codice fiscale.</b><br>Non ha mai usufruito della promozione: puoi registrarlo adesso.<br><button type="button" class="verde" data-cf-nuovo="${esc(cf)}" style="margin-top:8px">Registra nuovo cliente</button>`;
+    return;
+  }
+  // esito: moroso → contattare SocialGlass; pratica in corso → niente nuova richiesta; finita → rinnovo ora o dalla data
+  let titolo, cl, az = "";
+  if (d.bloccato){ titolo = d.moroso ? "⛔ Cliente moroso: pagamenti non regolari" : "⛔ Anagrafica bloccata da SocialGlass"; cl = "err"; }
+  else if (!FINITO(d.stato) || d.rinnovoInCorso){ titolo = "⏳ Pratica in corso: non può fare una nuova richiesta adesso"; cl = "info"; }
+  else if (d.rinnovabile){ titolo = "✓ Può fare richiesta adesso: occhiale nuovo con il rinnovo"; cl = "ok"; az = `<button type="button" class="verde" data-cf-rinnovo="${esc(cf)}" style="margin-top:8px">Avvia il rinnovo</button>`; }
+  else { titolo = d.rinnovoDal ? `⏳ Potrà fare richiesta dal ${dIt(d.rinnovoDal)}` : "⏳ Non può ancora fare una nuova richiesta"; cl = "info"; }
+  box.className = "esito " + cl;
+  box.innerHTML = `<b>${titolo}</b><div class="riepilogo" style="margin:8px 0 0;background:#fff">
+      ${riga("Cliente", esc(d.nome))}${riga("Codice", esc(d.univoco))}${riga("Ottica", esc(d.ottica || ""))}${riga("CAF", d.mio ? "il tuo" : "un altro CAF")}
+      ${riga("Promozione già usata", d.attivatoIl ? `sì, dal ${dIt(d.attivatoIl)}${d.periodi > 1 ? ` (${d.periodi} abbonamenti)` : ""}` : "no: registrato ma non ha mai attivato")}
+      ${riga("Situazione", esc(d.esito || FASE[d.stato] || d.stato))}${d.consegnatoIl ? riga("Occhiale consegnato", dIt(d.consegnatoIl)) : ""}${d.scadenza ? riga("Durata minima fino al", dIt(d.scadenza)) : ""}</div>
+    ${d.bloccato ? contattoAdmin() : ""}${az}`;
+});
+$("verificaEsito").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.cfRinnovo){ open("rinnovoPopup"); $("cfRinnovo").value = b.dataset.cfRinnovo; $("formRinnovo").requestSubmit(); }
+  if (b.dataset.cfNuovo){ resetForm(); open("popupForm"); loadOttici(); $("codiceFiscale").value = b.dataset.cfNuovo; }
+});
 $("formRinnovo").addEventListener("submit", async e => {
   e.preventDefault();
   const cf = $("cfRinnovo").value.trim(), box = $("rinnovoEsito"); $("rinnovoScelta").hidden = true;

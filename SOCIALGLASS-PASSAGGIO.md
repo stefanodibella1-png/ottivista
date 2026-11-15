@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799200000**, prossimo 1799300000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799300000**, prossimo 1799400000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -77,6 +77,8 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Ritocchi del 15/11/2026 (v1799100000): logo su PC alto 84 px; su PC la lente resta sulle persone (nel `giro` di app.js, solo `.scena-pc`: non oltre il bordo sinistro di `.hero-testo` meno il raggio, non sopra il riquadro `.sociale` quando sta sopra le persone). Area CAF: niente avvisi da mandare ai clienti (li segue l'ottica: `avviso` null per il CAF in `clienti.js`, tessera e filtri tolti) e «Reinvia link» solo prima dell'attivazione (REGISTRATO/MONTATURA/PAGAMENTO); a un cliente bloccato (moroso) il link non lo rimanda nessuno, né CAF né ottica. `L.situazione` usa `pgVivo` (moroso anche durante il cambio occhiale). Prove: `caf19.py` (server `srv19.js`), `pc19.py`.
 
 - Compensi alla consegna (15/11/2026, v1799200000): per CAF e ottiche il compenso matura solo a occhiale consegnato (`periodiCliente`, `righeCompenso`): fisso o «una rata + spedizione» alla data di consegna del periodo; a percentuale i canoni del periodo dalla consegna (quelli pagati prima maturano il giorno della consegna); periodo senza consegna = nessun compenso. `rinnova` salva nello storico `consegnato` e `mesi` (le voci vecchie senza `consegnato` non maturano). Nuovo `compensoPrevisto` (in `estratto`: `previsto`, `previstoClienti`, `previstoSenzaPreventivo`, `previstoRighe`): compensi attesi dai clienti di oggi con l'accordo in vigore (fisso per ogni cliente non ancora consegnato, rata se c'è il preventivo, % sui canoni fino alla durata minima). Colonna «Previsto» nelle tabelle Conteggi e riquadro nell'estratto del partner. Prove: `comp19.cjs`, `cont19.py`.
+
+- Verifica anagrafica del CAF (15/11/2026, v1799300000): la tessera «Verifica codice fiscale» diventa «Verifica anagrafica» e interroga `GET api/utenti?cf=` (per il CAF ora anche `creato`, `attivatoIl` del primo abbonamento, `periodi`, `consegnatoIl`, `moroso`, `bloccoAdmin`, `esito`, `scadenza`, `rinnovoInCorso`, `mio`). Esiti: nessuna anagrafica → «Registra nuovo cliente» con CF precompilato; moroso/bloccato → contatta SocialGlass; pratica in corso → nessuna nuova richiesta; finita e rinnovabile → «Avvia il rinnovo» (apre il rinnovo già cercato); altrimenti «potrà fare richiesta dal…». Prove: `cf20.py` (server `srv20.js`).
 
 ## Laboratorio: verifica della montatura (13/11/2026)
 - Al pagamento (`avviaLavorazione`) la busta nasce «DA VERIFICARE» (`ord.lab.verifica`) e il laboratorio riceve una notifica push (iscrizione con «🔔 Attiva notifiche» in `laboratorio.html`; meta `push-lab`). La ricetta resta nascosta finché la montatura non è disponibile; le azioni ritirata/inizia/pronto sono rifiutate prima.
