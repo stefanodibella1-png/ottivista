@@ -86,6 +86,8 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 - Pagina che «si muoveva» sul telefono (15/11/2026, v1799700000): la lente ingrandita (`.fuoco`, scala 1.12) vicino al bordo destro allargava la pagina oltre lo schermo; il telefono rimpiccioliva la vista a ogni giro della lente e tutto (anche la scheda del cliente aperta sopra) si spostava. Ora `.scena .resp{overflow:clip}` e `html{overflow-x:clip}`. Prova: `dup23d.py` (larghezza pagina sempre 390 su telefono), server `srv23.js`.
 
+- Controllo generale (15/11/2026 sera): prova generale sul sito vero (Stripe test) tutta OK tranne D1 SEPA (non attivo nella dashboard Stripe); prove locali cons9, corr10, pag3, conc, sepa4, casi11, giro_ux, labflusso, mag12, notte13, m1, m2 senza regressioni (m1 aggiornata: nel laboratorio ora ci sono due pulsanti per busta; m1/m2 vanno lanciate con `srv-prova.js`). Health: titolare vuoto, copia esterna «manca-password», pagamenti «prova». Prompt per una nuova sessione: `SOCIALGLASS-NUOVA-SESSIONE.md`.
+
 ## Laboratorio: verifica della montatura (13/11/2026)
 - Al pagamento (`avviaLavorazione`) la busta nasce «DA VERIFICARE» (`ord.lab.verifica`) e il laboratorio riceve una notifica push (iscrizione con «🔔 Attiva notifiche» in `laboratorio.html`; meta `push-lab`). La ricetta resta nascosta finché la montatura non è disponibile; le azioni ritirata/inizia/pronto sono rifiutate prima.
 - «Montatura disponibile» → usa la copia del laboratorio (scarica `g[LAB]`, la prenotazione torna all'ottica) e apre la ricetta.

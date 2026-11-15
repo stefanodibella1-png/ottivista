@@ -53,7 +53,7 @@ async def main():
         pg,e=await ctxpg(b); await pg.goto("http://localhost:8823/laboratorio"); await pg.wait_for_timeout(500)
         await pg.fill("#pw","laboratorio1"); await pg.click("#fLogin button"); await pg.wait_for_timeout(1000)
         print("13 lab riquadri:", [ (await x.inner_text()).replace("\n"," ") for x in await pg.locator(".kpi button").all()], "schede:", await pg.locator(".tabs").count())
-        bt=pg.locator(".busta-w[data-u=SGPROVALAB] .busta-az button")
+        bt=pg.locator(".busta-w[data-u=SGPROVALAB] .busta-az button").first
         for i in range(3):
             if not await bt.count(): break
             t=await bt.inner_text(); print("14 passo:", t); await bt.click(); await pg.wait_for_timeout(900)
