@@ -433,6 +433,11 @@ function codiceCliente(inserito, univoco){
   const n = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), x = n(inserito), uv = n(univoco);
   return x.length >= 4 && (x === uv || x.includes(uv) || (x.length < uv.length && uv.endsWith(x)));
 }
+// codice cliente intero o link della tessera: vale come autorizzazione del cliente (cambio CAF/ottica)
+function codiceIntero(inserito, univoco){
+  const n = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), x = n(inserito), uv = n(univoco);
+  return !!uv && (x === uv || x.endsWith(uv) || x.includes("UNIVOCO" + uv));
+}
 // arrivo della montatura in laboratorio: il codice scansionato o scritto deve essere quello della montatura del cliente
 function codiceMontatura(inserito, codice){
   const n = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), x = n(inserito), c = n(codice);
@@ -539,9 +544,9 @@ async function portaleStripe(){
 }
 
 /* ---------- rinnovo (CAF o ottico): nuovo occhiale, l'abbonamento Stripe continua ---------- */
-async function rinnova(u, {otticoId, caf} = {}){
+async function rinnova(u, {otticoId, caf, cambioCaf} = {}){
   const ord = parseOrdine(u.f.Ordine), pg = ord.pagamento || null;
-  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, consegnato: ord.consegnatoIl || "", mesi: ord.prezzi && ord.prezzi.mesi, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
+  const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, consegnato: ord.consegnatoIl || "", mesi: ord.prezzi && ord.prezzi.mesi, caf: ord.caf || u.f.CAF || "", ottica: ord.ottica || String(u.f.Ottica1 || "").split(" - ")[0], chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
   // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
   // le fatture già contate restano segnate: i canoni del vecchio periodo non si ricontano mai in quello nuovo
@@ -550,12 +555,16 @@ async function rinnova(u, {otticoId, caf} = {}){
   const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl, idPrecedenti, ...(pg.insoluto ? {insoluto: pg.insoluto} : {})}
     : (!pg && prima) || null;   // rinnovo già in corso (ordine non ancora confermato): stesso abbonamento, stessi canoni e insoluti
   const campi = {Stato: STATI.REGISTRATO, Ordine: JSON.stringify({storico, rinnovo: {il: new Date().toISOString(), da: caf ? "CAF " + caf : "ottico " + (otticoId || ""), prosegue}})};
+  // cambio CAF autorizzato dal cliente (codice cliente mostrato allo sportello): da questo occhiale il cliente è del nuovo CAF;
+  // gli occhiali di prima restano al CAF che li ha commissionati (storico.caf)
+  if (cambioCaf && caf && caf !== u.f.CAF){ campi.CAF = caf; campi.CambiCaf = (u.f.CambiCaf || []).concat([{il: new Date().toISOString(), da: u.f.CAF || "", a: caf}]).slice(-20); }
   let o = null;
   if (otticoId){ o = await DB.ottico(otticoId); if (o) campi.Ottica1 = `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`; }
   if (!o) o = await DB.ottico(String(u.f.Ottica1 || "").split(" - ")[0]);
   if (o && o.Listino) campi.Listino = o.Listino;
   await DB.aggiorna(u, campi);
   const link = linkCliente(u.f.Univoco, o && o.ID, caf || u.f.CAF, o && o.Listino);
+  if (campi.CAF) await registra("CAF " + caf, "cambio CAF autorizzato dal cliente", u.f.Univoco, `da ${campi.CambiCaf[campi.CambiCaf.length - 1].da || "nessun CAF"} a ${caf}`);
   const avviso = await avvisa(u, `SocialGlass: ciao ${nm(u.f.Nome)}, è il momento del tuo occhiale nuovo! Vai da ${o ? o.Intestatario : "la tua ottica"}, scegli la montatura e conferma il nuovo canone dal tuo link: ${link}`);
   return {univoco: u.f.Univoco, link, avviso, whatsapp: avviso.whatsapp, smsInviato: avviso.sms};
 }
@@ -689,7 +698,7 @@ const GIORNI_LINK = 30, GIORNI_ARCHIVIO = 30;
 const CONDIZIONI_VERSIONE = "2026-11-15";
 const GIORNI_RESTITUZIONE = 30;
 // coda dei casi da risolvere per l'amministratore, con la scadenza di ognuno (la più vicina prima)
-function codaEccezioni(utenti, segn, diff, cfg, ora, mont){
+function codaEccezioni(utenti, segn, diff, cfg, ora, mont, labOn){
   const now = ora ? new Date(ora) : new Date(), coda = [], piu = (d, g) => new Date(new Date(d).getTime() + g * 864e5).toISOString();
   const add = (x) => coda.push(Object.assign(x, {scaduto: x.scadenza < now.toISOString()}));
   const d3 = !!(cfg && cfg.addebitoUsato);
@@ -710,6 +719,9 @@ function codaEccezioni(utenti, segn, diff, cfg, ora, mont){
     }
     if (rt && rt.ritirato && rt.condizione && rt.condizione !== "integro" && !rt.verificato) add(Object.assign({tipo: "condizione", titolo: `Occhiale restituito ${rt.condizione}`, dal: rt.ritirato, scadenza: piu(rt.ritirato, 7), dettaglio: rt.nota || "Nessuna nota dell'ottica."}, base));
     const lab = o.lab;
+    // ordine pagato che il laboratorio non ha ricevuto (pagato prima che il laboratorio fosse attivo, o busta non creata): decide l'amministratore
+    if (labOn && f.Stato === STATI.ATTIVO && !lab && pg.attivatoIl && !pg.chiuso && !o.labNo) add(Object.assign({tipo: "busta", titolo: "Ordine pagato senza busta del laboratorio", dal: pg.attivatoIl, scadenza: piu(pg.attivatoIl, 1),
+      dettaglio: "Il laboratorio non l'ha ricevuto. Tocca per scegliere: crea la busta (il laboratorio verifica la montatura) oppure lo segue l'ottica da sola."}, base));
     if (lab && lab.rifacimento && !["PRONTO", "SPEDITO", "ARRIVATO"].includes(lab.stato) && !pg.chiuso) add(Object.assign({tipo: "rifacimento", titolo: "Occhiale in rifacimento", dal: lab.rifacimento.il, scadenza: piu(lab.rifacimento.il, 10), dettaglio: `${lab.rifacimento.da}: ${lab.rifacimento.motivo}`}, base));
   }
   for (const x of segn || []) if (x.stato === "aperta") add({tipo: "segnalazione", titolo: "Segnalazione del cliente", univoco: x.univoco, nome: x.nome || "", ottica: x.ottica || "", dal: x.il, scadenza: piu(x.il, 3), dettaglio: String(x.testo || "").slice(0, 120), id: x.ID || x._id});
@@ -759,6 +771,23 @@ function sign(payload){
   const body = Buffer.from(JSON.stringify(Object.assign({exp: Date.now() + 10*3600e3}, payload))).toString("base64url");
   return `${body}.${crypto.createHmac("sha256", CFG.secret).update(body).digest("base64url")}`;
 }
+// conferma del cliente con la data di nascita (consenso, ricevute, carta, attivazione, scelte del contratto): vale 90 giorni sul suo dispositivo.
+// Firmata con una chiave diversa da quella degli accessi: non vale mai come accesso di CAF, ottica, laboratorio o pannello.
+const chiaveCliente = () => crypto.createHash("sha256").update(String(CFG.secret) + ":conferma-cliente").digest();
+const GIORNI_CONFERMA = 90;
+function firmaCliente(univoco){
+  const body = Buffer.from(JSON.stringify({id: univoco, exp: Date.now() + GIORNI_CONFERMA * 864e5})).toString("base64url");
+  return `${body}.${crypto.createHmac("sha256", chiaveCliente()).update(body).digest("base64url")}`;
+}
+function confermaCliente(t, f){
+  if (!f || !f["Data Nascita"]) return true;   // senza data di nascita in anagrafica non si può chiedere
+  const [body, mac] = String(t || "").split("."); if (!body || !mac) return false;
+  const good = crypto.createHmac("sha256", chiaveCliente()).update(body).digest("base64url");
+  if (mac.length !== good.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good))) return false;
+  try { const p = JSON.parse(Buffer.from(body, "base64url").toString()); return p.id === f.Univoco && p.exp > Date.now(); } catch(e){ return false; }
+}
+const SERVE_CONFERMA = {errore: "Per sicurezza conferma la tua data di nascita.", serveConferma: true};
+const stessaData = (a, b) => { const n = s => String(s || "").trim().slice(0, 10); return !!n(a) && n(a) === n(b); };
 function verify(req, ruolo){
   const h = req.headers.authorization || "", t = h.startsWith("Bearer ") ? h.slice(7) : "";
   const [body, mac] = t.split(".");
@@ -1068,22 +1097,24 @@ function accordiDi(acc, ruolo){
 function accordoAl(l, d){ const g = String(d || "").slice(0, 10); let r = null; for (const x of l) if (String(x.dal) <= g) r = x; return r && r.tipo && (Number(r.valore) || r.tipo === "rata") ? r : null; }
 // periodi di abbonamento del cliente (quelli prima dei rinnovi più quello in corso), ognuno con la sua consegna e i suoi canoni
 function periodiCliente(f){
-  const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, pr = o.prezzi || {};
-  const l = (o.storico || []).filter(st => st.inizio).map(st => ({inizio: st.inizio, consegnato: st.consegnato || "", prec: true, rata: Number(st.rata) || 0,
+  const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, pr = o.prezzi || {}, ottOra = String(f.Ottica1 || "").split(" - ")[0];
+  const l = (o.storico || []).filter(st => st.inizio).map(st => ({inizio: st.inizio, consegnato: st.consegnato || "", prec: true, caf: st.caf != null ? st.caf : f.CAF || "", ottica: st.ottica || ottOra, rata: Number(st.rata) || 0,
     sped: st.spedizione != null ? Number(st.spedizione) || 0 : Number(pr.spedizione) || 0, mesi: Number(st.mesi) || 12, incassi: st.incassi || []}));
-  if (pg.attivatoIl && pg.stato !== "SIMULATO") l.push({inizio: pg.attivatoIl, consegnato: o.consegnatoIl || "", rata: Number(pr.rata) || 0, sped: Number(pr.spedizione) || 0, mesi: Number(pr.mesi) || 12,
+  if (pg.attivatoIl && pg.stato !== "SIMULATO") l.push({inizio: pg.attivatoIl, consegnato: o.consegnatoIl || "", caf: o.caf != null ? o.caf : f.CAF || "", ottica: o.ottica || ottOra, rata: Number(pr.rata) || 0, sped: Number(pr.spedizione) || 0, mesi: Number(pr.mesi) || 12,
     incassi: incassi(Object.assign({}, o, {storico: []})), chiuso: !!pg.chiuso});
   return {o, pg, pr, periodi: l};
 }
 // Il compenso matura solo quando l'occhiale è consegnato al cliente (data di consegna):
 // fisso o «una rata + spedizione» alla consegna; a percentuale, ogni canone del periodo dalla consegna in poi (quelli pagati prima maturano il giorno della consegna).
-function righeCompenso(utenti, acc, ruolo){
+// id = CAF o ottica: conta solo gli occhiali commissionati da quel CAF / consegnati da quell'ottica (anche se oggi il cliente è di un altro)
+function righeCompenso(utenti, acc, ruolo, id){
   const l = accordiDi(acc, ruolo), out = []; if (!l.length) return out;
   const pc = v => String(v).replace(".", ",");
   for (const f of utenti){
     const base = {univoco: f.Univoco, cliente: `${nm(f.Nome)} ${nm(f.Cognome)}`.trim()};
     for (const x of periodiCliente(f).periodi){
       if (!x.consegnato) continue;
+      if (id && (ruolo === "caf" ? x.caf : x.ottica) !== id) continue;
       const ac = accordoAl(l, x.consegnato), dopo = x.prec ? " (periodo precedente)" : "";
       if (ac && ac.tipo === "fisso") out.push(Object.assign({il: x.consegnato, descrizione: `Occhiale consegnato${dopo} · ${e2(ac.valore)}`, importo: Number(ac.valore)}, base));
       if (ac && ac.tipo === "rata") out.push(Object.assign({il: x.consegnato, descrizione: `Occhiale consegnato${dopo} · una rata ${e2(x.rata)} + spedizione ${e2(x.sped)}`, importo: Math.round((x.rata + x.sped) * 100) / 100}, base));
@@ -1094,6 +1125,76 @@ function righeCompenso(utenti, acc, ruolo){
     }
   }
   return out;
+}
+/* ---------- pagamenti ai partner (CAF e ottiche) ----------
+   Mai oltre il maturato non ancora pagato, uno alla volta (transazione sull'anagrafica del partner),
+   ognuno con gli occhiali che copre (in ordine di maturazione). Il pagamento Stripe nasce «in corso» prima del trasferimento,
+   così un secondo clic o una seconda finestra non possono pagare di nuovo; poi diventa definitivo o sparisce. */
+async function compensiPartner(k, id, acc){ const tutti = (await DB.tutti()).map(u => u.f); return righeCompenso(tutti, Object.assign({}, acc, {ID: id}), k === "caf" ? "caf" : "ottica", id); }
+function coperturaPagamento(righe, pagatoPrima, imp){
+  const r2 = x => Math.round(x * 100) / 100, out = []; let gia = pagatoPrima, resto = imp;
+  for (const r of righe.slice().sort((x, y) => String(x.il).localeCompare(String(y.il)))){
+    let v = r.importo; const usa = Math.min(v, Math.max(0, gia)); gia -= usa; v -= usa;
+    if (v <= 0.004) continue;
+    const q = Math.min(v, resto); if (q <= 0.004) break;
+    out.push({univoco: r.univoco, cliente: r.cliente, il: String(r.il).slice(0, 10), importo: r2(q)}); resto -= q;
+    if (resto <= 0.004) break;
+  }
+  return out;
+}
+const euroIt = x => (Math.round(x * 100) / 100).toFixed(2).replace(".", ",") + " €";
+async function nuovaLiquidazione(k, id, acc, voce, {oltreSaldo} = {}){
+  const righe = await compensiPartner(k, id, acc), maturato = righe.reduce((t, x) => t + x.importo, 0);
+  let errore = null, fatta = null;
+  await DB.tx(k, id, f => {
+    const l = liquidazioniDi(f);
+    if (l.some(x => x.stato === "in corso")){ errore = "C'è un pagamento Stripe in corso per questo partner: aspetta qualche secondo e ricarica la pagina."; return null; }
+    const pagato = l.reduce((t, x) => t + (Number(x.importo) || 0), 0), saldo = Math.round((maturato - pagato) * 100) / 100;
+    if (!oltreSaldo && voce.importo > saldo + 0.005){ errore = saldo > 0 ? `L'importo supera quanto maturato e non ancora pagato: al massimo ${euroIt(saldo)}.` : "Non c'è niente da pagare: tutto il maturato è già stato pagato."; return null; }
+    fatta = Object.assign({id: crypto.randomBytes(4).toString("hex"), registrato: new Date().toISOString(), saldoPrima: saldo, ordini: coperturaPagamento(righe, pagato, voce.importo)}, voce);
+    return {Liquidazioni: l.concat([fatta])};
+  });
+  return errore ? {errore} : fatta ? {voce: fatta} : {errore: "Partner non trovato."};
+}
+// cambia (fn → voce) o toglie (fn → null) un pagamento registrato
+async function aggiornaLiquidazione(k, id, lid, fn){
+  let out = null;
+  await DB.tx(k, id, f => { const l = liquidazioniDi(f), i = l.findIndex(x => x.id === lid); if (i < 0) return null; out = fn(Object.assign({}, l[i])); if (out === null) l.splice(i, 1); else l[i] = out; return {Liquidazioni: l}; });
+  return out;
+}
+// trasferimento Stripe di un pagamento (cercato per id del pagamento): oggetto, null se non c'è
+async function trasferimentoDi(conto, lid){
+  const l = await stripeApi("GET", "transfers", {destination: conto, limit: 100});
+  return (l.data || []).find(t => t.metadata && t.metadata.liquidazione === lid) || null;
+}
+// controllo notturno: pagamenti rimasti «in corso» e trasferimenti Stripe ai partner non registrati (o registrati ma non su Stripe)
+async function controllaTrasferimenti(differenze, ora){
+  if (!CFG.stripeKey) return [];
+  const esiti = [], conto = campoConto(), da = Math.floor((new Date(ora || Date.now()) - 35 * 864e5) / 1000);
+  const leggi = async () => [].concat((await DB.lista("caf")).map(x => ["caf", x]), (await DB.lista("ottici")).map(x => ["ottici", x])).filter(([, x]) => x[conto]);
+  let partner = await leggi();
+  for (const [k, x] of partner){
+    const id = x.ID || x._id;
+    for (const v of liquidazioniDi(x).filter(v => v.stato === "in corso" && Date.now() - new Date(v.registrato) > 15 * 60e3)){
+      const t = await trasferimentoDi(x[conto], v.id);
+      if (t){ await aggiornaLiquidazione(k, id, v.id, y => { delete y.stato; return Object.assign(y, {stripe: t.id, nota: [y.nota, t.id].filter(Boolean).join(" · ")}); }); esiti.push({esito: `pagamento a ${id} confermato da Stripe (${t.id})`}); }
+      else { await aggiornaLiquidazione(k, id, v.id, () => null); await registra("controllo notturno", "pagamento a partner non partito", id, `${euroIt(v.importo)}: nessun trasferimento su Stripe, tolto dall'estratto`); esiti.push({esito: `pagamento a ${id} non partito: tolto`}); }
+    }
+  }
+  // tutti i trasferimenti degli ultimi 35 giorni contro i pagamenti registrati
+  partner = await leggi();
+  const tr = []; let dopo = "";
+  for (let i = 0; i < 10; i++){ const p = await stripeApi("GET", "transfers", Object.assign({limit: 100, created: {gte: da}}, dopo ? {starting_after: dopo} : {})); tr.push(...(p.data || [])); if (!p.has_more || !p.data.length) break; dopo = p.data[p.data.length - 1].id; }
+  const reg = new Map(); for (const [k, x] of partner) for (const v of liquidazioniDi(x)) if (v.stripe) reg.set(v.stripe, {k, id: x.ID || x._id, v});
+  for (const t of tr.filter(t => t.metadata && t.metadata.socialglass)){
+    const r = reg.get(t.id);
+    if (!r) differenze.push({univoco: "", testo: `Trasferimento Stripe ${t.id} di ${euroIt(t.amount / 100)} a ${t.metadata.socialglass === "caf" ? "CAF" : "ottica"} ${t.metadata.id} non registrato nell'estratto conto`});
+    else if (Math.abs(r.v.importo - t.amount / 100) > 0.009) differenze.push({univoco: "", testo: `Pagamento a ${r.id}: ${euroIt(r.v.importo)} nell'estratto, ${euroIt(t.amount / 100)} su Stripe (${t.id})`});
+    if (t.reversed || t.amount_reversed) differenze.push({univoco: "", testo: `Trasferimento Stripe ${t.id} a ${t.metadata.id} stornato su Stripe: controlla l'estratto conto`});
+  }
+  const visti = new Set(tr.map(t => t.id));
+  for (const [s1, r] of reg) if (!visti.has(s1) && new Date(r.v.registrato || r.v.il) / 1000 > da + 864e2) differenze.push({univoco: "", testo: `Pagamento Stripe a ${r.id} (${euroIt(r.v.importo)}, ${s1}) registrato ma non trovato su Stripe`});
+  return esiti;
 }
 // Compensi previsti: quelli che matureranno dai clienti di oggi se l'occhiale verrà consegnato e i canoni pagati fino alla durata minima (con l'accordo in vigore oggi).
 function compensoPrevisto(utenti, acc, ruolo){
@@ -1115,10 +1216,14 @@ function compensoPrevisto(utenti, acc, ruolo){
   }
   out.totale = r2(out.totale); return out;
 }
-function estratto(utenti, acc, da, a, ruolo){
+// tutti = tutti i clienti (per i compensi degli occhiali fatti prima di un cambio CAF/ottica); senza id del partner si usano solo i suoi clienti di oggi
+const idPartner = acc => acc && (acc.ID || acc._id) || "";
+const righePartner = (utenti, acc, ruolo, tutti) => idPartner(acc) && tutti ? righeCompenso(tutti, acc, ruolo, idPartner(acc)) : righeCompenso(utenti, acc, ruolo);
+function estratto(utenti, acc, da, a, ruolo, tutti){
   const g = d => String(d || "").slice(0, 10), r2 = x => Math.round(x * 100) / 100, c = (acc && acc.Compenso) || {};
-  const tutte = righeCompenso(utenti, acc, ruolo).map(x => Object.assign({tipo: "compenso"}, x))
-    .concat(liquidazioniDi(acc).map(x => ({tipo: "pagamento", id: x.id, il: x.il, descrizione: [x.causale || "pagamento", x.metodo, x.nota].filter(Boolean).join(" · "), importo: Number(x.importo) || 0})))
+  const tutte = righePartner(utenti, acc, ruolo, tutti).map(x => Object.assign({tipo: "compenso"}, x))
+    .concat(liquidazioniDi(acc).map(x => ({tipo: "pagamento", id: x.id, il: x.il, descrizione: [x.causale || "pagamento", x.metodo, x.stato === "in corso" ? "IN CORSO" : "", x.nota, (x.ordini || []).length ? `copre ${x.ordini.length} ${x.ordini.length === 1 ? "occhiale" : "occhiali"}` : ""].filter(Boolean).join(" · "), importo: Number(x.importo) || 0,
+      stripe: !!x.stripe, inCorso: x.stato === "in corso", ordini: (x.ordini || []).map(o => ({univoco: o.univoco, cliente: o.cliente, il: o.il, importo: o.importo}))})))
     .sort((x, y) => g(x.il).localeCompare(g(y.il)) || (x.tipo === "pagamento") - (y.tipo === "pagamento"));
   let saldoIniziale = 0, maturato = 0, pagato = 0, maturatoTot = 0, pagatoTot = 0, stima = false; const righe = [];
   for (const x of tutte){
@@ -1160,7 +1265,7 @@ function previsione(utenti, cafs, ottici, ora){
 }
 // Conteggi con CAF e ottiche, filtrabili per periodo (da/a = AAAA-MM-GG, inclusi).
 // Compenso secondo l'accordo: matura alla consegna dell'occhiale (fisso o una rata + spedizione), oppure percentuale sui canoni dalla consegna in poi.
-function conteggi(utenti, acc, da, a, ruolo){
+function conteggi(utenti, acc, da, a, ruolo, tutti){
   const dentro = d => d && (!da || String(d).slice(0, 10) >= da) && (!a || String(d).slice(0, 10) <= a);
   const c = (acc && acc.Compenso) || {}, v = Number(c.valore) || 0, r2 = x => Math.round(x * 100) / 100;
   let clienti = 0, attivati = 0, attivi = 0, consegnati = 0, canoni = 0, spedizioni = 0, riscatti = 0, stima = false, attTot = 0, canTot = 0;
@@ -1172,7 +1277,7 @@ function conteggi(utenti, acc, da, a, ruolo){
     if (o.consegnatoIl ? dentro(o.consegnatoIl) : (!da && !a && f.Stato === STATI.CONSEGNATO)) consegnati++;
     for (const x of incassi(o)){ canTot += x.canone || 0; if (!dentro(x.il)) continue; canoni += x.canone || 0; spedizioni += x.spedizione || 0; riscatti += x.riscatto || 0; if (x.stima) stima = true; }
   }
-  const righe = righeCompenso(utenti, acc, ruolo), st = accordiDi(acc, ruolo), ult = st[st.length - 1];
+  const righe = righePartner(utenti, acc, ruolo, tutti), st = accordiDi(acc, ruolo), ult = st[st.length - 1];
   const maturatoTot = righe.reduce((t, x) => t + x.importo, 0), liquidato = liquidazioniDi(acc).reduce((t, x) => t + (Number(x.importo) || 0), 0);
   return {periodo: {da: da || "", a: a || ""}, clienti, attivati, attivi, consegnati, canoni: r2(canoni), spedizioni: r2(spedizioni), riscatti: r2(riscatti),
     incassati: r2(canoni + spedizioni + riscatti), stima, accordo: ult && ult.tipo ? {tipo: ult.tipo, valore: Number(ult.valore) || 0, base: !!ult.base} : null,
@@ -1294,4 +1399,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, controlloPilota, controlloCF, clientePerCF, stessaPersona, campiCF, luoghiCF, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {firmaCliente, confermaCliente, SERVE_CONFERMA, stessaData, GIORNI_CONFERMA, nuovaLiquidazione, aggiornaLiquidazione, trasferimentoDi, controllaTrasferimenti, compensiPartner, codiceIntero, righeCompenso, periodiCliente, INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, controlloPilota, controlloCF, clientePerCF, stessaPersona, campiCF, luoghiCF, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

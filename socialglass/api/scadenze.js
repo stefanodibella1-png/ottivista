@@ -289,6 +289,8 @@ async function fineGiro(ora, esiti, differenze, copia){
         await L.DB.meta("pilota", {ultimo: r, controlli: (pr.controlli || []).concat([{il: r.il, da: r.da, a: r.a, ok: r.ok, differenze: r.differenze.length, fatture: r.stripe ? r.stripe.fatture : null, canoniMensili: r.stripe ? r.stripe.canoniMensili : 0, auto: true}]).slice(-30)});
         esiti.push({pilota: r.ok ? "controllo settimanale: nessuna differenza" : `controllo settimanale: ${r.differenze.length} differenze`}); }
     } } catch(e){ esiti.push({errore: "controllo pilota: " + String(e.message).slice(0, 180)}); }
+  // pagamenti ai partner: «in corso» rimasti a metà e trasferimenti Stripe non registrati
+  try { esiti.push(...await L.controllaTrasferimenti(differenze, ora)); } catch(e){ esiti.push({errore: "pagamenti ai partner: " + String(e.message).slice(0, 180)}); }
   try { await L.DB.meta("differenze-stripe", {il: ora, voci: differenze}); } catch(e){ console.error(e); }
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
   try { const inv = await require("./_fattura").inviaInSospeso(); if (inv.length) esiti.push({fatture: inv}); } catch(e){ esiti.push({errore: "fatture: " + String(e.message).slice(0, 200)}); }

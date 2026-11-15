@@ -676,6 +676,8 @@ summary{min-height:24px}
     <div id="rinnovoScelta" hidden>
       <label for="rinnovoOttica" style="display:block;margin:6px 0 4px;font-size:14px">Ottica per l'occhiale nuovo</label>
       <select id="rinnovoOttica" style="width:100%"></select>
+      <div id="rinnovoCodiceRiga" hidden><label for="rinnovoCodice" style="display:block;margin:8px 0 4px;font-size:14px">Codice cliente (consenso al cambio di CAF): dalla sua tessera o dal suo link</label>
+        <div class="riga"><input type="text" id="rinnovoCodice" autocomplete="off" placeholder="SG…" style="flex:1;text-transform:uppercase"><button type="button" class="grigio" data-scan-codice="rinnovoCodice" aria-label="Inquadra la tessera del cliente">📷</button></div></div>
       <button type="button" class="verde full" id="rinnovoAvvia" style="margin-top:8px">Avvia il rinnovo e invia il nuovo link</button>
     </div>
     <button class="close-btn" type="button" data-close aria-label="Chiudi">&times;</button>
@@ -743,8 +745,9 @@ summary{min-height:24px}
     <h2>Ordine cliente</h2>
     <form id="formOrdineCerca" class="riga"><input type="text" id="ordineCodice" aria-label="Codice del cliente" placeholder="Codice del cliente (es. SG...)" autocomplete="off" style="flex:1;text-transform:uppercase"><button type="submit">Apri</button></form>
     <details class="rinnovo-cf"><summary>Cliente SocialGlass che rinnova da te?</summary>
-      <p style="margin:6px 0">Se il cliente aveva l'occhiale da un'altra ottica, inserisci il suo codice fiscale: dai 30 giorni prima della scadenza passa alla tua ottica.</p>
-      <form id="formRinnovoCf" class="riga"><input type="text" id="rinnovoCf" aria-label="Codice fiscale del cliente" placeholder="Codice fiscale" autocomplete="off" maxlength="16" style="flex:1;text-transform:uppercase"><button type="submit">Avvia rinnovo</button></form>
+      <p style="margin:6px 0">Se il cliente aveva l'occhiale da un'altra ottica, inserisci il suo codice fiscale e il suo codice cliente (dalla tessera o dal link: è il suo consenso). Dai 30 giorni prima della scadenza passa alla tua ottica.</p>
+      <form id="formRinnovoCf"><div class="riga"><input type="text" id="rinnovoCf" aria-label="Codice fiscale del cliente" placeholder="Codice fiscale" autocomplete="off" maxlength="16" style="flex:1;text-transform:uppercase"></div>
+        <div class="riga" style="margin-top:6px"><input type="text" id="rinnovoCfCodice" aria-label="Codice cliente dalla tessera o dal link" placeholder="Codice cliente (SG…)" autocomplete="off" style="flex:1;text-transform:uppercase"><button type="button" class="grigio" data-scan-codice="rinnovoCfCodice" aria-label="Inquadra la tessera del cliente">📷</button><button type="submit">Avvia rinnovo</button></div></form>
     </details>
     <div class="esito" id="ordineEsito" hidden></div>
     <form id="formOrdine" hidden novalidate>
@@ -797,9 +800,9 @@ summary{min-height:24px}
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1799700000"></script>
-<script src="listini.js?v=1799700000"></script>
-<script src="app.js?v=1799700000"></script>
-<script src="prove-tempo.js?v=1799700000"></script>
+<script src="cf.js?v=1799800000"></script>
+<script src="listini.js?v=1799800000"></script>
+<script src="app.js?v=1799800000"></script>
+<script src="prove-tempo.js?v=1799800000"></script>
 </body>
 </html>

@@ -21,8 +21,11 @@ mkdir -p npmqr && (cd npmqr && npm pack qrcodejs@1.0.0 >/dev/null && tar xzf qrc
   Controllo giornaliero: `curl -H "Authorization: Bearer prova" localhost:8823/api/scadenze`.
 - Accessi di prova: CAF `CAF001`/`demo`, ottiche `OTT07` e `OTT12`/`demo`, admin: la prima password impostata (gli script usano `passwordlunga1`), laboratorio `laboratorio1` dopo `salvaLab`.
 - Il blocco accessi scatta dopo 8 password sbagliate in 10 minuti: se uno script fallisce in login, riavvia il server.
+- `SENZA_CONFERMA=1 node srv.js` salta la conferma del cliente con la data di nascita (modifica 24, punto 4): serve alle prove vecchie che chiamano consenso, pagamento o fine abbonamento senza la conferma. Vale solo nei server di prova (mai sul sito). `ui24b.py` va lanciata **senza**.
+- `./corri.sh CARTELLA prova1 prova2 …` lancia ogni prova con il suo server nuovo e salva l'uscita; `./confronta.sh prova…` confronta `base/` (codice di prima, con `git stash`) e `nuovo/` togliendo codici e date.
 
 ## Script (Playwright, cliccano l'interfaccia)
+- Modifica 24 (privacy tra CAF, cambio CAF, compensi per occhiale, pagamenti ai partner, laboratorio, conferma del cliente): `pc24.cjs` (API) e `ui24.py` cliccata (server `srv24.js`: CAF002/demo2); `liq24.cjs` pagamenti ai partner con Stripe simulato; `lab24.cjs` buste del laboratorio; `adm24.py` pannello (server `srv25.js`); `ui24b.py` conferma con la data di nascita (server `srv.js` senza `SENZA_CONFERMA`).
 - `m1.py` modifiche UX · `m2.py` funzioni cliente · `m3.py` ottica, admin, listini, registro, importazione, copia, report · `m4.py` preventivo con lente nuova · `x1.py` servizi (amico, recensioni, tessera, dona).
 - Percorso completo cliente: `v1.py` … `v11.py` (con `srv-viaggio.js`, in ordine; i salti di tempo sono nei comandi curl).
 - Fine abbonamento: `crea_cliente.py` (crea una cliente consegnata via API) + `f1.py` scelta, `f2.py` pagina cliente, `f3.py` ritiro in ottica.

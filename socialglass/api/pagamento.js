@@ -8,6 +8,8 @@ module.exports = L.wrap(async (req, res) => {
   const u = await L.DB.utente("Univoco", String(b.univoco || "").trim());
   if (u && u.f.Archiviato) return L.send(res, 410, {errore: L.LINK_SCADUTO, scaduto: true});
   if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+  // carta, ricevute, attivazione e conferma dell'occhiale nuovo: serve la conferma con la data di nascita
+  if (!L.confermaCliente(b.conferma, u.f)) return L.send(res, 401, L.SERVE_CONFERMA);
   // cambia carta e ricevute: pagina sicura di Stripe e elenco dei pagamenti fatti
   if (b.azione === "carta" || b.azione === "ricevute"){
     const pg = L.pgVivo(L.parseOrdine(u.f.Ordine));   // anche durante il cambio occhiale (si paga il canone in sospeso)

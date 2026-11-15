@@ -217,6 +217,8 @@ module.exports = L.wrap(async (req, res) => {
     if (b.azione === "consegnato" && L.situazione(u.f).bloccato) return L.send(res, 423, L.BLOCCATO);
     if (![L.STATI.ATTIVO, L.STATI.PRONTO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'ordine non è ancora attivo."});
     ord.aggiornato = new Date().toISOString(); ord[b.azione === "pronto" ? "prontoIl" : "consegnatoIl"] = ord.aggiornato;
+    // compensi: l'occhiale resta per sempre del CAF che lo ha commissionato e dell'ottica che lo ha consegnato
+    if (b.azione === "consegnato"){ ord.ottica = ord.ottica || s.id; if (ord.caf == null) ord.caf = u.f.CAF || ""; }
     if (b.azione === "consegnato" && (ord.storico || []).length && !(ord.ritiro && ord.ritiro.daRitirare && !ord.ritiro.ritirato))
       ord.ritiro = {daRitirare: true, dal: ord.aggiornato, rinnovo: true, montatura: ((ord.storico[ord.storico.length - 1] || {}).montatura) || null};
     await L.DB.aggiorna(u, {Stato: b.azione === "pronto" ? L.STATI.PRONTO : L.STATI.CONSEGNATO, Ordine: JSON.stringify(ord)});

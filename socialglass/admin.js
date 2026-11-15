@@ -142,7 +142,7 @@ function vistaConteggi(){
         <div class="riga"><div style="flex:1"><label class="lbl" for="lqC">Causale</label><select id="lqC" name="causale"><option value="acconto">Acconto</option><option value="saldo">Saldo</option><option value="rettifica">Rettifica</option></select></div><div style="flex:1"><label class="lbl" for="lqM">Metodo</label><input id="lqM" name="metodo" placeholder="es. bonifico" maxlength="40"></div></div>
         <label class="lbl" for="lqN">Nota (es. riferimento fattura, periodo)</label><input id="lqN" name="nota" maxlength="200">
         <button type="submit" class="verde full">Registra pagamento</button></form>
-      ${pag.length ? `<div class="scheda"><b>Pagamenti nel periodo</b>${pag.map(p => `<div class="riga" style="justify-content:space-between;align-items:center;border-bottom:1px solid #eef1f5;padding:3px 0"><span>${dt(p.il)} · ${euro(p.importo)} · ${esc(p.descrizione)}</span>${p.id !== "precedenti" ? `<button type="button" class="grigio" data-elimina-liq="${esc(p.id)}" style="margin:0">Elimina</button>` : ""}</div>`).join("")}</div>` : ""}`;
+      ${pag.length ? `<div class="scheda"><b>Pagamenti nel periodo</b>${pag.map(p => `<div class="riga" style="justify-content:space-between;align-items:center;border-bottom:1px solid #eef1f5;padding:3px 0"><span>${dt(p.il)} · ${euro(p.importo)} · ${esc(p.descrizione)}${(p.ordini || []).length ? `<br><small class="hint">${p.ordini.map(o => `${esc(o.cliente || o.univoco)} (${dt(o.il)}) ${euro(o.importo)}`).join(" · ")}</small>` : ""}</span>${p.id !== "precedenti" && !p.stripe && !p.inCorso ? `<button type="button" class="grigio" data-elimina-liq="${esc(p.id)}" style="margin:0">Elimina</button>` : ""}</div>`).join("")}</div>` : ""}`;
   }
   const somma = (l, f) => l.reduce((t, x) => t + (f(x) || 0), 0);
   // incassi contati una volta sola (sui CAF: ogni cliente ha un CAF)
@@ -289,7 +289,7 @@ function disegna(){
         <div class="cru-box"><h3>Clienti per stato</h3>${Object.entries(n.perStato).map(([st, c]) => `<div class="barra-st"><span>${esc(st)}</span><b>${c}</b><i style="width:${Math.round(c / max * 100)}%"></i></div>`).join("") || '<div class="vuoto">Nessun cliente</div>'}</div></div>
       ${boxNotte(d)}
       ${(d.coda || []).length ? `<div class="cru-box" id="admCoda" style="margin-top:14px"><h3>Da risolvere</h3><p class="hint" style="margin:0 0 8px">In ordine di scadenza. In rosso quelli oltre la scadenza. Tocca un caso per aprire la scheda del cliente.</p>
-        ${d.coda.map(x => `<button type="button" class="riga-cli" ${x.tipo === "segnalazione" ? "data-vai-segn" : x.tipo === "giacenza" ? `data-giacenza="${esc(x.codice)}" data-u="${esc(x.univoco)}"` : `data-scheda="${esc(x.univoco)}"`} style="width:100%;text-align:left"><span><span class="nome">${esc(x.titolo)} · ${esc(x.nome || x.univoco)}</span><span class="cod">${esc(x.univoco)}${x.ottica ? " · " + esc(x.ottica) : ""} · ${esc(x.dettaglio || "")}</span></span>
+        ${d.coda.map(x => `<button type="button" class="riga-cli" ${x.tipo === "segnalazione" ? "data-vai-segn" : x.tipo === "giacenza" ? `data-giacenza="${esc(x.codice)}" data-u="${esc(x.univoco)}"` : x.tipo === "busta" ? `data-busta="${esc(x.univoco)}"` : x.univoco ? `data-scheda="${esc(x.univoco)}"` : ""} style="width:100%;text-align:left"><span><span class="nome">${esc(x.titolo)} · ${esc(x.nome || x.univoco)}</span><span class="cod">${esc(x.univoco)}${x.ottica ? " · " + esc(x.ottica) : ""} · ${esc(x.dettaglio || "")}</span></span>
           <span class="bad"><span class="chip ${x.scaduto ? "s3" : "s2"}">${x.scaduto ? "SCADUTO IL" : "ENTRO IL"} ${dt(x.scadenza)}</span></span></button>`).join("")}</div>` : ""}
       ${(d.segnalazioni || []).length ? `<div class="cru-box" id="admSegn" style="margin-top:14px"><h3>Segnalazioni dei clienti</h3>${d.segnalazioni.map(x => `<div class="scheda" data-sg="${esc(x.id)}"><small>${dt(x.il)} · <b>${esc(x.univoco)}</b> ${esc(x.nome)} · ottica ${esc(x.ottica)}${x.cellulare ? ` · <a href="tel:+39${esc(String(x.cellulare).replace(/\D/g, ""))}">${esc(x.cellulare)}</a>` : ""}</small>
         <p style="margin:6px 0">${esc(x.testo)}</p>${x.foto ? `<img src="${esc(x.foto)}" alt="Foto del cliente" style="max-width:260px;width:100%;border-radius:10px">` : ""}
@@ -460,6 +460,16 @@ async function clic(e){
       <form data-f="totpAttiva"><label class="lbl" for="taCod">Codice dell'app</label><input id="taCod" name="codice" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required><button type="submit" class="verde">Conferma e attiva</button></form>`;
     try { await caricaQrLib(); new QRCode($("totpQr"), {text: r.data.link, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M}); } catch(_){ $("totpQr").textContent = "QR non disponibile: usa la chiave scritta."; }
     return;
+  }
+  // ordine pagato senza busta del laboratorio: due scelte
+  if (b.dataset.busta){
+    if (!b.nextElementSibling || !b.nextElementSibling.matches("[data-busta-scelta]"))
+      b.insertAdjacentHTML("afterend", `<div class="az" data-busta-scelta style="margin:0 0 8px"><button type="button" class="verde" data-busta-op="crea" data-u="${esc(b.dataset.busta)}">Crea la busta per il laboratorio</button><button type="button" class="grigio" data-busta-op="ottica" data-u="${esc(b.dataset.busta)}">Lo segue l'ottica</button><button type="button" class="linkbtn" data-scheda="${esc(b.dataset.busta)}">Apri la scheda</button></div>`);
+    return;
+  }
+  if (b.dataset.bustaOp){
+    b.disabled = true; const r = await call("busta", {univoco: b.dataset.u, op: b.dataset.bustaOp}); if (!r.ok){ b.disabled = false; return msg(r.data.errore || "Errore", "err"); }
+    await carica(); return msg(b.dataset.bustaOp === "crea" ? "Busta creata: il laboratorio la vede «da verificare» e riceve la notifica." : "Segnato: l'occhiale lo prepara l'ottica.");
   }
   if (b.hasAttribute("data-vai-coda")){ const x = document.getElementById("admCoda"); if (x) x.scrollIntoView({behavior: "smooth"}); return; }
   // giacenza da correggere: si apre il magazzino sull'articolo; con un secondo tocco si segna come controllata
@@ -646,7 +656,7 @@ async function invio(e){
     const r = await call("stripePartner", Object.assign({tipo: f.dataset.tipo, id: f.dataset.id, op: "paga", token: tokenPaga}, v));
     tokenPaga = Math.random().toString(36).slice(2);
     if (!r.ok){ btn.disabled = false; btn.dataset.ok = ""; btn.textContent = "Paga con Stripe"; return msg(r.data.errore || "Errore", "err"); }
-    await carica(); return msg(`Pagamento inviato con Stripe (${r.data.trasferimento}) e registrato nell'estratto conto.`);
+    await carica(); return msg(`Pagamento inviato con Stripe (${r.data.trasferimento}) e registrato nell'estratto conto${r.data.ordini ? `: copre ${r.data.ordini} ${r.data.ordini === 1 ? "occhiale" : "occhiali"}` : ""}.`);
   }
   if (k === "provaMessaggio"){ const r = await call("provaMessaggio", v); if (!r.ok) return msg(r.data.errore || "Errore", "err");
     return msg(r.data.inviato ? `Messaggio di prova inviato via ${r.data.canale === "sms" ? "SMS" : "WhatsApp"}: controlla il telefono.` : `Non partito: ${r.data.motivo || "canale non collegato"}.`, r.data.inviato ? "ok" : "err"); }

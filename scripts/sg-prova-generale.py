@@ -15,7 +15,14 @@ def esito(passo, ok, dettaglio=""):
 def firma(ruolo, id_):
     body = base64.urlsafe_b64encode(json.dumps({"exp": int(time.time()*1000) + 2*3600e3, "ruolo": ruolo, "id": id_}).encode()).decode().rstrip("=")
     return body + "." + base64.urlsafe_b64encode(hmac.new(SEG.encode(), body.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+NASCITA, CONFERME = {}, {}
+GATED = ("api/pagamento", "api/fine-periodo")
 def call(path, body=None, tok=None, metodo=None):
+    # operazioni del cliente che chiedono la conferma con la data di nascita (consenso, pagamenti, scelte del contratto)
+    if isinstance(body, dict) and body.get("univoco") in NASCITA and "conferma" not in body and (path in GATED or body.get("azione") == "consenso"):
+        uv = body["univoco"]
+        if uv not in CONFERME: CONFERME[uv] = call("api/benvenuto", {"azione": "conferma", "univoco": uv, "nascita": NASCITA[uv]})[1].get("conferma", "")
+        body = dict(body, conferma=CONFERME[uv])
     r = urllib.request.Request(SITO + "/" + path, data=json.dumps(body).encode() if body is not None else None, method=metodo,
         headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + tok} if tok else {})})
     try: x = urllib.request.urlopen(r, timeout=60); return x.status, json.load(x)
@@ -53,7 +60,15 @@ def registra(base, nome, data):
     s, r = call("api/utenti", {"cf": cf(base), "nome": nome, "cognome": "PROVA", "nato": "CATANIA", "datanascita": data, "sesso": "F", "prefisso": "+39", "cellulare": "3330000099",
         "ottica": "OTT07", "amico": "", "gdpr":True,"documento":True, "residenza": {"indirizzo": "Via Etnea 1", "cap": "95124", "comune": "CATANIA", "provincia": "CT"}}, C)
     if s != 200: raise RuntimeError(f"registrazione {nome}: {s} {r}")
-    CLIENTI.append(r["univoco"]); return r["univoco"]
+    CLIENTI.append(r["univoco"]); NASCITA[r["univoco"]] = data; return r["univoco"]
+async def conferma_se_serve(pg, uv, sec=4):
+    """la pagina del cliente chiede la data di nascita prima delle operazioni delicate (una volta per dispositivo)"""
+    t0 = time.time()
+    while time.time() - t0 < sec:
+        if await pg.locator("#confData").count() and await pg.locator("#confData").is_visible():
+            await pg.fill("#confData", NASCITA[uv]); await pg.click(".conf-ov button[type=submit]"); await pg.wait_for_timeout(1500); return True
+        await pg.wait_for_timeout(300)
+    return False
 RICETTA = {"OD": {"sf": -1.25, "cil": -0.5, "ax": 90}, "OS": {"sf": -1}, "pd": 63}
 
 async def trova(pg, selettori, sec=20):
@@ -74,7 +89,7 @@ async def paga_stripe(ctx, uv, metodo="carta", iban=None, nome_pag="Prova Genera
     await pg.goto(f"{SITO}/?Univoco={uv}"); await pg.wait_for_timeout(2500)
     for sel in ["#c1", "#c2", "#c3"]:
         if await pg.locator(sel).count(): await pg.check(sel)
-    await pg.click("#mpPaga"); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000); await pg.wait_for_timeout(4000)
+    await pg.click("#mpPaga"); await conferma_se_serve(pg, uv); await pg.wait_for_url("**checkout.stripe.com/**", timeout=60000); await pg.wait_for_timeout(4000)
     em = await trova(pg, ["input#email", "input[name=email]", "input[type=email]"])
     if em: await em.fill(f"prova.generale+{uv.lower()}@example.com")
     voce = await trova(pg, ["text=Carta"] if metodo == "carta" else ["text=SEPA", "text=Addebito diretto"], 10)
@@ -139,7 +154,7 @@ async def main():
             # ===== A · percorso completo con carta 4242 =====
             uvA = registra("PRVGLI71A41C351", "GIULIA", "1971-01-01"); esito("A1 registrazione dal CAF", True, uvA)
             pg = await tel.new_page(); await pg.goto(f"{SITO}/?Univoco={uvA}"); await pg.wait_for_timeout(2500); await pg.screenshot(path=f"{OUT}/A1-telefono-benvenuto.png", full_page=True)
-            await pg.check("#cSan"); await pg.click("#cSanOk"); await pg.wait_for_timeout(1500)
+            await pg.check("#cSan"); await pg.click("#cSanOk"); await conferma_se_serve(pg, uvA); await pg.wait_for_timeout(1500)
             await pg.click("#mpScan"); await pg.wait_for_timeout(1000); await pg.locator("#video-container input").fill("SG-1043"); await pg.locator("#video-container .manuale button").click(); await pg.wait_for_timeout(2000)
             await pg.get_by_role("button", name="Scelgo questa montatura").click(); await pg.wait_for_timeout(2500); await pg.screenshot(path=f"{OUT}/A2-telefono-montatura.png", full_page=True)
             c = stato(uvA); esito("A2 consenso e montatura dal telefono", c.get("stato") == "MONTATURA SCELTA" and bool(c.get("consensoSanitario")), c.get("stato"))

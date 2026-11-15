@@ -62,8 +62,15 @@ module.exports = L.wrap(async (req, res) => {
       const ok = await L.pushCliente(Object.assign({}, u.f, {Push: [l[l.length - 1]]}), `SocialGlass: ${L.nm(u.f.Nome)}, notifiche attive! Ti scriviamo qui quando c'è una novità sui tuoi occhiali.`, "Notifiche attive");
       return L.send(res, 200, {ok: true, prova: ok});
     }
+    // conferma con la data di nascita: chi ha solo il link non può fare le operazioni delicate (errori contati come i codici sbagliati)
+    if (b.azione === "conferma"){
+      if (!u.f["Data Nascita"]) return L.send(res, 200, {ok: true, conferma: "", giorni: 0});
+      if (!L.stessaData(b.nascita, u.f["Data Nascita"])){ await L.codiceErrato(req); return L.send(res, 403, {errore: "La data di nascita non corrisponde. Controllala e riprova."}); }
+      return L.send(res, 200, {ok: true, conferma: L.firmaCliente(u.f.Univoco), giorni: L.GIORNI_CONFERMA});
+    }
     // consenso al trattamento della ricetta (dato sanitario, art. 9.2.a GDPR): lo dà il cliente dal suo link, una volta sola
     if (b.azione === "consenso"){
+      if (!L.confermaCliente(b.conferma, u.f)) return L.send(res, 401, L.SERVE_CONFERMA);
       if (b.si !== true) return L.send(res, 400, {errore: "Serve la spunta per dare il consenso."});
       if (u.f.ConsensoSanitario && u.f.ConsensoSanitario.il) return L.send(res, 200, {ok: true, consenso: u.f.ConsensoSanitario});
       const c = {il: ora, versione: L.INFORMATIVA_VERSIONE};
@@ -165,6 +172,7 @@ module.exports = L.wrap(async (req, res) => {
     contratto: ord.pagamento && ord.pagamento.attivatoIl ? {attivatoIl: ord.pagamento.attivatoIl, consensi: ord.consensi || null, caf: u.f.CAF || ""} : null,
     barraTempo: barraAttiva(cfg, u.f) ? {giorni: Number(u.f.ProveGiorni) || 0} : null,
     residenza: !!(u.f.Residenza && u.f.Residenza.cap), scadeLink: L.scadenzaLink(u.f),
+    chiedeConferma: !L.confermaCliente("", u.f),
     consensoSanitario: u.f.ConsensoSanitario && u.f.ConsensoSanitario.il ? u.f.ConsensoSanitario : null, informativa: L.INFORMATIVA_VERSIONE};
   // contratto chiuso: la pagina del cliente mostra la tappa raggiunta (con il messaggio di chiusura in alto)
   const oC = L.parseOrdine(u.f.Ordine), statoCli = u.f.Stato === L.STATI.CHIUSO ? (oC.consegnatoIl ? L.STATI.CONSEGNATO : oC.prontoIl ? L.STATI.PRONTO : L.STATI.ATTIVO) : u.f.Stato;

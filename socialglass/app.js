@@ -307,6 +307,54 @@ async function api(path, opt = {}){
   return {ok: r.ok, status: r.status, data};
 }
 const post = (path, body) => api(path, {method: "POST", body: JSON.stringify(body)});
+/* ---------- conferma del cliente con la data di nascita ----------
+   Prima di consenso per la ricetta, ricevute, cambio carta, attivazione, occhiale nuovo, scelta di fine abbonamento e contratto.
+   Una volta confermata, vale 90 giorni su questo telefono (o tablet). */
+let confMem = "";
+const chiaveConf = () => "sg_conf_" + UNIVOCO;
+function confermaSalvata(){
+  let t = confMem; try { t = localStorage.getItem(chiaveConf()) || t; } catch(_){}
+  try { const p = JSON.parse(atob(String(t).split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))); return p.exp > Date.now() ? t : ""; } catch(_){ return ""; }
+}
+function chiediNascita(){
+  return new Promise(fine => {
+    const prima = document.activeElement, ov = document.createElement("div");
+    ov.className = "conf-ov"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "confTit");
+    ov.style.cssText = "position:fixed;inset:0;z-index:10000;background:rgba(10,31,92,.45);display:flex;align-items:center;justify-content:center;padding:16px";
+    ov.innerHTML = `<form class="popup-content" style="position:relative;max-width:380px;width:100%;margin:0" novalidate><h2 id="confTit" style="margin-top:0">Conferma che sei tu</h2>
+      <p style="margin:0 0 10px">Per sicurezza scrivi la tua data di nascita. Su questo telefono non te la chiediamo più per 90 giorni.</p>
+      <label for="confData" style="display:block;font-size:14px;margin-bottom:4px">Data di nascita</label><input type="date" id="confData" required max="${new Date().toISOString().slice(0, 10)}" style="width:100%">
+      <div class="esito err" id="confErr" hidden role="alert"></div>
+      <div class="riga" style="margin-top:10px"><button type="button" class="grigio" data-conf-no style="flex:1">Annulla</button><button type="submit" class="verde" style="flex:1">Conferma</button></div></form>`;
+    document.body.appendChild(ov);
+    const chiudi = t => { ov.remove(); document.removeEventListener("keydown", esc1, true); try { if (prima && prima.focus) prima.focus({preventScroll: true}); } catch(_){} fine(t); };
+    const esc1 = e => { if (e.key === "Escape"){ e.stopPropagation(); e.preventDefault(); chiudi(""); } };
+    document.addEventListener("keydown", esc1, true);
+    ov.querySelector("[data-conf-no]").onclick = () => chiudi("");
+    ov.querySelector("form").onsubmit = async e => {
+      e.preventDefault(); const d = $("confData").value, er = $("confErr"); er.hidden = true;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)){ er.textContent = "Scrivi la data di nascita."; er.hidden = false; return; }
+      const bt = ov.querySelector("button[type=submit]"); bt.disabled = true;
+      const r = await post("api/benvenuto", {azione: "conferma", univoco: UNIVOCO, nascita: d}); bt.disabled = false;
+      if (!r.ok){ er.textContent = (r.data && r.data.errore) || "Non riuscito, riprova."; er.hidden = false; return; }
+      confMem = r.data.conferma || ""; try { if (confMem) localStorage.setItem(chiaveConf(), confMem); } catch(_){}
+      chiudi(confMem || "ok");
+    };
+    setTimeout(() => $("confData").focus(), 30);
+  });
+}
+// chiamata che chiede la conferma solo se serve (il server risponde serveConferma), poi riprova una volta
+async function postConferma(path, body){
+  let r = await post(path, Object.assign({conferma: confermaSalvata() || undefined}, body));
+  if (r.status === 401 && r.data && r.data.serveConferma){
+    confMem = ""; try { localStorage.removeItem(chiaveConf()); } catch(_){}
+    const t = await chiediNascita(); if (!t) return {ok: false, status: 401, data: {errore: "Conferma annullata.", annullato: true}};
+    r = await post(path, Object.assign({conferma: confermaSalvata() || undefined}, body));
+  }
+  return r;
+}
+// solo nella pagina (contratto): chiede la data se non è già confermata su questo dispositivo
+async function confermaPagina(){ if (DEMO === "browser" || confermaSalvata() || !(mio && mio.chiedeConferma)) return true; return !!(await chiediNascita()); }
 
 /* ---------- accesso CAF e ottico ---------- */
 const ruolo = () => sessionStorage.getItem("sg_tok") ? sessionStorage.getItem("sg_ruolo") : null;
@@ -715,14 +763,16 @@ async function apriPrenota(){
 // carta e ricevute: pagina sicura di Stripe
 async function apriCarta(){
   const b = $("mpCarta"); if (b){ b.disabled = true; }
-  const r = await post("api/pagamento", {azione: "carta", univoco: UNIVOCO});
+  const r = await postConferma("api/pagamento", {azione: "carta", univoco: UNIVOCO});
+  if (r.data && r.data.annullato){ if (b) b.disabled = false; return; }
   if (b) b.disabled = false;
   if (r.ok && r.data.url){ location.href = r.data.url; return; }
   apriExtra("Cambia carta", `<div class="esito ${r.ok ? "info" : "err"}">${esc((r.data && r.data.errore) || "Non disponibile ora: riprova tra poco.")}</div>`);
 }
 async function apriRicevute(){
+  const r0 = await postConferma("api/pagamento", {azione: "ricevute", univoco: UNIVOCO}); if (r0.data && r0.data.annullato) return;
   apriExtra("Ricevute dei pagamenti", '<div class="vuoto">Caricamento…</div>');
-  const r = await post("api/pagamento", {azione: "ricevute", univoco: UNIVOCO}), l = r.ok ? r.data.ricevute || [] : [], fz = r.ok ? r.data.fatture || [] : [];
+  const r = r0, l = r.ok ? r.data.ricevute || [] : [], fz = r.ok ? r.data.fatture || [] : [];
   const fat = fz.length ? `<h3 style="margin:4px 0 6px">Fatture</h3><div class="ricevute">${fz.map((x, i) => `<div class="ric"><span><b>Fattura n. ${esc(x.numero)} · ${euro(x.totale)}</b><small>${dt(x.data)}</small></span><button type="button" class="grigio" data-fattura="${i}" style="margin:0">Vedi</button></div>`).join("")}</div>
     <p class="hint" style="margin:6px 0 14px">La fattura valida per la detrazione arriva anche nel tuo cassetto fiscale (Agenzia delle Entrate). Questa è la copia di cortesia.</p>${l.length ? '<h3 style="margin:4px 0 6px">Pagamenti</h3>' : ""}` : "";
   $("extraCorpo").innerHTML = fat + (l.length ? `<div class="ricevute">${l.map(x => `<div class="ric"><span><b>${euro(x.importo)}</b><small>${dt(x.il)}${x.numero ? " · n. " + esc(x.numero) : ""}</small></span>
@@ -747,6 +797,7 @@ function copiaFattura(f){
 // copia del contratto in PDF: condizioni con i dati del cliente e la data delle conferme
 const caricaPdf = () => window.jspdf ? Promise.resolve() : new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
 async function apriContratto(){
+  if (!(await confermaPagina())) return;
   const u = mio, od = u.ordine || {}, c = u.contratto || {}, p = od.prezzi || {}, T = (window.SG_INFO && SG_INFO.titolare) || {};
   const quando = d => d ? new Date(d).toLocaleString("it-IT", {dateStyle: "long", timeStyle: "short"}) : "—";
   const righe = [["Cliente", `${u.nome} ${u.cognome || ""}`.trim()], ["Codice cliente", UNIVOCO], ["Ottica", u.ottico ? `${u.ottico.nome}, ${u.ottico.indirizzo}${u.ottico.citta}` : ""],
@@ -965,6 +1016,13 @@ $("formVerifica").addEventListener("submit", async e => {
 function schedaAnagrafica(d, cf, perRinnovo){
   const riga = (t, v) => v ? `<div class="r"><span>${t}</span><b>${v}</b></div>` : "";
   let titolo, cl, az = "";
+  // cliente di un altro CAF: solo dove è registrato e da quando può passare a questo CAF (nessun dato personale)
+  if (d.altroCaf){
+    if (d.inCorso){ titolo = `⏳ Già registrato presso ${esc(d.cafNome)}: pratica in corso`; cl = "info"; }
+    else if (d.rinnovabile){ titolo = `✓ Già registrato presso ${esc(d.cafNome)}: può passare al tuo CAF con il rinnovo`; cl = "ok"; if (!perRinnovo) az = `<button type="button" class="verde" data-cf-rinnovo="${esc(cf)}" style="margin-top:8px">Avvia il rinnovo</button>`; }
+    else { titolo = d.rinnovoDal ? `⏳ Già registrato presso ${esc(d.cafNome)}: potrà passare al tuo CAF dal ${dIt(d.rinnovoDal)}` : `⏳ Già registrato presso ${esc(d.cafNome)}: per ora non può fare una nuova richiesta`; cl = "info"; }
+    return {cl, html: `<b>${titolo}</b><p style="margin:8px 0 0">I suoi dati restano riservati al CAF che lo segue. Per passarlo al tuo CAF serve il consenso del cliente: al rinnovo ti chiediamo il codice cliente della sua tessera o del suo link.</p>${az}`};
+  }
   if (d.bloccato){ titolo = d.moroso ? "⛔ Cliente moroso: pagamenti non regolari" : "⛔ Anagrafica bloccata da SocialGlass"; cl = "err"; }
   else if (!FINITO(d.stato) || d.rinnovoInCorso){ titolo = "⏳ Pratica in corso: non può fare una nuova richiesta adesso"; cl = "info"; }
   else if (d.rinnovabile){ titolo = "✓ Può fare richiesta adesso: occhiale nuovo con il rinnovo"; cl = "ok"; if (!perRinnovo) az = `<button type="button" class="verde" data-cf-rinnovo="${esc(cf)}" style="margin-top:8px">Avvia il rinnovo</button>`; }
@@ -995,14 +1053,16 @@ $("formRinnovo").addEventListener("submit", async e => {
   box.insertAdjacentHTML("beforeend", `<p style="margin:8px 0 0">Scegli l'ottica per l'occhiale nuovo (anche diversa da quella di prima) e avvia il rinnovo: il cliente riceve il link per scegliere la montatura; l'abbonamento continua senza interruzioni.</p>`);
   await loadOttici();
   const sel = $("rinnovoOttica"); sel.innerHTML = $("ottica").innerHTML; [...sel.options].forEach(op => { if (!op.value) op.remove(); }); sel.value = d.ottica || "";
+  $("rinnovoCodiceRiga").hidden = !d.altroCaf; $("rinnovoCodice").value = "";
   $("rinnovoScelta").hidden = false;
   // se il cliente aveva scelto di comprare l'usato o di restituirlo, il rinnovo va confermato (ha cambiato idea)
   const diverso = d.scelta && d.scelta.scelta !== "rinnova"; let confermato = !diverso;
   $("rinnovoAvvia").textContent = diverso ? "Il cliente ha cambiato idea: avvia il rinnovo" : "Avvia il rinnovo e invia il nuovo link";
   $("rinnovoAvvia").onclick = async () => {
     if (!confermato){ confermato = true; $("rinnovoAvvia").textContent = "Confermi? La sua scelta precedente viene annullata: tocca di nuovo"; return; }
+    if (d.altroCaf && !$("rinnovoCodice").value.trim()){ esito(box, "Scrivi o inquadra il codice cliente: è il consenso del cliente al cambio di CAF.", "err"); $("rinnovoCodice").focus(); return; }
     $("rinnovoAvvia").disabled = true;
-    const x = await post("api/utenti", {azione: "rinnovo", cf, ottica: sel.value}); $("rinnovoAvvia").disabled = false; if (scaduta(x)) return;
+    const x = await post("api/utenti", {azione: "rinnovo", cf, ottica: sel.value, codice: d.altroCaf ? $("rinnovoCodice").value.trim() : undefined}); $("rinnovoAvvia").disabled = false; if (scaduta(x)) return;
     if (x.ok){ $("rinnovoScelta").hidden = true; mostraLink(x.data, ""); } else esito(box, x.data.errore, "err");
   };
 });
@@ -1014,6 +1074,12 @@ $("formCerca").addEventListener("submit", async e => {
   esito($("risultatoRicerca"), r.data.trovato ? `Il nome corrispondente è: ${r.data.nome} ${r.data.cognome} · ${r.data.stato}` : "Utente non trovato", r.data.trovato ? "ok" : "err");
 });
 $("come-funziona").addEventListener("click", () => open("comePopup"));
+// codice cliente letto dalla tessera (consenso al cambio di CAF o di ottica): resta nel campo, la finestra non si chiude
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-scan-codice]"); if (!b) return;
+  startScan({testo: "Inquadra il QR sulla tessera del cliente (anche dal suo telefono)", etichetta: "Oppure scrivi il codice cliente (SG…)", segnaposto: "SG…",
+    onCodice: t => { const i = $(b.dataset.scanCodice); if (i) i.value = t; }});
+});
 
 /* ---------- i miei clienti (CAF e ottico) ---------- */
 let clienti = [];
@@ -1261,9 +1327,9 @@ $("formOrdineCerca").addEventListener("submit", e => { e.preventDefault(); caric
 $("formRinnovoCf").addEventListener("submit", async e => {
   e.preventDefault(); const cf = $("rinnovoCf").value.trim().toUpperCase();
   if (!CF.valido(cf)){ esito($("ordineEsito"), "Codice fiscale non valido.", "err"); return; }
-  const x = await post("api/utenti", {azione: "rinnovo", cf}); if (scaduta(x)) return;
-  if (!x.ok){ esito($("ordineEsito"), x.data.errore, "err"); return; }
-  $("rinnovoCf").value = "";
+  const x = await post("api/utenti", {azione: "rinnovo", cf, codice: $("rinnovoCfCodice").value.trim() || undefined}); if (scaduta(x)) return;
+  if (!x.ok){ esito($("ordineEsito"), x.data.errore, "err"); if (x.data.serveCodice) $("rinnovoCfCodice").focus(); return; }
+  $("rinnovoCf").value = ""; $("rinnovoCfCodice").value = "";
   avvisoCliente(x.data.avviso || {whatsapp: x.data.whatsapp, sms: x.data.smsInviato}, `Rinnovo avviato (codice ${x.data.univoco}): ora il cliente è della tua ottica. Fagli scegliere la montatura con il QR, poi inserisci lenti e ricetta.`);
 });
 // soloRicetta: correzione della ricetta dopo l'attivazione (lenti e prezzo restano uguali), finché il laboratorio non inizia
@@ -1532,7 +1598,8 @@ function disegnaMio(){
     const e = $("cSanErr"); e.hidden = true;
     if (!$("cSan").checked){ e.textContent = "Metti la spunta per dare il consenso."; e.hidden = false; return; }
     const b = $("cSanOk"); b.disabled = true; b.textContent = "Salvataggio…";
-    const r = await post("api/benvenuto", {azione: "consenso", univoco: UNIVOCO, si: true});
+    const r = await postConferma("api/benvenuto", {azione: "consenso", univoco: UNIVOCO, si: true});
+    if (r.data && r.data.annullato){ b.disabled = false; b.textContent = "Conferma"; return; }
     if (!r.ok){ b.disabled = false; b.textContent = "Conferma"; e.textContent = (r.data && r.data.errore) || "Non riuscito, riprova."; e.hidden = false; return; }
     mio.consensoSanitario = r.data.consenso; disegnaMio();
   };
@@ -1566,7 +1633,8 @@ function disegnaMio(){
       $("fineSi").onclick = () => { b.dataset.ok = "1"; box.innerHTML = ""; b.click(); };
       box.scrollIntoView({block: "nearest", behavior: "smooth"}); return;
     }
-    b.disabled = true; const r = await post("api/fine-periodo", {univoco: UNIVOCO, scelta: b.dataset.fine});
+    b.disabled = true; const r = await postConferma("api/fine-periodo", {univoco: UNIVOCO, scelta: b.dataset.fine});
+    if (r.data && r.data.annullato){ b.disabled = false; return; }
     if (!r.ok){ b.disabled = false; notaDemo(r.data.errore || "Riprova."); return; }
     await caricaMio(false); disegnaMio();
   });
@@ -1580,8 +1648,9 @@ async function attivaRate(){
   const rinnovo = !!$("mpPaga").dataset.rinnovo;
   if (!rinnovo && (DEMO === "browser" || (DEMO && !STRIPE))){ if (!(await checkoutProva())) return; }
   $("mpPaga").disabled = true; $("mpPaga").textContent = "Apro la pagina di pagamento…";
-  const r = await post("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true, residenza: rs || undefined});
+  const r = await postConferma("api/pagamento", {univoco: UNIVOCO, consensoContratto: true, consensoAddebito: true, consensoSuMisura: true, residenza: rs || undefined});
   if (r.ok && r.data.url){ location.href = r.data.url; return; }
+  if (r.data && r.data.annullato){ $("mpPaga").disabled = false; $("mpPaga").textContent = rinnovo ? "Conferma l'occhiale nuovo" : "Attiva l'abbonamento"; return; }
   $("mpPaga").disabled = false; $("mpPaga").textContent = rinnovo ? "Conferma l'occhiale nuovo" : "Attiva l'abbonamento";
   if (!r.ok){ esito($("mpErr"), r.data.errore || "Pagamento non riuscito. Riprova.", "err"); return; }
   await caricaMio(false); open("miaPagina");

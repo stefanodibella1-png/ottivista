@@ -2,6 +2,8 @@
 const http = require("http"), fs = require("fs"), path = require("path");
 const ROOT = "/home/claude/ottivista/socialglass";
 const L = require(ROOT + "/api/_lib.js");
+// prove vecchie che non riguardano la conferma con la data di nascita (punto 4): SENZA_CONFERMA=1 la salta (solo qui, mai sul sito)
+if (process.env.SENZA_CONFERMA) L.confermaCliente = () => true;
 const ora = Date.now(), iso = d => new Date(d).toISOString();
 const ord = o => JSON.stringify(o);
 const mont = {codice: "SG-1042", modello: "Aurora", colore: "Nero", calibro: "52-18", asse: "145", prezzo: 60};

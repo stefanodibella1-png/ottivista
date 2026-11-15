@@ -65,7 +65,7 @@ module.exports = L.wrap(async (req, res) => {
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
     salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
     salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", totpAttiva: "secondo fattore attivato", totpDisattiva: "secondo fattore disattivato", sollecito: "sollecito inviato", legale: "pratica legale",
-    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", giacenzaVista: "giacenza ottica controllata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato", pilota: "pilota"};
+    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", busta: "busta del laboratorio", addebitoUsato: "addebito dell'usato per restituzione mancata", giacenzaVista: "giacenza ottica controllata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato", pilota: "pilota"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
     [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
 
@@ -182,11 +182,11 @@ module.exports = L.wrap(async (req, res) => {
       ["Avvisi automatici ai clienti collegati (WhatsApp Business o SMS)", L.canaliCollegati().whatsapp || L.canaliCollegati().sms]
     ];
     const comp = (x, ruolo) => { const d = L.accordiDi(x, ruolo), u = d[d.length - 1] || {}; return {CompensoTipo: u.tipo || "", CompensoValore: u.tipo && u.tipo !== "rata" ? (u.valore || "") : "", CompensoBase: u.base ? u.tipo : ""}; };
-    const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
+    const tuttiF = utenti.map(u => u.f); const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     const cfgS = await L.DB.meta("config");
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", disattivato: x.Disattivato || null, prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x[L.campoConto()], conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf"), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf")}, comp(x, "caf"))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", disattivato: x.Disattivato || null, Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x[L.campoConto()], conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica"), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica")}, comp(x, "ottica"))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", disattivato: x.Disattivato || null, prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x[L.campoConto()], conti: L.conteggi(diCaf(x.ID || x._id), Object.assign({ID: x.ID || x._id}, x), gg(b.da), gg(b.a), "caf", tuttiF), estratto: L.estratto(diCaf(x.ID || x._id), Object.assign({ID: x.ID || x._id}, x), gg(b.da), gg(b.a), "caf", tuttiF)}, comp(x, "caf"))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", disattivato: x.Disattivato || null, Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x[L.campoConto()], conti: L.conteggi(diOtt(x.ID || x._id), Object.assign({ID: x.ID || x._id}, x), gg(b.da), gg(b.a), "ottica", tuttiF), estratto: L.estratto(diOtt(x.ID || x._id), Object.assign({ID: x.ID || x._id}, x), gg(b.da), gg(b.a), "ottica", tuttiF)}, comp(x, "ottica"))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Foto: x.Foto || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
@@ -211,7 +211,7 @@ module.exports = L.wrap(async (req, res) => {
         return {nome: l.nome || "", indirizzo: l.indirizzo || "", telefono: l.telefono || "", email: l.email || "", attivo: !!l.attivo, password: !!l.password,
           daFare: lav.filter(x => x.stato === "DA FARE").length, inLavorazione: lav.filter(x => x.stato === "IN LAVORAZIONE").length, daRitirare: lav.filter(x => x.stato !== "PRONTO" && x.fonte !== "LAB" && !x.ritirata).length}; })(),
       differenzeStripe: ((await L.DB.meta("differenze-stripe")) || {}).voci || [],
-      coda: L.codaEccezioni(utenti, await L.DB.lista("segn"), await L.DB.meta("differenze-stripe"), cfgS, null, mont),
+      coda: L.codaEccezioni(utenti, await L.DB.lista("segn"), await L.DB.meta("differenze-stripe"), cfgS, null, mont, await L.labAttivo()),
       addebitoUsato: ((cfgS || {}).addebitoUsato) || "",
       notte: await (async () => { const n = (await L.DB.meta("notte")) || {}; return {giorno: n.giorno || "", fatto: !!n.fatto, inizio: n.inizio || "", fine: n.fine || "", controllati: n.controllati || 0, azioni: n.azioni || 0, lotti: n.lotti || 0, errori: n.errori || []}; })(),
       copiaEsterna: (await L.DB.meta("backup-esterno")) || null,
@@ -235,14 +235,20 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "liquidazione"){
     const k = b.tipo === "caf" ? "caf" : b.tipo === "ottico" ? "ottici" : null, id = pulito(b.id, 20).toUpperCase(); if (!k) return L.send(res, 400, {errore: "Tipo non valido."});
     const acc = k === "caf" ? (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id) : await L.DB.ottico(id); if (!acc) return L.send(res, 404, {errore: "Non trovato."});
-    let l = L.liquidazioniDi(acc);
-    if (b.op === "elimina") l = l.filter(x => x.id !== b.rid);
-    else {
-      const imp = numero(b.importo), il = gg(b.data); if (!(imp > 0)) return L.send(res, 400, {errore: "Importo non valido."}); if (!il) return L.send(res, 400, {errore: "Data non valida."});
-      l.push({id: require("crypto").randomBytes(4).toString("hex"), il, importo: imp, causale: ["acconto", "saldo", "rettifica"].includes(b.causale) ? b.causale : "acconto",
-        metodo: pulito(b.metodo, 40), nota: pulito(b.nota, 200), registrato: new Date().toISOString()});
+    if (b.op === "elimina"){
+      const v = L.liquidazioniDi(acc).find(x => x.id === b.rid); if (!v) return L.send(res, 404, {errore: "Pagamento non trovato."});
+      // un pagamento partito con Stripe non si cancella: tornerebbe «da pagare» e si pagherebbe due volte
+      if (v.stripe || v.stato === "in corso") return L.send(res, 409, {errore: "Un pagamento fatto con Stripe non si cancella (si pagherebbe due volte). Se l'importo era sbagliato, registra una rettifica con una nota."});
+      await L.aggiornaLiquidazione(k, id, b.rid, () => null); await L.registra("amministratore", "pagamento a partner eliminato", id, `${v.importo} € del ${v.il}`);
+      return L.send(res, 200, {ok: true});
     }
-    await L.DB.salva(k, id, {Liquidazioni: l}); return L.send(res, 200, {ok: true});
+    const imp = numero(b.importo), il = gg(b.data), causale = ["acconto", "saldo", "rettifica"].includes(b.causale) ? b.causale : "acconto";
+    if (!(imp > 0)) return L.send(res, 400, {errore: "Importo non valido."}); if (!il) return L.send(res, 400, {errore: "Data non valida."});
+    // la rettifica può superare il maturato (correzioni), ma con il motivo scritto
+    if (causale === "rettifica" && !pulito(b.nota)) return L.send(res, 400, {errore: "Per una rettifica scrivi il motivo nella nota."});
+    const r = await L.nuovaLiquidazione(k, id, acc, {il, importo: imp, causale, metodo: pulito(b.metodo, 40), nota: pulito(b.nota, 200)}, {oltreSaldo: causale === "rettifica"});
+    if (r.errore) return L.send(res, 409, r);
+    return L.send(res, 200, {ok: true, ordini: r.voce.ordini.length});
   }
   // pagamento a CAF e ottiche con Stripe Connect: il partner apre un conto collegato (una volta), poi SocialGlass gli trasferisce il dovuto
   if (az === "stripePartner"){
@@ -268,13 +274,20 @@ module.exports = L.wrap(async (req, res) => {
         const imp = numero(b.importo); if (!(imp > 0)) return L.send(res, 400, {errore: "Importo non valido."});
         if (!pronto) return L.send(res, 409, {errore: "Il conto Stripe del partner non è ancora abilitato a ricevere pagamenti: deve completare la registrazione."});
         const ora = new Date().toISOString(), nota = pulito(b.nota, 200);
-        const t = await L.stripeApi("POST", "transfers", {amount: Math.round(imp * 100), currency: "eur", destination: conto, description: `SocialGlass compensi ${k} ${id}${nota ? " · " + nota : ""}`,
-          metadata: {socialglass: k, id}}, `tr-${k}-${id}-${Math.round(imp * 100)}-${pulito(b.token, 40)}`);
-        const l = L.liquidazioniDi(acc).filter(x => x.stripe !== t.id);
-        l.push({id: require("crypto").randomBytes(4).toString("hex"), il: ora.slice(0, 10), importo: imp, causale: ["acconto", "saldo"].includes(b.causale) ? b.causale : "saldo",
-          metodo: "Stripe", nota: [nota, t.id].filter(Boolean).join(" · "), stripe: t.id, registrato: ora});
-        await L.DB.salva(k, id, {Liquidazioni: l});
-        return L.send(res, 200, {ok: true, trasferimento: t.id});
+        // prima si registra il pagamento «in corso» (controllo del saldo e blocco di un secondo pagamento), poi il trasferimento con la stessa chiave
+        const n = await L.nuovaLiquidazione(k, id, acc, {il: ora.slice(0, 10), importo: imp, causale: ["acconto", "saldo"].includes(b.causale) ? b.causale : "saldo", metodo: "Stripe", nota, stato: "in corso"});
+        if (n.errore) return L.send(res, 409, n);
+        let t;
+        try { t = await L.stripeApi("POST", "transfers", {amount: Math.round(imp * 100), currency: "eur", destination: conto, description: `SocialGlass compensi ${k} ${id}${nota ? " · " + nota : ""}`,
+          metadata: {socialglass: k, id, liquidazione: n.voce.id}}, `tr-${k}-${id}-${n.voce.id}`); }
+        catch(e){
+          // esito incerto: si guarda su Stripe; se il trasferimento non c'è il pagamento si toglie, se Stripe non risponde resta «in corso» (lo chiude il controllo notturno)
+          let c; try { c = await L.trasferimentoDi(conto, n.voce.id); } catch(_){ return L.send(res, 502, {errore: "Stripe non risponde: il pagamento resta «in corso» e stanotte si controlla da solo. Non ripeterlo."}); }
+          if (!c){ await L.aggiornaLiquidazione(k, id, n.voce.id, () => null); throw e; }
+          t = c;
+        }
+        await L.aggiornaLiquidazione(k, id, n.voce.id, v => { delete v.stato; return Object.assign(v, {stripe: t.id, nota: [nota, t.id].filter(Boolean).join(" · ")}); });
+        return L.send(res, 200, {ok: true, trasferimento: t.id, ordini: n.voce.ordini.length});
       }
       return L.send(res, 200, {collegato: true, conto, pronto, datiInviati: !!a.details_submitted, mancano: ((a.requirements || {}).currently_due || []).length, email: a.email || ""});
     } catch(e){
@@ -540,6 +553,17 @@ module.exports = L.wrap(async (req, res) => {
   }
   // addebito automatico dell'usato per restituzione mancata (D3): si accende solo dopo il via dell'avvocato sulla clausola
   // giacenza da correggere vista dall'amministratore (dopo la rettifica in magazzino)
+  // ordine pagato senza busta: la crea l'amministratore (nasce «da verificare», come quelle normali) oppure lo lascia all'ottica
+  if (az === "busta"){
+    const u = await L.DB.utente("Univoco", pulito(b.univoco, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
+    const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {};
+    if (o.lab) return L.send(res, 409, {errore: "La busta c'è già."});
+    if (u.f.Stato !== S.ATTIVO || !pg.attivatoIl || pg.chiuso) return L.send(res, 409, {errore: "L'ordine non è in lavorazione."});
+    if (b.op === "ottica"){ o.labNo = new Date().toISOString(); await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); return L.send(res, 200, {ok: true}); }
+    if (!(await L.labAttivo())) return L.send(res, 409, {errore: "Il laboratorio non è attivo."});
+    await L.avviaLavorazione(u, o);
+    return L.send(res, 200, {ok: true});
+  }
   if (az === "giacenzaVista"){
     let ok = false;
     await L.DB.tx("mont", pulito(b.codice, 40), f => { const {g, r} = L.scorte(f); const x = r.find(y => y.univoco === pulito(b.id, 20).toUpperCase() && y.mancante); if (!x) return null; x.vista = new Date().toISOString(); ok = true; return L.campiScorte(f, g, r, {tipo: "giacenza dell'ottica controllata", qta: 0, dove: x.ottica, cliente: x.univoco}); });

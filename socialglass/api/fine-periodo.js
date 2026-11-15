@@ -8,6 +8,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!SCELTE[b.scelta]) return L.send(res, 400, {errore: "Scelta non valida"});
   const u = await L.DB.utente("Univoco", String(b.univoco || "").trim());
   if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
+  if (!L.confermaCliente(b.conferma, u.f)) return L.send(res, 401, L.SERVE_CONFERMA);
   const ord = L.parseOrdine(u.f.Ordine);
   if (![L.STATI.ATTIVO, L.STATI.PRONTO, L.STATI.CONSEGNATO].includes(u.f.Stato)) return L.send(res, 409, {errore: "L'abbonamento non è attivo."});
   if (ord.finePeriodo && ord.finePeriodo.eseguita) return L.send(res, 409, {errore: "La scelta è già stata eseguita."});

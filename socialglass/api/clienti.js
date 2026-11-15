@@ -5,15 +5,8 @@ module.exports = L.wrap(async (req, res) => {
   // laboratorio: buste di lavoro (solo i dati che servono per montare: niente codice fiscale né telefono del cliente)
   if (s.ruolo === "lab"){
     if (req.method !== "GET") return L.send(res, 405, {errore: "Metodo non consentito"});
+    // solo lettura: gli ordini pagati senza busta (es. pagati prima che il laboratorio fosse attivo) li manda l'amministratore da «Da risolvere»
     const [tutti, ottici] = await Promise.all([L.DB.tutti(), L.DB.lista("ottici")]);
-    // ordini già pagati prima che il laboratorio fosse attivo: diventano buste (la montatura è quella esposta in ottica)
-    for (const u of tutti){
-      const o = L.parseOrdine(u.f.Ordine);
-      if (u.f.Stato === L.STATI.ATTIVO && !o.lab && o.pagamento && !o.pagamento.chiuso){
-        o.lab = {stato: "DA FARE", fonte: "OTTICA", sede: String(u.f.Ottica1 || "").split(" - ")[0], creato: o.pagamento.attivatoIl || new Date().toISOString(), precedente: true};
-        try { await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)}); } catch(e){ console.error(e); }
-      }
-    }
     const buste = tutti.map(({f}) => ({f, o: L.parseOrdine(f.Ordine)})).filter(x => x.o.lab).map(({f, o}) => {
       const oid = String(f.Ottica1 || "").split(" - ")[0], ot = ottici.find(x => (x.ID || x._id) === oid) || {};
       return {univoco: f.Univoco, nome: f.Nome || "", cognome: f.Cognome || "", stato: f.Stato || "", inLavorazione: f.Stato === L.STATI.ATTIVO, lab: o.lab, annulla: L.annullabileDa(f, "laboratorio"), rifacimenti: o.rifacimenti || [], montatura: o.montatura || null, lenti: o.lenti || null,
@@ -57,6 +50,8 @@ module.exports = L.wrap(async (req, res) => {
       // gli avvisi da mandare al cliente (occhiale arrivato, ritiro, scadenze…) li segue l'ottica, non il CAF
       avviso: !isOtt ? null : (() => { const a = Object.entries(o.avvisi || {}).filter(([k, x]) => !x.inviato && !/^insoluto/.test(k)).map(([, x]) => x).sort((x, y) => String(y.il).localeCompare(String(x.il)))[0]; return a ? {testo: a.testo, whatsapp: a.whatsapp} : null; })()}, tecnico);
   }).sort((a, b) => String(b.aggiornato).localeCompare(String(a.aggiornato)));
+  // compensi: contano anche gli occhiali fatti per clienti che oggi sono di un altro CAF o di un'altra ottica
+  const tuttiPerCompensi = async () => { try { return (await L.DB.tutti()).map(r => r.f); } catch(e){ console.error(e); return null; } };
   // conteggi economici con SocialGlass secondo l'accordo impostato dall'amministratore
   let acc = null; try { acc = isOtt ? await L.DB.ottico(s.id) : await L.DB.login("caf", s.id); } catch(e){ console.error(e); }
   const q = new URL(req.url, "http://x").searchParams, gg = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "";
@@ -79,5 +74,5 @@ module.exports = L.wrap(async (req, res) => {
   const conv = await L.caricaListini(), mioLis = isOtt ? String((acc && acc.Listino) || "A").toUpperCase() : "";
   const listini = isOtt ? {[mioLis]: conv[mioLis] || conv.A} : conv;
   const lb = isOtt ? (await L.DB.meta("laboratorio")) || {} : {};
-  L.send(res, 200, {laboratorio: isOtt ? {nome: lb.nome || "Laboratorio", indirizzo: lb.indirizzo || "", telefono: lb.telefono || ""} : undefined, clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc, gg(q.get("da")), gg(q.get("a")), isOtt ? "ottica" : "caf")});
+  L.send(res, 200, {laboratorio: isOtt ? {nome: lb.nome || "Laboratorio", indirizzo: lb.indirizzo || "", telefono: lb.telefono || ""} : undefined, clienti: list, esposte, appuntamenti, orari, segnalazioni, listini, estratto: L.estratto(rows.map(r => r.f), acc && Object.assign({ID: s.id}, acc), gg(q.get("da")), gg(q.get("a")), isOtt ? "ottica" : "caf", await tuttiPerCompensi())});
 });
