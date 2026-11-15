@@ -179,18 +179,24 @@ async def main():
             subid, cus = pgA.get("abbonamento"), pgA.get("cliente")
             pmko = stripe("POST", "payment_methods/pm_card_chargeCustomerFail/attach", {"customer": cus})["id"]
             stripe("POST", f"subscriptions/{subid}", {"default_payment_method": pmko})
-            try: up = stripe("POST", f"subscriptions/{subid}", {"billing_cycle_anchor": "now", "proration_behavior": "none", "expand[]": "latest_invoice"}); li = up.get("latest_invoice") or {}
-            except Exception as e: li = {}; print("  (rinnovo forzato:", str(e)[:200], ")")
-            print("  rinnovo forzato: abbonamento", up.get("status") if li else "?", "| ultima fattura", li.get("id"), li.get("status"), li.get("billing_reason"), li.get("attempt_count"))
+            pulito = lambda x: str(x).replace("{", "(").replace("}", ")").replace("\n", " ")[:400]   # GitHub nasconde le graffe (segreto su più righe)
+            try:
+                up = stripe("POST", f"subscriptions/{subid}", {"billing_cycle_anchor": "now", "proration_behavior": "none"}); print("  rinnovo forzato:", up.get("status"))
+            except Exception as e:
+                print("  rinnovo forzato non possibile:", pulito(e))
+                # come un rinnovo: fattura del canone legata all'abbonamento, addebitata subito sulla carta che rifiuta
+                stripe("POST", "invoiceitems", {"customer": cus, "subscription": subid, "currency": "eur", "amount": 990, "description": "Canone mensile (prova generale)"})
+                inv0 = stripe("POST", "invoices", {"customer": cus, "subscription": subid, "collection_method": "charge_automatically", "pending_invoice_items_behavior": "include", "default_payment_method": pmko})
+                print("  fattura di rinnovo creata:", inv0["id"], inv0["status"])
             # la fattura del rinnovo si chiude e si prova a pagare subito (Stripe altrimenti aspetta circa un'ora)
             for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"]:
                 if i["status"] == "draft": i = stripe("POST", f"invoices/{i['id']}/finalize")
                 if i["status"] == "open":
                     try: stripe("POST", f"invoices/{i['id']}/pay")
-                    except Exception as e: print("  pagamento rifiutato come previsto:", str(e)[:100])
+                    except Exception as e: print("  pagamento rifiutato come previsto:", pulito(e)[:160])
             c = attendi(lambda: (lambda x: x if (x.get("ordine") or {}).get("pagamento", {}).get("insoluto") else None)(stato(uvA)), 120)
             if not c:
-                for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"]: print("  fattura", i["id"], i["status"], i.get("billing_reason"), i.get("attempt_count"), i.get("amount_due"))
+                for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"]: print("  fattura", i["id"], i["status"], i.get("billing_reason"), i.get("attempt_count"), i.get("amount_due"), pulito(i.get("subscription_details") or (i.get("parent") or {}).get("subscription_details")))
                 for ev in stripe("GET", "events", {"type": "invoice.payment_failed", "limit": 3})["data"]: print("  avviso", ev["id"], ev["data"]["object"].get("id"), "consegne in sospeso:", ev.get("pending_webhooks"))
             esito("B1 canone mensile rifiutato dalla carta → insoluto sul sito", bool(c), ((c or {}).get("ordine") or {}).get("pagamento", {}).get("insoluto"))
             s, d = adm("dati"); esito("B2 il caso compare in «Da risolvere»", any(x["univoco"] == uvA and x["tipo"] == "insoluto" for x in d.get("coda", [])))
