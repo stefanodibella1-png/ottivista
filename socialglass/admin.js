@@ -407,7 +407,8 @@ ${o.disattivato ? `<div class="esito err" style="display:block;margin:6px 0">Dis
       <div class="scheda"><b>Verifica legale</b><p style="margin:6px 0">Spunta quando un consulente ha controllato condizioni dell'abbonamento e informativa privacy.</p>
       <label class="gdpr"><input type="checkbox" data-legale ${d.pronto.find(x => /consulente/.test(x[0]))[1] ? "checked" : ""}> Verificate</label></div>
       <div class="scheda"><b>Dati di prova</b><p style="margin:6px 0">Rimuove gli accessi CAF001, OTT07, OTT12, le ottiche e montature di prova libere e i clienti creati con quegli accessi. Da fare prima di aprire il servizio al pubblico.</p>
-      <button type="button" class="grigio full" data-prova>${d.prova ? "Rimuovi i dati di prova" : "Dati di prova già rimossi"}</button></div>
+      <div id="provaElenco"></div>
+      <button type="button" class="grigio full" data-prova>${d.prova ? "Guarda cosa verrà rimosso" : "Dati di prova già rimossi"}</button></div>
       <button type="button" class="grigio full" data-esci>Esci dal pannello</button>`;
   }
   $("admCorpo").innerHTML = h;
@@ -561,9 +562,19 @@ async function clic(e){
   }
   if (b.hasAttribute("data-prova")){
     if (!dati.prova) return;
-    if (!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Confermi la rimozione? Tocca di nuovo"; b.className = "verde full"; return; }
-    const r = await call("rimuoviProva"); if (!r.ok) return msg(r.data.errore, "err");
-    await carica(); msg(`Dati di prova rimossi (${r.data.clientiRimossi} clienti di prova).`); return;
+    const box = document.getElementById("provaElenco");
+    // primo tocco: elenco dei clienti creati con gli accessi di prova; si toglie la spunta a chi va tenuto (es. un cliente vero registrato con un accesso di prova)
+    if (!b.dataset.ok){
+      const r = await call("rimuoviProva", {anteprima: true}); if (!r.ok) return msg(r.data.errore, "err");
+      const cl = r.data.clienti || [];
+      box.innerHTML = `<p style="margin:8px 0 4px">Accessi: <b>${r.data.accessi.join(", ")}</b> · montature di prova libere: <b>${r.data.montature.join(", ")}</b></p>
+        <p style="margin:4px 0">Clienti creati con gli accessi di prova (${cl.length}). <b>Togli la spunta a chi è un cliente vero</b>: resterà com'è.</p>
+        ${cl.map(c => `<label class="gdpr"><input type="checkbox" data-prova-cliente="${esc(c.univoco)}" ${c.prova || !c.pagato ? "checked" : ""}> ${esc(c.univoco)} · ${esc(c.nome)} · ${esc(c.stato)}${c.pagato ? " · <b>ha un abbonamento</b>" : ""}${c.prova ? " · di prova" : ""}</label>`).join("") || "<p>Nessun cliente.</p>"}`;
+      b.dataset.ok = "1"; b.textContent = "Rimuovi i dati di prova (clienti spuntati)"; b.className = "verde full"; return;
+    }
+    const tieni = [...box.querySelectorAll("[data-prova-cliente]")].filter(x => !x.checked).map(x => x.dataset.provaCliente);
+    const r = await call("rimuoviProva", {tieni}); if (!r.ok) return msg(r.data.errore, "err");
+    await carica(); msg(`Dati di prova rimossi (${r.data.clientiRimossi} clienti di prova${r.data.tenuti ? `, ${r.data.tenuti} tenuti` : ""}).`); return;
   }
   if (b.hasAttribute("data-esci")){ tok = ""; sessionStorage.removeItem("sg_admin"); $("adminPopup").hidden = true; return; }
 }

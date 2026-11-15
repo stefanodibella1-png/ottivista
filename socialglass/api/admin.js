@@ -89,7 +89,7 @@ module.exports = L.wrap(async (req, res) => {
       if (nel(f.Creato)){ r.nuovi++; { const kc = f.CAF || (String(f.RegistratoDa || "").startsWith("ottica") ? "dall'ottica" : "—"); r.perCaf[kc] = (r.perCaf[kc] || 0) + 1; } }
       if (nel(pg.attivatoIl)){ r.attivati++; r.perOttica[ott || "—"] = (r.perOttica[ott || "—"] || 0) + 1; }
       if (nel(o.consegnatoIl)) r.consegnati++; if (nel(pg.chiuso)) r.chiusi++;
-      if (L.situazione(f).bloccato || pg.insoluto) r.morosi++;
+      if (L.situazione(f).bloccato || L.pgVivo(o).insoluto) r.morosi++;
       for (const x of L.incassi(o)) if (nel(x.il)){ r.canoni += x.canone || 0; r.spedizioni += x.spedizione || 0; r.riscatti += x.riscatto || 0; }
       if (o.recensione && nel(o.recensione.il)) r.voti.push(o.recensione.voto);
       if (nel(f.AmicoPremiato)) r.amici++; if (o.dona && nel(o.dona.donato)) r.donati++; }
@@ -167,7 +167,7 @@ module.exports = L.wrap(async (req, res) => {
       ["Almeno un'ottica reale con accesso", ottici.some(o => !L.PROVA.ottici.includes(o.ID || o._id) && conLogin.has(o.ID || o._id))],
       ["Montature reali caricate", mont.some(m => !L.PROVA.montature.includes(m.Codice || m._id))],
       ["Dati di prova rimossi", !prova],
-      ["Pagamenti Stripe reali (non di prova)", /^sk_live_|^rk_live_/.test(L.CFG.stripeKey)],
+      ["Pagamenti Stripe reali (non di prova)", L.stripeLive()],
       ["Dominio socialglass.it collegato", /socialglass\.it/.test(L.CFG.site) && !/vercel\.app/.test(L.CFG.site)],
       ["Condizioni e informativa privacy verificate da un consulente", !!((await L.DB.meta("config")) || {}).legale],
       ["Avvisi automatici ai clienti collegati (WhatsApp Business o SMS)", L.canaliCollegati().whatsapp || L.canaliCollegati().sms]
@@ -176,8 +176,8 @@ module.exports = L.wrap(async (req, res) => {
     const diCaf = id => utenti.filter(u => u.f.CAF === id).map(u => u.f), diOtt = id => utenti.filter(u => String(u.f.Ottica1 || "").startsWith(id + " ")).map(u => u.f);
     const cfgS = await L.DB.meta("config");
     return L.send(res, 200, {
-      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", disattivato: x.Disattivato || null, prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf"), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf")}, comp(x, "caf"))),
-      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", disattivato: x.Disattivato || null, Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x.StripeAccount, conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica"), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica")}, comp(x, "ottica"))),
+      caf: caf.map(x => Object.assign({ID: x.ID || x._id, Nome: x.Nome || "", disattivato: x.Disattivato || null, prova: L.PROVA.caf.includes(x.ID || x._id), stripe: !!x[L.campoConto()], conti: L.conteggi(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf"), estratto: L.estratto(diCaf(x.ID || x._id), x, gg(b.da), gg(b.a), "caf")}, comp(x, "caf"))),
+      ottici: ottici.map(x => Object.assign({ID: x.ID || x._id, Intestatario: x.Intestatario || "", disattivato: x.Disattivato || null, Indirizzo: x.Indirizzo || "", Citta: x.Citta || "", Telefono: x.Telefono || "", Listino: x.Listino || "A", accesso: conLogin.has(x.ID || x._id), prova: L.PROVA.ottici.includes(x.ID || x._id), stripe: !!x[L.campoConto()], conti: L.conteggi(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica"), estratto: L.estratto(diOtt(x.ID || x._id), x, gg(b.da), gg(b.a), "ottica")}, comp(x, "ottica"))),
       montature: mont.map(x => Object.assign({Codice: x.Codice || x._id, Modello: x.Modello || "", Colore: x.Colore || "", Calibro: x.Calibro || "", Asse: x.Asse || "", Prezzo: x.Prezzo || "", Foto: x.Foto || "",
         Costo: x.Costo || "", Fornitore: x.Fornitore || "", CodiceFornitore: x.CodiceFornitore || "", ScortaMinima: x.ScortaMinima || "", RiordinoQta: x.RiordinoQta || "", AvvisoScorta: !!x.AvvisoScorta,
         Note: x.Note || "", Movimenti: (x.Movimenti || []).slice(0, 30), SottoScortaDal: x.SottoScortaDal || ""}, L.infoMont(x))).sort((a, b) => a.Codice.localeCompare(b.Codice)),
@@ -187,7 +187,7 @@ module.exports = L.wrap(async (req, res) => {
         .sort((a, b) => String(b.Creato).localeCompare(String(a.Creato))),
       numeri: {clienti: utenti.length, perStato, abbonamentiAttivi: attivi, canoniMensili: Math.round(canoni * 100) / 100,
         sottoScorta: mont.filter(x => { const i = L.infoMont(x); return i.sottoScorta || i.esaurita; }).filter(x => !x.Eliminata).length,
-        morosi: utenti.filter(u => { const pg = L.parseOrdine(u.f.Ordine).pagamento || {}; return pg.insoluto && !pg.chiuso; }).length},
+        morosi: utenti.filter(u => { const pg = L.pgVivo(L.parseOrdine(u.f.Ordine)); return pg.insoluto && !pg.chiuso; }).length},
       previsione: L.previsione(utenti.map(u => u.f), caf, ottici),
       // recensioni dei clienti, occhiali restituiti da donare, amici portati
       servizio: (() => { const rec = [], dona = [], amici = []; let donati = 0;
@@ -241,12 +241,12 @@ module.exports = L.wrap(async (req, res) => {
     const acc = k === "caf" ? (await L.DB.lista("caf")).find(x => (x.ID || x._id) === id) : await L.DB.ottico(id); if (!acc) return L.send(res, 404, {errore: "Non trovato."});
     const nome = k === "caf" ? (acc.Nome || id) : (acc.Intestatario || id);
     try {
-      let conto = acc.StripeAccount || "";
+      let conto = acc[L.campoConto()] || "";
       if (b.op === "collega"){
         if (!conto){
           const a = await L.stripeApi("POST", "accounts", {type: "express", country: "IT", default_currency: "eur", capabilities: {transfers: {requested: true}},
             business_profile: {name: nome}, metadata: {socialglass: k, id}}, `acct-${k}-${id}`);
-          conto = a.id; await L.DB.salva(k, id, {StripeAccount: conto});
+          conto = a.id; await L.DB.salva(k, id, {[L.campoConto()]: conto});
         }
         const link = await L.stripeApi("POST", "account_links", {account: conto, type: "account_onboarding", refresh_url: L.CFG.site + "/?stripe=riprova", return_url: L.CFG.site + "/?stripe=fatto"});
         return L.send(res, 200, {ok: true, conto, link: link.url, scade: link.expires_at});
@@ -299,15 +299,15 @@ module.exports = L.wrap(async (req, res) => {
   if (az === "solleciti"){
     const tutti = await L.DB.tutti(), ottici = await L.DB.lista("ottici"), cafs = await L.DB.lista("caf"), ora = new Date().toISOString(), out = [];
     for (const {f} of tutti){
-      const o = L.parseOrdine(f.Ordine), pg = o.pagamento || {}, ins = pg.insoluto;
+      const o = L.parseOrdine(f.Ordine), pg = L.pgVivo(o), ins = pg.insoluto;
       const daRiportare = /MANCATO PAGAMENTO/.test(pg.esito || "") && o.ritiro && o.ritiro.daRitirare && !o.ritiro.ritirato;
       if (!(ins && !pg.chiuso) && !daRiportare) continue;
       const ottId = String(f.Ottica1 || "").split(" - ")[0], ott = ottici.find(x => (x.ID || x._id) === ottId) || {}, caf = cafs.find(x => (x.ID || x._id) === f.CAF) || {};
-      const consegnato = !!o.consegnatoIl || f.Stato === L.STATI.CONSEGNATO, giorni = ins && !pg.chiuso ? L.giorniAllaChiusura(ins, ora) : 0;
+      const consegnato = !!o.consegnatoIl || f.Stato === L.STATI.CONSEGNATO || !!L.inRinnovo(o), giorni = ins && !pg.chiuso ? L.giorniAllaChiusura(ins, ora) : 0;
       out.push({univoco: f.Univoco, nome: `${L.nm(f.Nome)} ${L.nm(f.Cognome)}`.trim(), cf: f["Codice Fiscale"] || "", cellulare: L.numeroCliente(f), stato: f.Stato || "",
         caf: f.CAF || "", cafNome: caf.Nome || "", ottica: ottId, otticaNome: ott.Intestatario || "", otticaTel: ott.Telefono || "",
         tipo: ins ? ins.tipo : "", importo: ins ? ins.importo : 0, dal: ins ? ins.dal : "", tentativi: ins ? ins.tentativi : 0, prossimoTentativo: ins ? ins.prossimoTentativo : "", link: ins ? ins.link : "",
-        giorni, chiuso: pg.chiuso || "", esito: pg.esito || "", consegnato, canone: (o.prezzi || {}).rata || 0, ratePagate: pg.ratePagate || 0, riscatto: (o.prezzi || {}).riscatto || 0,
+        giorni, chiuso: pg.chiuso || "", esito: pg.esito || "", consegnato, canone: L.inRinnovo(o) ? ((o.storico || []).slice(-1)[0] || {}).rata || 0 : (o.prezzi || {}).rata || 0, ratePagate: pg.ratePagate || 0, riscatto: (o.prezzi || {}).riscatto || 0,
         messaggi: ins ? (ins.messaggi || []) : [], note: ins ? (ins.note || []) : [], ritiroDal: daRiportare ? o.ritiro.dal : "",
         testo: ins && !pg.chiuso ? L.testoSollecito(f, ins, giorni, consegnato) : `SocialGlass: ${L.nm(f.Nome)}, l'abbonamento è stato chiuso per mancato pagamento: riporta l'occhiale in ottica o contattaci per comprarlo usato.`});
     }
@@ -316,11 +316,11 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (az === "sollecito"){
     const u = await L.DB.utente("Univoco", pulito(b.id, 20).toUpperCase()); if (!u) return L.send(res, 404, {errore: "Cliente non trovato."});
-    const o = L.parseOrdine(u.f.Ordine), pg = o.pagamento || {}, ins = pg.insoluto; if (!ins) return L.send(res, 409, {errore: "Il cliente non ha pagamenti in sospeso."});
+    const o = L.parseOrdine(u.f.Ordine), pg = L.pgVivo(o), ins = pg.insoluto; if (!ins) return L.send(res, 409, {errore: "Il cliente non ha pagamenti in sospeso."});
     const ora = new Date().toISOString(); let esito = null;
     if (b.op === "nota"){ const n = pulito(b.nota, 300); if (!n) return L.send(res, 400, {errore: "Scrivi cosa hai fatto (es. telefonato, promesso pagamento)."}); ins.note = (ins.note || []).concat([{il: ora, nota: n}]).slice(-30); }
     else if (b.op === "invia"){
-      const giorni = L.giorniAllaChiusura(ins, ora), consegnato = !!o.consegnatoIl || u.f.Stato === L.STATI.CONSEGNATO, testo = L.testoSollecito(u.f, ins, giorni, consegnato);
+      const giorni = L.giorniAllaChiusura(ins, ora), consegnato = !!o.consegnatoIl || u.f.Stato === L.STATI.CONSEGNATO || !!L.inRinnovo(o), testo = L.testoSollecito(u.f, ins, giorni, consegnato);
       esito = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(ins.importo || 0).toFixed(2).replace(".", ","), String(giorni), consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", ins.link || L.CFG.site]);
       ins.messaggi = (ins.messaggi || []).concat([Object.assign({il: ora, passo: "manuale", giorni, testo}, esito)]).slice(-20);
     }
@@ -676,14 +676,21 @@ module.exports = L.wrap(async (req, res) => {
     await L.DB.meta("admin", {totp: null}); return L.send(res, 200, {ok: true});
   }
   if (az === "rimuoviProva"){
+    // clienti creati con gli accessi di prova: prima si guardano (anteprima), chi va tenuto si toglie dall'elenco
+    const di = (await L.DB.tutti()).filter(u => L.PROVA.caf.includes(u.f.CAF) || L.PROVA.ottici.some(o => String(u.f.Ottica1 || "").startsWith(o + " ")));
+    const tieni = Array.isArray(b.tieni) ? b.tieni.map(x => pulito(x, 20).toUpperCase()) : [];
+    if (b.anteprima) return L.send(res, 200, {clienti: di.map(u => { const o = L.parseOrdine(u.f.Ordine), pg = L.pgVivo(o);
+      return {univoco: u.f.Univoco, nome: `${L.nm(u.f.Nome)} ${L.nm(u.f.Cognome)}`.trim(), stato: u.f.Stato || "", caf: u.f.CAF || "", ottica: String(u.f.Ottica1 || "").split(" - ")[0], creato: u.f.Creato || "",
+        prova: !!o.prova || /PROVA/.test(`${u.f.Nome} ${u.f.Cognome}`.toUpperCase()), pagato: !!(pg.abbonamento || (pg.pagamenti || []).length)}; }),
+      accessi: L.PROVA.caf.concat(L.PROVA.ottici), montature: L.PROVA.montature});
     // accessi, ottiche e montature libere di prova; clienti creati con gli accessi di prova
     for (const id of L.PROVA.caf) await L.DB.elimina("caf", id);
     for (const id of L.PROVA.ottici){ await L.DB.elimina("ottLogin", id); await L.DB.elimina("ottici", id); }
     for (const c of L.PROVA.montature){ const m = await L.DB.montatura(c); if (m && !L.scorte(m.f).r.length) await L.DB.elimina("mont", c); }
     let n = 0;
-    for (const u of await L.DB.tutti()) if (L.PROVA.caf.includes(u.f.CAF) || L.PROVA.ottici.some(o => String(u.f.Ottica1 || "").startsWith(o + " "))){ await L.DB.elimina("utenti", u.id); n++; }
+    for (const u of di) if (!tieni.includes(u.f.Univoco)){ await L.DB.elimina("utenti", u.id); n++; }
     await L.DB.meta("config", {provaRimossa: new Date().toISOString()});
-    return L.send(res, 200, {ok: true, clientiRimossi: n});
+    return L.send(res, 200, {ok: true, clientiRimossi: n, tenuti: tieni.length});
   }
   L.send(res, 400, {errore: "Azione non valida"});
 });

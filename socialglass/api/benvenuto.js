@@ -4,12 +4,12 @@ const L = require("./_lib");
 let SITO = () => String(L.CFG.site || "").replace(/\/$/, "");
 // PROVE TECNICHE (da togliere prima dell'uscita al pubblico): barra del tempo, solo per i clienti di prova
 const diProva = f => L.PROVA.caf.includes(f.CAF) || L.PROVA.ottici.some(o => String(f.Ottica1 || "").startsWith(o + " "));
-const barraAttiva = (cfg, f) => !cfg.provaRimossa && cfg.barraTempo !== false && diProva(f);
+const barraAttiva = (cfg, f) => !L.stripeLive() && !cfg.provaRimossa && cfg.barraTempo !== false && diProva(f);
 const indietro = (v, g) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v) ? new Date(new Date(v) - g * 864e5).toISOString() : v;
 function sposta(x, g){ if (Array.isArray(x)) return x.map(y => sposta(y, g)); if (x && typeof x === "object") for (const k of Object.keys(x)) if (k !== "appuntamento") x[k] = typeof x[k] === "string" ? indietro(x[k], g) : sposta(x[k], g); return x; }
 async function tempo(req, res, u, b){
   if (!barraAttiva((await L.DB.meta("config")) || {}, u.f)) return L.send(res, 403, {errore: "La barra del tempo funziona solo con i clienti di prova."});
-  const ord = L.parseOrdine(u.f.Ordine), ora = new Date().toISOString(), pg = ord.pagamento;
+  const ord = L.parseOrdine(u.f.Ordine), ora = new Date().toISOString(), pg = ord.pagamento || L.inRinnovo(ord);
   let g = Math.round(Number(b.giorni) || 0);
   // «a 20 giorni dalla scadenza»: salta fino al momento della scelta di fine periodo
   if (b.op === "fine"){
@@ -33,7 +33,7 @@ async function tempo(req, res, u, b){
     }
   } else if (b.op === "insoluto"){
     if (!pg || !pg.attivatoIl || pg.chiuso) return L.send(res, 409, {errore: "Serve un abbonamento attivo."});
-    pg.insoluto = {tipo: "canone", importo: (ord.prezzi && ord.prezzi.rata) || 0, dal: new Date(Date.now() - Math.max(0, g) * 864e5).toISOString(), tentativi: 1, link: "", simulato: true};
+    pg.insoluto = {tipo: "canone", importo: (L.inRinnovo(ord) ? ((ord.storico || []).slice(-1)[0] || {}).rata : ord.prezzi && ord.prezzi.rata) || 0, dal: new Date(Date.now() - Math.max(0, g) * 864e5).toISOString(), tentativi: 1, link: "", simulato: true};
     await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
   } else if (b.op === "paga"){
     if (!pg || !pg.insoluto || pg.chiuso) return L.send(res, 409, {errore: "Non c'è un canone da pagare."});
@@ -173,5 +173,8 @@ module.exports = L.wrap(async (req, res) => {
     ordine: {montatura: ord.montatura || null, lenti: ord.lenti || null, trattamenti: ord.trattamenti || [], prezzi: ord.prezzi || null,
       finePeriodo: ord.finePeriodo || null, periodo: L.PREZZI.periodo(ord), rinnovo: ord.rinnovo ? {prosegue: !!(ord.rinnovo.prosegue)} : null,
       ritiro: ord.ritiro || null, storico: (ord.storico || []).length,
+      // durante il rinnovo il cliente vede il canone del vecchio occhiale non pagato (e paga da qui)
+      ...(() => { const r = L.inRinnovo(ord); if (!r || !r.insoluto) return {}; const {tipo, importo, dal, prossimoTentativo, link, simulato} = r.insoluto;
+        return {insolutoRinnovo: {tipo, importo, dal, prossimoTentativo, link, simulato: !!simulato, chiuso: !!r.chiuso, giorni: r.chiuso ? 0 : L.giorniAllaChiusura(r.insoluto)}}; })(),
       pagamento: ord.pagamento ? {stato: ord.pagamento.stato, attivatoIl: ord.pagamento.attivatoIl, ratePagate: ord.pagamento.ratePagate || 0, insoluto: ord.pagamento.insoluto ? (({tipo, importo, dal, prossimoTentativo, link, simulato}) => ({tipo, importo, dal, prossimoTentativo, link, simulato: !!simulato, giorni: ord.pagamento.chiuso ? 0 : L.giorniAllaChiusura(ord.pagamento.insoluto)}))(ord.pagamento.insoluto) : null, esito: ord.pagamento.esito || null, chiuso: ord.pagamento.chiuso || null, riscatto: ord.pagamento.riscatto ? {importo: ord.pagamento.riscatto.importo, pagato: ord.pagamento.riscatto.pagato || null} : null} : null}});
 });

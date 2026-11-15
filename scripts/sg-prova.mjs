@@ -6,13 +6,16 @@ const out = [];
 const ok = (t, c, x) => { out.push(`${c ? "OK" : "KO"} ${t}${x ? " · " + x : ""}`); if (!c) fail = true; };
 let fail = false;
 const h = await call("/api/health"); ok("health", h.d.ok, JSON.stringify(h.d));
-const caf = (await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"})).d.token;
+// con i pagamenti veri (Stripe live) la prova non crea clienti né pagamenti: solo controlli in lettura
+const live = h.d.pagamenti === "reali";
+const caf = live ? null : (await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"})).d.token;
+if (live){ const r = await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"}); ok("accesso di prova rifiutato con i pagamenti veri", r.s === 401); }
 if (!caf){
-  // accessi di prova rimossi dal pannello: si controllano solo le parti pubbliche
+  // pagamenti veri o accessi di prova rimossi dal pannello: si controllano solo le parti pubbliche
   { const r = await fetch(B + "/api/stripe-webhook", {method: "POST", headers: {"stripe-signature": "t=1,v1=x"}, body: "{}"}); ok("webhook risponde", r.status === 400); }
   { const r = await fetch(B + "/api/scadenze"); ok("controllo giornaliero protetto", r.status === 401); }
   { const r = await fetch(B + "/privacy.html"); ok("informativa privacy", r.ok); }
-  console.log(`::notice title=Prova SocialGlass::${out.join(" | ")} | accessi di prova rimossi: percorso completo non provato`);
+  console.log(`::notice title=Prova SocialGlass::${out.join(" | ")} | ${live ? "PAGAMENTI VERI: solo controlli in lettura" : "accessi di prova rimossi: percorso completo non provato"}`);
   process.exit(fail ? 1 : 0);
 }
 ok("login CAF", !!caf);

@@ -211,6 +211,25 @@ async function linkInScadenza(u, ora){
   await annota(u, o, chiave, testo); await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
   return chiave === "link5" ? "promemoria scadenza link" : chiave === "link14" ? "promemoria link (14 giorni)" : "promemoria attivazione";
 }
+// canone del vecchio occhiale non pagato mentre il rinnovo aspetta la conferma (modifica 17)
+async function insolutoNelRinnovo(u, ora){
+  const ord = L.parseOrdine(u.f.Ordine), p = L.inRinnovo(ord);
+  if (!p || !p.insoluto || p.chiuso || p.insoluto.tipo === "riscatto") return null;
+  if (new Date(ora) - new Date(p.insoluto.dal) > 30*864e5){
+    // come per gli abbonamenti attivi: si chiude, l'occhiale vecchio va restituito e il rinnovo non può partire finché il canone non è pagato
+    if (L.CFG.stripeKey) try { await L.stripeApi("DELETE", `subscriptions/${p.abbonamento}`); } catch(e){ if (!/No such subscription|canceled/i.test(e.message)) throw e; }
+    p.chiuso = ora; p.esito = "CHIUSO PER MANCATO PAGAMENTO: OCCHIALE DA RESTITUIRE";
+    ord.ritiro = ord.ritiro || {daRitirare: true, dal: ora};
+    const testo = `SocialGlass: ${L.nm(u.f.Nome)}, il canone non è stato pagato da oltre 30 giorni e l'abbonamento è stato chiuso. Riporta l'occhiale in ottica entro 15 giorni. L'occhiale nuovo non può partire finché il canone non è pagato.`;
+    const e = await L.inviaCliente(u.f, testo, [u.f.Nome || "", Number(p.insoluto.importo || 0).toFixed(2).replace(".", ","), "0", "l'occhiale andrà restituito", p.insoluto.link || L.CFG.site]);
+    p.insoluto.messaggi = (p.insoluto.messaggi || []).concat([Object.assign({il: ora, passo: 0, giorni: 0, testo}, e)]).slice(-20);
+    ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+    return "chiuso per insoluto durante il rinnovo";
+  }
+  const e = await L.sollecita(u, ord, ora); if (!e) return null;
+  ord.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)});
+  return `sollecito ${e.canale} (durante il rinnovo): ${e.inviato ? "inviato" : "da inviare a mano (" + e.motivo + ")"}`;
+}
 // controllo di un cliente (usato dal controllo giornaliero e dalla barra del tempo delle prove)
 async function controlla(u, ora, esiti){
   // chi non ha mai attivato: link valido 30 giorni dalla registrazione (poi archivio e, dopo altri 30, dati cancellati)
@@ -219,6 +238,9 @@ async function controlla(u, ora, esiti){
   // confronto con Stripe: recupera pagamenti, canoni e insoluti il cui avviso non è arrivato
   try { const r = await require("./_stripe").riconcilia(u); if (r) esiti.push(Object.assign({univoco: u.f.Univoco}, r)); }
   catch(e){ esiti.push({univoco: u.f.Univoco, errore: "confronto con Stripe: " + String(e.message).slice(0, 180)}); }
+  // rinnovo non ancora confermato con un canone del vecchio occhiale non pagato: solleciti e chiusura a 30 giorni come sempre
+  try { const r = await insolutoNelRinnovo(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); }
+  catch(e){ esiti.push({univoco: u.f.Univoco, errore: "canone durante il rinnovo: " + String(e.message).slice(0, 180)}); }
   // montatura prenotata ma ordine mai confermato: promemoria a 14 giorni, a 30 la montatura torna disponibile
   if ([L.STATI.MONTATURA, L.STATI.PAGAMENTO].includes(u.f.Stato)){
     try { const r = await attesa(u, ora); if (r) esiti.push({univoco: u.f.Univoco, esito: r}); } catch(e){ esiti.push({univoco: u.f.Univoco, errore: String(e.message).slice(0, 200)}); }

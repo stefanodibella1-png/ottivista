@@ -1458,7 +1458,10 @@ function disegnaMio(){
   // addebito con IBAN rifiutato dalla banca: messaggio chiaro sopra al modulo per riprovare
   if (u.stato === STATI.PAGAMENTO && od.pagamento && od.pagamento.stato === "RIFIUTATO" && par("pagamento") !== "ok") a = `<div class="esito err"><b>La tua banca non ha confermato l'addebito con l'IBAN</b>, quindi l'abbonamento non è partito e non ti abbiamo addebitato niente. Puoi riprovare qui sotto: con la carta l'attivazione è immediata.</div>` + a;
   if (u.stato === STATI.PAGAMENTO && par("pagamento") === "annullato") a = `<div class="esito info">Pagamento annullato: non ti è stato addebitato nulla. Quando vuoi, riprova da qui.</div>` + a;
-  const ins = od.pagamento && !od.pagamento.chiuso && od.pagamento.insoluto;
+  // durante il cambio occhiale: canone del vecchio occhiale non pagato (va saldato prima di confermare il nuovo)
+  const insR = od.insolutoRinnovo;
+  if (insR && insR.chiuso) a = `<div class="esito err"><b>Abbonamento chiuso per mancato pagamento</b> (canone di ${euro(insR.importo)} non pagato). Riporta l'occhiale in ottica entro 15 giorni. L'occhiale nuovo può partire solo dopo aver pagato il canone: per farlo scrivi o chiama la tua ottica.</div>` + a;
+  const ins = (od.pagamento && !od.pagamento.chiuso && od.pagamento.insoluto) || (insR && !insR.chiuso && insR);
   if (ins) a = `<div class="esito err"><b>${ins.tipo === "riscatto" ? "Pagamento dell'acquisto dell'usato non riuscito" : "Pagamento del canone non riuscito"}</b> (${euro(ins.importo)}).
     ${ins.giorni != null ? `<div style="font-size:18px;font-weight:700;margin:6px 0">${ins.tipo === "riscatto" ? (ins.giorni > 0 ? `Hai ancora ${ins.giorni} ${ins.giorni === 1 ? "giorno" : "giorni"} per pagarlo` : "Oggi scade il tempo per pagarlo") : ins.giorni > 0 ? `Mancano ${ins.giorni} ${ins.giorni === 1 ? "giorno" : "giorni"} alla chiusura dell'abbonamento` : "L'abbonamento si chiude oggi"}</div>` : ""}
     Riproveremo in automatico${ins.prossimoTentativo ? " il " + new Date(ins.prossimoTentativo).toLocaleDateString("it-IT") : ""}: controlla che la carta o il conto abbiano disponibilità.${ins.tipo !== "riscatto" ? " Se non paghi, alla chiusura l'occhiale va restituito." : " Se non lo paghi, l'occhiale resta di SocialGlass e va restituito in ottica."}

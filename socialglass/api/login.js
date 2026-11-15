@@ -46,6 +46,7 @@ module.exports = L.wrap(async (req, res) => {
   }
   if (!["caf", "ottico"].includes(ruolo) || !codice || !password) return L.send(res, 400, {errore: "Inserisci codice e password."});
   const id = String(codice).trim().toUpperCase();
+  if (L.accessoDiProva(ruolo, id)) return sbagliato("Codice o password non valida.");
   const rec = await L.DB.login(ruolo, id);
   if (!rec || !L.checkPw(rec.Password, password)) return sbagliato("Codice o password non valida.");
   // password ancora salvata in chiaro (accessi vecchi): si cifra adesso

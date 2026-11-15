@@ -3,7 +3,7 @@ name: socialglass-dati-prova
 on:
   workflow_dispatch:
     inputs:
-      azione: { description: "crea, elimina, clienti-crea, clienti-elimina oppure diagnosi-lab (sola lettura)", required: true, default: "crea" }
+      azione: { description: "crea, elimina, clienti-crea, clienti-elimina, diagnosi-lab o anteprima-pulizia (sola lettura)", required: true, default: "crea" }
 permissions: { contents: read }
 jobs:
   moroso:
@@ -15,5 +15,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: cd socialglass && npm i --no-audit --no-fund >/dev/null
+      - name: Niente dati di prova nuovi con i pagamenti veri
+        env: { AZIONE: "${{ github.event.inputs.azione }}" }
+        run: |
+          P=$(curl -s https://socialglass.vercel.app/api/health | node -p "JSON.parse(require('fs').readFileSync(0)).pagamenti" || echo "?")
+          case "$AZIONE" in crea|clienti-crea) [ "$P" = "reali" ] && { echo "::error::Il sito usa i pagamenti veri (Stripe live): i dati di prova non si creano più"; exit 1; } ;; esac
+          echo "pagamenti sul sito: $P"
       - env: { AZIONE: "${{ github.event.inputs.azione }}" }
-        run: case "$AZIONE" in crea|elimina) node scripts/sg-moroso-prova.cjs "$AZIONE";; clienti-crea) node scripts/sg-clienti-prova.cjs crea;; clienti-elimina) node scripts/sg-clienti-prova.cjs elimina;; diagnosi-lab) node scripts/sg-lab-diagnosi.cjs;; *) echo "azione non valida"; exit 1;; esac
+        run: case "$AZIONE" in anteprima-pulizia) node scripts/sg-pulizia-anteprima.cjs;; crea|elimina) node scripts/sg-moroso-prova.cjs "$AZIONE";; clienti-crea) node scripts/sg-clienti-prova.cjs crea;; clienti-elimina) node scripts/sg-clienti-prova.cjs elimina;; diagnosi-lab) node scripts/sg-lab-diagnosi.cjs;; *) echo "azione non valida"; exit 1;; esac

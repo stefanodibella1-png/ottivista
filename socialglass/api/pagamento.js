@@ -10,7 +10,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!u){ await L.codiceErrato(req); return L.send(res, 404, {errore: "Cliente non trovato."}); }
   // cambia carta e ricevute: pagina sicura di Stripe e elenco dei pagamenti fatti
   if (b.azione === "carta" || b.azione === "ricevute"){
-    const pg = L.parseOrdine(u.f.Ordine).pagamento || {};
+    const pg = L.pgVivo(L.parseOrdine(u.f.Ordine));   // anche durante il cambio occhiale (si paga il canone in sospeso)
     // fatture di SocialGlass (copia di cortesia; quella valida arriva nel cassetto fiscale del cliente)
     const fatture = b.azione === "ricevute" ? (await L.DB.lista("fatt")).filter(x => x.univoco === u.f.Univoco).sort((a, c) => String(c.creata).localeCompare(String(a.creata))).map(require("./_fattura").cortesia) : [];
     if (!L.CFG.stripeKey || !pg.cliente) return L.send(res, 200, b.azione === "ricevute" ? {ricevute: [], fatture, prova: true} : {errore: "Il metodo di pagamento si può cambiare dopo il primo pagamento con carta.", prova: true});
@@ -33,6 +33,9 @@ module.exports = L.wrap(async (req, res) => {
   // le due conferme del cliente, con data e ora: finiscono nella copia del contratto
   { const t = new Date().toISOString(); ord.consensi = {contratto: t, addebito: t, suMisura: t, versione: L.CONDIZIONI_VERSIONE}; }
   const back = `${L.CFG.site}/?Univoco=${encodeURIComponent(u.f.Univoco)}`;
+  const prosegue = L.inRinnovo(ord);
+  // un canone del vecchio occhiale non pagato va saldato prima di confermare quello nuovo (anche se l'abbonamento nel frattempo si è chiuso)
+  if (prosegue && prosegue.insoluto) return L.send(res, 409, {errore: `Prima di confermare l'occhiale nuovo va pagato il canone in sospeso (${Number(prosegue.insoluto.importo || 0).toFixed(2).replace(".", ",")} €). Lo trovi in cima a questa pagina.`, insoluto: true});
   if (!L.CFG.stripeKey){
     // senza Stripe collegato: attivazione simulata (solo prova)
     ord.pagamento = {stato: "SIMULATO", attivatoIl: new Date().toISOString(), ratePagate: 1}; ord.aggiornato = ord.pagamento.attivatoIl;
@@ -42,8 +45,12 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, {simulato: true});
   }
   // rinnovo con abbonamento già attivo: niente nuovo pagamento, cambia solo il canone dal prossimo mese
-  const prosegue = ord.rinnovo && ord.rinnovo.prosegue;
-  if (prosegue && prosegue.abbonamento){
+  // abbonamento chiuso su Stripe senza che l'avviso sia arrivato: si segna e si passa a un abbonamento nuovo
+  if (prosegue && !prosegue.chiuso) try {
+    const s0 = await L.stripeApi("GET", `subscriptions/${prosegue.abbonamento}`);
+    if (["canceled", "incomplete_expired"].includes(s0.status)){ prosegue.chiuso = new Date().toISOString(); prosegue.esito = "ABBONAMENTO CHIUSO SU STRIPE PRIMA DEL RINNOVO"; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); }
+  } catch(e){ if (/No such subscription/i.test(e.message)){ prosegue.chiuso = new Date().toISOString(); prosegue.esito = "ABBONAMENTO NON TROVATO SU STRIPE"; await L.DB.aggiorna(u, {Ordine: JSON.stringify(ord)}); } }
+  if (prosegue && !prosegue.chiuso){
     try {
       const sub = await L.stripeApi("GET", `subscriptions/${prosegue.abbonamento}`);
       const it = sub.items.data[0];

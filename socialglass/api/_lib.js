@@ -315,6 +315,7 @@ function checkPw(stored, p){
   return !!stored && safeEq(stored, String(p));
 }
 const PROVA = {caf: ["CAF001"], ottici: ["OTT07", "OTT12"], montature: ["SG-1042", "SG-1043", "SG-1044"]};
+const accessoDiProva = (ruolo, id) => stripeLive() && ((ruolo === "caf" && PROVA.caf.includes(id)) || (ruolo === "ottico" && PROVA.ottici.includes(id)));
 /* avvisi al cliente: SMS se configurato, altrimenti link WhatsApp da far inviare a CAF/ottico */
 /* ---------- notifiche push gratuite (app installata o browser che le supporta) ---------- */
 let WP = null; try { WP = require("web-push"); } catch(_){}
@@ -419,6 +420,12 @@ async function avvisaPronto(u){
 const GIORNI_CHIUSURA = 30, PASSI_SOLLECITO = [30, 20, 10, 5, 3, 1];
 const canaliCollegati = () => ({whatsapp: !!(CFG.waToken && CFG.waPhone), sms: !!(CFG.smsWebhook || (CFG.twSid && CFG.twToken && CFG.twFrom))});
 const numeroCliente = f => { const n = String(f.Cellulare || "").replace(/[^\d+]/g, ""); return n.startsWith("+") ? n : (String(f.Prefisso || "+39") + n.replace(/^0039/, "")); };
+// rinnovo non ancora confermato: i canoni del vecchio occhiale continuano sull'abbonamento che prosegue (ord.pagamento non c'è ancora)
+function inRinnovo(ord){ const p = ord && ord.rinnovo && ord.rinnovo.prosegue; return ord && !ord.pagamento && p && p.abbonamento ? p : null; }
+// pagamento «vivo»: quello del contratto in corso, anche durante la finestra del rinnovo
+function pgVivo(ord){ return (ord && ord.pagamento) || inRinnovo(ord) || {}; }
+// fatture già contate in un periodo precedente: mai ricontarle nel periodo nuovo
+function fattureVecchie(ord){ const p = ord && ord.rinnovo && ord.rinnovo.prosegue; if (!p) return new Set(); return new Set([...(p.idPrecedenti || []), ...(ord.pagamento ? (p.pagamenti || []).map(x => x.id) : [])]); }
 function giorniAllaChiusura(ins, ora){ return Math.max(0, Math.ceil(GIORNI_CHIUSURA - (new Date(ora || Date.now()) - new Date(ins.dal)) / 864e5)); }
 function testoSollecito(f, ins, giorni, consegnato){
   const imp = Number(ins.importo || 0).toFixed(2).replace(".", ",");
@@ -465,11 +472,11 @@ async function inviaCanale(f, testo, param, modello){
 }
 // conto alla rovescia: un messaggio a 30, 20, 10, 5, 3 e 1 giorno dalla chiusura (mai due nello stesso giorno, mai lo stesso passo due volte)
 async function sollecita(u, ord, ora){
-  const pg = ord.pagamento || {}, ins = pg.insoluto; if (!ins || pg.chiuso) return null;
+  const pg = pgVivo(ord), ins = pg.insoluto; if (!ins || pg.chiuso) return null;
   const giorni = giorniAllaChiusura(ins, ora), inviati = ins.messaggi || [];
   const passo = PASSI_SOLLECITO.filter(p => giorni <= p && !inviati.some(m => m.passo === p)).pop(); if (passo === undefined) return null;
   if (inviati.some(m => String(m.il).slice(0, 10) === String(ora).slice(0, 10))) return null;
-  const consegnato = !!ord.consegnatoIl || u.f.Stato === STATI.CONSEGNATO, testo = testoSollecito(u.f, ins, giorni, consegnato);
+  const consegnato = !!ord.consegnatoIl || u.f.Stato === STATI.CONSEGNATO || !!inRinnovo(ord), testo = testoSollecito(u.f, ins, giorni, consegnato);
   const imp = Number(ins.importo || 0).toFixed(2).replace(".", ",");
   const esito = await inviaCliente(u.f, testo, [u.f.Nome || "", imp, String(giorni), consegnato ? "l'occhiale andrà restituito" : "l'ordine sarà annullato", ins.link || CFG.site]);
   ins.messaggi = inviati.concat([Object.assign({il: ora, passo, giorni, testo}, esito)]).slice(-20);
@@ -490,8 +497,12 @@ function SITO(req){
   return /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${/^(localhost|127\.)/.test(host) ? "http" : "https"}://${host}` : CFG.site;
 }
 // portale clienti di Stripe (cambio carta e ricevute): la configurazione si crea una volta e si riusa
+// pagamenti veri: chiave Stripe live (sk_live_ o rk_live_). Con questa i dati e gli accessi di prova non funzionano più
+const stripeLive = () => /^(sk|rk)_live_/.test(CFG.stripeKey || "");
+// conto Stripe del partner: quelli creati in prova non esistono nell'account vero, quindi si tengono separati
+const campoConto = () => stripeLive() ? "StripeAccountLive" : "StripeAccount";
 async function portaleStripe(){
-  const modo = CFG.stripeKey.startsWith("sk_live") ? "live" : "test", m = (await DB.meta("stripePortale")) || {};
+  const modo = stripeLive() ? "live" : "test", m = (await DB.meta("stripePortale")) || {};
   if (m[modo]) return m[modo];
   const c = await stripeApi("POST", "billing_portal/configurations", {business_profile: {headline: "SocialGlass · il tuo abbonamento occhiale"},
     features: {payment_method_update: {enabled: true}, invoice_history: {enabled: true}, customer_update: {enabled: false}, subscription_cancel: {enabled: false}}}, "portale-" + modo);
@@ -505,8 +516,11 @@ async function rinnova(u, {otticoId, caf} = {}){
   const storico = (ord.storico || []).concat(ord.montatura ? [{montatura: ord.montatura, lenti: ord.lenti, totale: ord.prezzi && ord.prezzi.totale, rata: ord.prezzi && ord.prezzi.rata, spedizione: ord.prezzi && ord.prezzi.spedizione, inizio: pg && pg.attivatoIl, chiuso: new Date().toISOString(), incassi: incassi(Object.assign({}, ord, {storico: []}))}] : []);
   // se l'abbonamento è ancora attivo lo si tiene: al nuovo ordine cambia solo il canone
   // se un rinnovo era già in corso si conserva il suo abbonamento (mai perderlo: si pagherebbe due volte)
-  const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl}
-    : (ord.rinnovo && ord.rinnovo.prosegue) || null;
+  // le fatture già contate restano segnate: i canoni del vecchio periodo non si ricontano mai in quello nuovo
+  const prima = ord.rinnovo && ord.rinnovo.prosegue;
+  const idPrecedenti = [...new Set([...((prima && prima.idPrecedenti) || []), ...((prima && prima.pagamenti) || []).map(x => x.id), ...((pg && pg.pagamenti) || []).map(x => x.id)])].filter(Boolean).slice(-200);
+  const prosegue = pg && pg.abbonamento && !pg.chiuso ? {abbonamento: pg.abbonamento, cliente: pg.cliente, ratePagate: pg.ratePagate || 0, attivatoIl: pg.attivatoIl, idPrecedenti, ...(pg.insoluto ? {insoluto: pg.insoluto} : {})}
+    : (!pg && prima) || null;   // rinnovo già in corso (ordine non ancora confermato): stesso abbonamento, stessi canoni e insoluti
   const campi = {Stato: STATI.REGISTRATO, Ordine: JSON.stringify({storico, rinnovo: {il: new Date().toISOString(), da: caf ? "CAF " + caf : "ottico " + (otticoId || ""), prosegue}})};
   let o = null;
   if (otticoId){ o = await DB.ottico(otticoId); if (o) campi.Ottica1 = `${o.ID} - ${o.Intestatario} - ${o.Indirizzo || ""}${o.Citta || ""}`; }
@@ -653,7 +667,7 @@ function codaEccezioni(utenti, segn, diff, cfg, ora, mont){
   const d3 = !!(cfg && cfg.addebitoUsato);
   for (const {f} of utenti){
     if (f.Archiviato) continue;
-    const o = parseOrdine(f.Ordine), pg = o.pagamento || {}, nome = `${nm(f.Nome)} ${nm(f.Cognome)}`.trim(), base = {univoco: f.Univoco, nome, ottica: String(f.Ottica1 || "").split(" - ")[0]};
+    const o = parseOrdine(f.Ordine), pg = pgVivo(o), nome = `${nm(f.Nome)} ${nm(f.Cognome)}`.trim(), base = {univoco: f.Univoco, nome, ottica: String(f.Ottica1 || "").split(" - ")[0]};
     if (pg.rimborso && pg.rimborso.daFare && !pg.rimborso.fatto) add(Object.assign({tipo: "rimborso", titolo: "Rimborso del recesso da controllare e fare", dal: pg.rimborso.daFare, scadenza: piu(pg.rimborso.daFare, 14), dettaglio: "Per legge entro 14 giorni dal recesso."}, base));
     if (pg.insoluto && (!pg.chiuso || pg.insoluto.tipo === "riscatto")) add(Object.assign({tipo: "insoluto", titolo: pg.insoluto.tipo === "riscatto" ? "Acquisto dell'usato non pagato" : "Canone non pagato", dal: pg.insoluto.dal, scadenza: piu(pg.insoluto.dal, 30),
       dettaglio: `${Number(pg.insoluto.importo || 0).toFixed(2).replace(".", ",")} € · ${pg.insoluto.tipo === "riscatto" ? "dopo 30 giorni l'occhiale va restituito" : "dopo 30 giorni l'abbonamento si chiude da solo; i canoni restanti non si chiedono in automatico (D4)"}`}, base));
@@ -725,6 +739,8 @@ function verify(req, ruolo){
   if (mac.length !== good.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good))) return null;
   const p = JSON.parse(Buffer.from(body, "base64url").toString());
   if (p.exp < Date.now() || (ruolo && p.ruolo !== ruolo)) return null;
+  // con i pagamenti veri gli accessi di prova (password «demo» nel codice pubblico) non valgono più
+  if (accessoDiProva(p.ruolo, p.id)) return null;
   chi({ottico: "ottica " + p.id, lab: "laboratorio", caf: "CAF " + p.id, admin: "amministratore"}[p.ruolo] || p.ruolo);
   return p;
 }
@@ -1172,4 +1188,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

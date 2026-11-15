@@ -9,6 +9,6 @@ module.exports = L.wrap(async (req, res) => {
     notte = {giorno: n.giorno || "", fatto: !!n.fatto, fine: n.fine || "", controllati: n.controllati || 0, errori: (n.errori || []).length, lotti: n.lotti || 0};
     copia = {il: b.il || "", stato: b.stato || ""}; } catch(e){ console.error(e); }
   L.send(res, 200, {ok: true, notte, copiaEsterna: copia, demo: L.DEMO, db: L.MODO, stripe: !!L.CFG.stripeKey,
-    pagamenti: /^(sk|rk)_live_/.test(L.CFG.stripeKey) ? "reali" : L.CFG.stripeKey ? "prova" : "simulati",
+    pagamenti: L.stripeLive() ? "reali" : L.CFG.stripeKey ? "prova" : "simulati",
     titolare: {ragione: t.ragione || "", piva: t.piva || "", indirizzo: t.indirizzo || "", email: t.email || "", pec: t.pec || "", telefono: t.telefono || ""}});
 });
