@@ -203,8 +203,9 @@ async def main():
             await pg.goto(f"{SITO}/?Univoco={uvA}"); await pg.wait_for_timeout(2500); await pg.screenshot(path=f"{OUT}/B2-telefono-insoluto.png", full_page=True)
             pmok = stripe("POST", "payment_methods/pm_card_visa/attach", {"customer": cus})["id"]; stripe("POST", f"subscriptions/{subid}", {"default_payment_method": pmok})
             inv = [i for i in stripe("GET", "invoices", {"subscription": subid, "limit": 5})["data"] if i["status"] == "open"]
-            if inv: stripe("POST", f"invoices/{inv[0]['id']}/pay", {"payment_method": pmok})
-            c = attendi(lambda: (lambda x: x if not (x.get("ordine") or {}).get("pagamento", {}).get("insoluto") else None)(stato(uvA)), 120)
+            if inv: print("  pagata la fattura", inv[0]["id"], stripe("POST", f"invoices/{inv[0]['id']}/pay", {"payment_method": pmok}).get("status"))
+            c = attendi(lambda: (lambda x: x if not (x.get("ordine") or {}).get("pagamento", {}).get("insoluto") and (x["ordine"]["pagamento"].get("ratePagate") or 0) >= 2 else None)(stato(uvA)), 120)
+            print("  pagamenti registrati:", pulito([(x.get("id"), x.get("canone"), x.get("spedizione")) for x in (stato(uvA).get("ordine") or {}).get("pagamento", {}).get("pagamenti", [])]))
             esito("B3 il cliente paga → insoluto chiuso e canone contato", bool(c) and (c["ordine"]["pagamento"].get("ratePagate") or 0) >= 2, (c or {}).get("ordine", {}).get("pagamento", {}).get("ratePagate"))
 
             if os.environ.get("PG_SOLO") == "B": raise StopAsyncIteration("solo B")
