@@ -65,7 +65,7 @@ module.exports = L.wrap(async (req, res) => {
     salvaLab: "dati laboratorio", salvaTitolare: "dati titolare", rimuoviProva: "dati di prova rimossi", donati: "occhiali donati", magazzino: "movimento di magazzino", ordineFornitore: "ordine al fornitore",
     salvaFatturazione: "impostazioni di fatturazione", inviaFattura: "invio fattura ad Aruba",
     salvaFornitore: "dati fornitore", salvaMontatura: "dati montatura", canaleSolleciti: "canale dei messaggi", cambiaPassword: "password del pannello", totpAttiva: "secondo fattore attivato", totpDisattiva: "secondo fattore disattivato", sollecito: "sollecito inviato", legale: "pratica legale",
-    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", giacenzaVista: "giacenza ottica controllata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato"};
+    segnalazioneRisolta: "segnalazione risolta", correggiDati: "dati cliente corretti", rimborsa: "rimborso con Stripe", verificaRestituzione: "occhiale restituito controllato", addebitoUsato: "addebito dell'usato per restituzione mancata", giacenzaVista: "giacenza ottica controllata", cambiaOttica: "cambio ottica del cliente", attivaPartner: "partner attivato/disattivato", pilota: "pilota"};
   if (REG[az]) L.registraEsito(res, "amministratore", REG[az], b.univoco || b.id || b.ID || b.codice || b.Codice || b.tipo || "",
     [b.importo != null ? "importo " + b.importo : "", b.motivo || "", b.op ? `${b.op} ${b.qta || ""}` : "", b.CompensoTipo ? `accordo ${b.CompensoTipo} ${b.CompensoValore}` : "", b.canale || "", b.bloccato != null ? (b.bloccato ? "bloccata" : "sbloccata") : ""].filter(Boolean).join(" · "));
 
@@ -169,6 +169,15 @@ module.exports = L.wrap(async (req, res) => {
       ["Dati di prova rimossi", !prova],
       ["Pagamenti Stripe reali (non di prova)", L.stripeLive()],
       ["Dominio socialglass.it collegato", /socialglass\.it/.test(L.CFG.site) && !/vercel\.app/.test(L.CFG.site)],
+      ...await (async () => {
+        // pilota: almeno 4 settimane, almeno un canone mensile vero, ultimo controllo senza differenze; copia esterna con prova di ripristino
+        const cfgP = (await L.DB.meta("config")) || {}, pil = (await L.DB.meta("pilota")) || {}, ult = (pil.controlli || []).slice(-1)[0], ce = (await L.DB.meta("backup-esterno")) || {};
+        const settimane = cfgP.pilotaDal ? (Date.now() - new Date(cfgP.pilotaDal)) / (7 * 864e5) : 0;
+        return [["Pilota di almeno 4 settimane con pagamenti veri", L.stripeLive() && settimane >= 4],
+          ["Pilota: almeno un canone mensile addebitato da Stripe", (pil.controlli || []).some(x => x.canoniMensili > 0)],
+          ["Pilota: ultimo controllo incassi Stripe ↔ app senza differenze (ultimi 8 giorni)", !!(ult && ult.ok && Date.now() - new Date(ult.il) < 8 * 864e5)],
+          ["Copia dei dati fuori dal sito con prova di ripristino (ultimi 2 giorni)", ce.stato === "ok" && ce.ripristino > 0 && Date.now() - new Date(ce.il) < 2 * 864e5]];
+      })(),
       ["Condizioni e informativa privacy verificate da un consulente", !!((await L.DB.meta("config")) || {}).legale],
       ["Avvisi automatici ai clienti collegati (WhatsApp Business o SMS)", L.canaliCollegati().whatsapp || L.canaliCollegati().sms]
     ];
@@ -213,6 +222,7 @@ module.exports = L.wrap(async (req, res) => {
       segnalazioni: (await L.DB.lista("segn")).filter(x => x.stato === "aperta").map(x => ({id: x.ID || x._id, il: x.il, univoco: x.univoco, nome: x.nome, cellulare: x.cellulare, ottica: x.ottica, testo: x.testo, foto: x.foto || ""}))
         .sort((a, b) => String(b.il).localeCompare(String(a.il))),
       copie: (((await L.DB.meta("copie")) || {}).elenco) || [],
+      pilota: {dal: (((await L.DB.meta("config")) || {}).pilotaDal) || "", ...(((await L.DB.meta("pilota")) || {}))},
       prova, titolare: tit, pronto: lista, canali: L.canaliCollegati(), canaleSolleciti: (((await L.DB.meta("config")) || {}).canaleSolleciti) || "whatsapp",
       listini: Object.keys(await L.caricaListini()), convenzioni: L.PREZZI.LISTINI.convenzioni,
       fatturazione: await (async () => { const s = await F.impostazioni();
@@ -328,6 +338,17 @@ module.exports = L.wrap(async (req, res) => {
     else return L.send(res, 400, {errore: "Operazione non valida."});
     o.aggiornato = ora; await L.DB.aggiorna(u, {Ordine: JSON.stringify(o)});
     return L.send(res, 200, {ok: true, esito});
+  }
+  // pilota: inizio e controllo settimanale incassi Stripe ↔ app (modifica 18)
+  if (az === "pilota"){
+    if (b.op === "inizia"){ await L.DB.meta("config", {pilotaDal: b.annulla ? "" : new Date().toISOString()}); return L.send(res, 200, {ok: true}); }
+    const a = /^\d{4}-\d{2}-\d{2}$/.test(b.a || "") ? b.a + "T23:59:59.999Z" : new Date().toISOString();
+    const da = /^\d{4}-\d{2}-\d{2}$/.test(b.da || "") ? b.da + "T00:00:00.000Z" : new Date(Date.now() - 7 * 864e5).toISOString();
+    if (da > a) return L.send(res, 400, {errore: "Il periodo non è valido."});
+    let r; try { r = await L.controlloPilota(da, a); } catch(e){ return L.send(res, 502, {errore: "Stripe non risponde: riprova tra poco.", dettaglio: String(e.message).slice(0, 200)}); }
+    const prima = (await L.DB.meta("pilota")) || {}, storia = (prima.controlli || []).concat([{il: r.il, da, a, ok: r.ok, differenze: r.differenze.length, fatture: r.stripe ? r.stripe.fatture : null, canoniMensili: r.stripe ? r.stripe.canoniMensili : 0}]).slice(-30);
+    await L.DB.meta("pilota", {ultimo: r, controlli: storia});
+    return L.send(res, 200, Object.assign({}, r, {controlli: storia}));
   }
   if (az === "legale"){ await L.DB.meta("config", {legale: b.valore ? new Date().toISOString() : ""}); return L.send(res, 200, {ok: true}); }
   // fatturazione elettronica al cliente (una fattura per ogni incasso), invio tramite Aruba

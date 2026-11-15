@@ -72,6 +72,12 @@ jobs:
           node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$D/copia.json" || { echo "::error title=Copia esterna::copia non valida"; exit 1; }
           BYTE=$(stat -c %s "$D/copia.json")
           mkdir -p copia && openssl enc -aes-256-cbc -pbkdf2 -iter 300000 -salt -pass env:SG_BACKUP_PASSWORD -in "$D/copia.json" -out "copia/socialglass-$DATA.json.enc"
+          # prova di ripristino: la copia cifrata si decifra con la password e torna identica, con gli stessi clienti
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 300000 -pass env:SG_BACKUP_PASSWORD -in "copia/socialglass-$DATA.json.enc" -out "$D/prova.json" || male "la copia cifrata non si decifra"
+          cmp -s "$D/copia.json" "$D/prova.json" || male "la copia decifrata non è uguale all'originale"
+          REC=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const c=x=>Array.isArray(x)?x.length:x&&typeof x==="object"?Object.values(x).reduce((t,v)=>t+(Array.isArray(v)?v.length:0),0):0;console.log(c(j.raccolte||j))' "$D/prova.json") || male "la copia decifrata non si legge"
+          echo "REC=$REC" >> $GITHUB_ENV; echo "::notice title=Prova di ripristino::copia decifrata e identica all'originale ($REC record)"
+          shred -u "$D/prova.json" 2>/dev/null || rm -f "$D/prova.json"
           shred -u "$D/copia.json" 2>/dev/null || rm -f "$D/copia.json"
           echo "BYTE=$BYTE" >> $GITHUB_ENV; echo "DATA=$DATA" >> $GITHUB_ENV
           echo "Per leggerla: openssl enc -d -aes-256-cbc -pbkdf2 -iter 300000 -in socialglass-$DATA.json.enc -out copia.json" > copia/LEGGIMI.txt
@@ -84,7 +90,7 @@ jobs:
       - name: Esito della copia nel pannello
         if: env.BYTE != ''
         run: |
-          curl -s -o /dev/null -H "Authorization: Bearer $CS" "$SITO/api/scadenze?backup=ok&byte=$BYTE&del=$DATA"
+          curl -s -o /dev/null -H "Authorization: Bearer $CS" "$SITO/api/scadenze?backup=ok&byte=$BYTE&del=$DATA&ripristino=$REC"
   controllo:
     if: github.event.schedule == '30 8 * * *' || (github.event_name == 'workflow_dispatch' && inputs.cosa == 'controllo')
     runs-on: ubuntu-latest

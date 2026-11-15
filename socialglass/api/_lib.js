@@ -1167,6 +1167,49 @@ function registraEsito(res, chiE, azione, rif, dettaglio){
 
 /* ---------- copia dei dati ogni notte (ultime 7), scaricabile dal pannello ---------- */
 const RACCOLTE_COPIA = ["utenti", "caf", "ottLogin", "ottici", "mont", "forn", "ordForn", "segn"];
+/* ---------- pilota (modifica 18): incassi su Stripe e nell'app devono coincidere, fattura per fattura ----------
+   Si lancia per un periodo (di solito l'ultima settimana). Esito «ok» solo con zero differenze. */
+const CORREZIONI = /dati cliente corretti|cambio ottica|eliminazione|blocco anagrafica|annull/i;
+async function controlloPilota(da, a){
+  const r2 = x => Math.round(x * 100) / 100, dentro = t => t >= da && t <= a;
+  const out = {da, a, il: new Date().toISOString(), stripe: {fatture: 0, importo: 0, canoniMensili: 0}, app: {incassi: 0, importo: 0}, differenze: [], altre: [], interventi: [], erroriNotte: 0, differenzeNotte: 0};
+  // nell'app: ogni incasso con la sua fattura Stripe (anche quelli del periodo prima di un rinnovo)
+  const app = new Map(), noti = new Set();
+  for (const u of await DB.tutti()){
+    const o = parseOrdine(u.f.Ordine), p = o.rinnovo && o.rinnovo.prosegue;
+    for (const l of [(o.pagamento || {}).pagamenti, p && p.pagamenti]) for (const x of l || []) if (x && x.id){
+      noti.add(x.id); app.set(x.id, {univoco: u.f.Univoco, il: x.il, importo: r2((x.canone || 0) + (x.spedizione || 0) + (x.riscatto || 0))});
+    }
+    for (const id of (p && p.idPrecedenti) || []) noti.add(id);
+  }
+  for (const [id, x] of app) if (/^in_/.test(id) && x.importo > 0 && dentro(String(x.il || ""))){ out.app.incassi++; out.app.importo = r2(out.app.importo + x.importo); }
+  if (!CFG.stripeKey) out.stripe = null;
+  else {
+    // fatture pagate su Stripe nel periodo (si parte 45 giorni prima: la data di pagamento può essere successiva alla creazione)
+    const visti = new Set(); let dopo = null;
+    for (let pag = 0; pag < 30; pag++){
+      const l = await stripeApi("GET", "invoices", Object.assign({status: "paid", limit: 100, created: {gte: Math.floor(new Date(da) / 1000) - 45 * 86400, lte: Math.floor(new Date(a) / 1000)}}, dopo ? {starting_after: dopo} : {}));
+      for (const inv of l.data || []){
+        const pagata = new Date(((inv.status_transitions || {}).paid_at || inv.created) * 1000).toISOString();
+        if (!dentro(pagata) || !(inv.amount_paid > 0)) continue;
+        visti.add(inv.id); const imp = r2(inv.amount_paid / 100), uv = (require("./_stripe").metaDi(inv)).univoco || "";
+        out.stripe.fatture++; out.stripe.importo = r2(out.stripe.importo + imp); if (inv.billing_reason === "subscription_cycle") out.stripe.canoniMensili++;
+        if (!uv){ out.altre.push({fattura: inv.id, importo: imp, il: pagata, nota: "fattura Stripe senza cliente SocialGlass"}); continue; }
+        const x = app.get(inv.id);
+        if (!x) out.differenze.push({univoco: uv, fattura: inv.id, importo: imp, il: pagata, problema: noti.has(inv.id) ? "pagata su Stripe, contata nel periodo prima del rinnovo" : "pagata su Stripe ma non registrata nell'app"});
+        else if (Math.abs(x.importo - imp) > 0.009) out.differenze.push({univoco: uv, fattura: inv.id, importo: imp, app: x.importo, il: pagata, problema: "importo diverso"});
+      }
+      if (!l.has_more || !(l.data || []).length) break; dopo = l.data[l.data.length - 1].id;
+    }
+    for (const [id, x] of app) if (/^in_/.test(id) && x.importo > 0 && dentro(String(x.il || "")) && !visti.has(id))
+      out.differenze.push({univoco: x.univoco, fattura: id, importo: x.importo, il: x.il, problema: "registrata nell'app ma non risulta pagata su Stripe nel periodo"});
+  }
+  // interventi a mano non previsti e problemi del controllo notturno nello stesso periodo
+  try { out.interventi = (await DB.ultimi("registro", 500)).filter(x => dentro(String(x.il || "")) && CORREZIONI.test(x.azione || "")).map(({il, chi, azione, rif}) => ({il, chi, azione, rif})); } catch(e){ console.error(e); }
+  try { const n = (await DB.meta("notte")) || {}; out.erroriNotte = (n.errori || []).length; const d = (await DB.meta("differenze-stripe")) || {}; out.differenzeNotte = (d.voci || []).length; } catch(_){}
+  out.ok = !!out.stripe && !out.differenze.length && !out.erroriNotte && !out.differenzeNotte;
+  return out;
+}
 async function datiCompleti(){
   const out = {creata: new Date().toISOString(), raccolte: {}};
   for (const k of RACCOLTE_COPIA) try { out.raccolte[k] = k === "utenti" ? (await DB.tutti()).map(u => Object.assign({_id: u.id}, u.f)) : await DB.lista(k); } catch(e){ out.raccolte[k] = {errore: String(e.message).slice(0, 200)}; }
@@ -1188,4 +1231,4 @@ async function leggiCopia(data){
   return t;
 }
 
-module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};
+module.exports = {INFORMATIVA_VERSIONE, inChiaro, totp, CHIAVE_OK, CONDIZIONI_VERSIONE, GIORNI_RESTITUZIONE, codaEccezioni, segnalazioniAperte, SOSPESO, partnerSospeso, ANNULLABILI, segnaAnnullabile, annullabileDa, annullaUltimo, codiceCliente, codiceMontatura, montaturaDopoRecesso, rifiutato, pagato, Conflitto, chi, chiAgisce, preparaScrittura, versioneDi, permesso, MAPPA, chiaviPushPubblica, labMontatura, iscriviPartner, pushPartner, GIORNI_LINK, GIORNI_ARCHIVIO, LINK_SCADUTO, maiAttivato, scadenzaLink, giornoIt, PREMIO_NON_ATTIVABILE, abbonamentoAttivo, residenza, inLavorazione, annullabile, COMPENSO_BASE, giaTroppi, caricaListini, salvaListini, inviaCanale, nm, SITO, portaleStripe, oraRoma, orariDi, slotLiberi, TIPI_APP, FASCIA, registra, registraEsito, datiCompleti, copiaNotturna, leggiCopia, incassi, chiaviPush, pushCliente, premiaAmico, avvisaPronto, LAB, labAttivo, avviaLavorazione, previsione, accordiDi, estratto, liquidazioniDi, incassi, canaliCollegati, numeroCliente, stripeLive, campoConto, accessoDiProva, controlloPilota, inRinnovo, pgVivo, fattureVecchie, giorniAllaChiusura, testoSollecito, inviaCliente, sollecita, GIORNI_CHIUSURA, MAG, scorte, infoMont, disponibile, riservaMontatura, liberaMontatura, campiScorte, proposta, riordinoAuto, sottoScorta, situazione, BLOCCATO, conteggi, dataIt, hashPw, checkPw, PROVA, ipDi, bloccato, codiceErrato, TROPPI, avvisa, stripeApi, rinnova, attiva, verificaPagamento, CFG, MODO, DEMO, demo, DB, STATI, parseOrdine, linkCliente, nuovoUnivoco, sign, verify, safeEq, send, readRaw, readBody, tooMany, wrap, CF, PREZZI, NOAUTH};

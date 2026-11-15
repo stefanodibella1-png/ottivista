@@ -6,6 +6,8 @@ const out = [];
 const ok = (t, c, x) => { out.push(`${c ? "OK" : "KO"} ${t}${x ? " · " + x : ""}`); if (!c) fail = true; };
 let fail = false;
 const h = await call("/api/health"); ok("health", h.d.ok, JSON.stringify(h.d));
+// protezioni del sito (modifica 18): le intestazioni di sicurezza devono esserci sempre
+{ const r = await fetch(B + "/"), m = ["content-security-policy", "strict-transport-security", "x-content-type-options", "referrer-policy"].filter(k => !r.headers.get(k)); ok("intestazioni di sicurezza", !m.length, m.length ? "mancano " + m.join(", ") : ""); }
 // con i pagamenti veri (Stripe live) la prova non crea clienti né pagamenti: solo controlli in lettura
 const live = h.d.pagamenti === "reali";
 const caf = live ? null : (await call("/api/login", {ruolo: "caf", codice: "CAF001", password: "demo"})).d.token;

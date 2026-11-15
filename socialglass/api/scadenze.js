@@ -279,6 +279,14 @@ async function controlla(u, ora, esiti){
 }
 // lavori di fine giro: differenze con Stripe, riordino ai fornitori, fatture in sospeso, copia dei dati
 async function fineGiro(ora, esiti, differenze, copia){
+  // pilota con pagamenti veri: ogni lunedì il controllo incassi Stripe ↔ app dell'ultima settimana (si vede nel pannello)
+  try { const cfg = (await L.DB.meta("config")) || {};
+    if (cfg.pilotaDal && L.stripeLive() && new Date(ora).getUTCDay() === 1){
+      const pr = (await L.DB.meta("pilota")) || {}, gia = (pr.controlli || []).some(x => String(x.il).slice(0, 10) === String(ora).slice(0, 10));
+      if (!gia){ const r = await L.controlloPilota(new Date(new Date(ora) - 7 * 864e5).toISOString(), ora);
+        await L.DB.meta("pilota", {ultimo: r, controlli: (pr.controlli || []).concat([{il: r.il, da: r.da, a: r.a, ok: r.ok, differenze: r.differenze.length, fatture: r.stripe ? r.stripe.fatture : null, canoniMensili: r.stripe ? r.stripe.canoniMensili : 0, auto: true}]).slice(-30)});
+        esiti.push({pilota: r.ok ? "controllo settimanale: nessuna differenza" : `controllo settimanale: ${r.differenze.length} differenze`}); }
+    } } catch(e){ esiti.push({errore: "controllo pilota: " + String(e.message).slice(0, 180)}); }
   try { await L.DB.meta("differenze-stripe", {il: ora, voci: differenze}); } catch(e){ console.error(e); }
   try { for (const fo of await L.DB.lista("forn")) if (fo.RiordinoAuto){ const id = await L.riordinoAuto(fo.ID || fo._id); if (id) esiti.push({fornitore: fo.ID || fo._id, esito: "bozza di riordino " + id}); } } catch(e){ esiti.push({errore: "riordino: " + String(e.message).slice(0, 200)}); }
   try { const inv = await require("./_fattura").inviaInSospeso(); if (inv.length) esiti.push({fatture: inv}); } catch(e){ esiti.push({errore: "fatture: " + String(e.message).slice(0, 200)}); }
@@ -307,7 +315,9 @@ const handler = L.wrap(async (req, res) => {
   if (url.searchParams.get("stato")) return L.send(res, 200, {ok: true, notte: (await L.DB.meta("notte")) || null});
   if (url.searchParams.get("backup")){
     const st = String(url.searchParams.get("backup")).replace(/[^a-z-]/g, "").slice(0, 30);
-    await L.DB.meta("backup-esterno", {il: ora, stato: st, byte: Number(url.searchParams.get("byte")) || 0, data: String(url.searchParams.get("del") || "").slice(0, 10)});
+    await L.DB.meta("backup-esterno", {il: ora, stato: st, byte: Number(url.searchParams.get("byte")) || 0, data: String(url.searchParams.get("del") || "").slice(0, 10),
+      // prova di ripristino fatta dal workflow: copia decifrata, identica all'originale, con questi record
+      ...(url.searchParams.get("ripristino") ? {ripristino: Number(url.searchParams.get("ripristino")) || 0, ripristinoIl: ora} : {})});
     return L.send(res, 200, {ok: true});
   }
   // giro completo in una volta (prove con la «macchina del tempo»)

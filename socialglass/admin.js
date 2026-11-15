@@ -69,6 +69,29 @@ function contiHtml(x, tipo){
   const e = x.estratto || {}, acc = e.accordo ? window.SG_STAMPA.testoAccordo(e.accordo) : "accordo non definito";
   return `<div style="font-size:13.5px">Accordo: ${esc(acc)} · da liquidare <b>${euro(e.saldoAttuale)}</b> · <button type="button" class="linkbtn" data-conto="${tipo}:${esc(x.ID)}">estratto conto</button></div>`;
 }
+/* ---------- pilota (modifica 18): incassi Stripe e app devono coincidere prima del lancio ---------- */
+function esitoPilota(r){
+  if (!r) return "";
+  const eur = x => Number(x || 0).toFixed(2).replace(".", ",") + " €", g = x => String(x || "").slice(0, 10).split("-").reverse().join("/"), per = `${g(r.da)} – ${g(r.a)}`;
+  if (!r.stripe) return `<div class="esito info" style="display:block;margin-top:8px">Periodo ${per}: Stripe non è collegato, il confronto si fa solo con i pagamenti veri. Nell'app: ${r.app.incassi} incassi (${eur(r.app.importo)}).</div>`;
+  const righe = r.differenze.map(x => `<li><b>${esc(x.univoco)}</b> · ${esc(x.fattura)} · ${eur(x.importo)}${x.app != null ? ` (nell'app ${eur(x.app)})` : ""} · ${esc(x.problema)} <button type="button" class="linkbtn" data-scheda-da-soll="${esc(x.univoco)}">Scheda</button></li>`).join("");
+  const interv = r.interventi.length ? `<p style="margin:6px 0 0">Interventi a mano nel periodo (${r.interventi.length}): ${r.interventi.slice(0, 8).map(x => `${esc(x.azione)} ${esc(x.rif)}`).join(" · ")}. Se uno non era previsto, va capito il perché prima del lancio.</p>` : "";
+  return `<div class="esito ${r.ok ? "ok" : "err"}" style="display:block;margin-top:8px"><b>${r.ok ? "✓ Conteggi uguali" : `⚠ ${r.differenze.length} differenze`}</b> · periodo ${per}<br>
+    Stripe: ${r.stripe.fatture} pagamenti (${eur(r.stripe.importo)}), di cui ${r.stripe.canoniMensili} canoni mensili · App: ${r.app.incassi} incassi (${eur(r.app.importo)})
+    ${r.erroriNotte ? `<br>Errori nel controllo notturno: ${r.erroriNotte}` : ""}${r.differenzeNotte ? `<br>Differenze con Stripe trovate di notte: ${r.differenzeNotte}` : ""}
+    ${righe ? `<ul style="margin:6px 0 0;padding-left:18px">${righe}</ul>` : ""}${r.altre.length ? `<p style="margin:6px 0 0">Altri pagamenti su Stripe non legati a clienti: ${r.altre.length}</p>` : ""}${interv}</div>`;
+}
+function boxPilota(p){
+  const giorni = p.dal ? Math.floor((Date.now() - new Date(p.dal)) / 864e5) : 0, l = (p.controlli || []).slice(-6).reverse();
+  return `<div class="cru-box" style="margin-top:14px" id="boxPilota"><h3>Pilota</h3>
+    <p class="hint" style="margin:0 0 8px">Prima del lancio: 4-6 settimane con 1 CAF, 1-2 ottiche e 10-20 clienti veri. Ogni settimana gli incassi su Stripe e quelli registrati nell'app devono coincidere fattura per fattura (il lunedì il controllo parte da solo).</p>
+    ${p.dal ? `<p style="margin:0 0 8px">Pilota iniziato il <b>${dt(p.dal)}</b> · ${giorni} giorni (${Math.floor(giorni / 7)} settimane su 4).</p>` : `<button type="button" class="verde" data-pilota-inizia>Inizia il pilota da oggi</button>`}
+    <div class="riga" style="align-items:flex-end;gap:8px;flex-wrap:wrap"><div><label class="lbl" for="pilDa">Dal</label><input type="date" id="pilDa" value="${new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10)}"></div>
+      <div><label class="lbl" for="pilA">Al</label><input type="date" id="pilA" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <button type="button" class="grigio" data-pilota-controlla style="margin:0">Confronta Stripe e app</button></div>
+    <div id="pilEsito">${esitoPilota(p.ultimo)}</div>
+    ${l.length ? `<p class="hint" style="margin:8px 0 0">Ultimi controlli: ${l.map(x => `${x.ok ? "✅" : "⚠"} ${dt(x.il)}${x.auto ? " (auto)" : ""}`).join(" · ")}</p>` : ""}</div>`;
+}
 let contoAperto = null, segConti = "caf", stripeStato = {}, tokenPaga = Math.random().toString(36).slice(2);
 // pagamento al partner con Stripe Connect
 function bloccoStripe(tipo, x, e){
@@ -279,6 +302,7 @@ function disegna(){
           <span class="bad">${r.voto <= 3 && !r.letta ? `<button type="button" class="grigio" data-rec-letta="${esc(r.univoco)}" style="margin:0;padding:6px 10px">Fatto</button>` : ""}<button type="button" class="grigio" data-scheda-da-soll="${esc(r.univoco)}" style="margin:0;padding:6px 10px">Scheda</button></span></div>`).join("")}</div>` : '<p class="hint">Le recensioni arrivano 7 giorni dopo la consegna degli occhiali.</p>'}
         ${sv.daDonare.length ? `<h3 style="margin-top:12px">Occhiali da donare (${sv.daDonare.length})</h3><div class="lista">${sv.daDonare.map(x => `<div class="riga-cli" style="cursor:default"><span><span class="nome">${esc(x.nome)}</span><span class="cod">${esc(x.montatura)} · ritirato dall'ottica ${esc(x.ottica)} il ${dt(x.dal)}</span></span></div>`).join("")}</div>
           <button type="button" class="verde" data-donati style="margin-top:8px">Segna tutti come donati</button><p class="hint" style="font-size:12.5px">Al cliente arriva «il tuo occhiale ha aiutato qualcuno».</p>` : ""}</div>
+      ${boxPilota(d.pilota || {})}
       <details class="cru-box" style="margin-top:14px" ${mancano && mancano < d.pronto.length ? "" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--notte)">Pronto per il pubblico? ${mancano ? `Mancano ${mancano} passi su ${d.pronto.length}` : "Sì, tutto fatto"}</summary>
         <ul class="regole" style="list-style:none;padding-left:0">${d.pronto.map(([t, ok]) => `<li>${ok ? "✅" : "⬜"} ${esc(t)}</li>`).join("")}</ul></details>`;
   }
@@ -559,6 +583,13 @@ async function clic(e){
     if (tipo === "fornitore") return msg(`Fornitore eliminato${r.data.articoli ? `: ${r.data.articoli} montature restano in magazzino senza fornitore` : ""}.`);
     msg(tipo === "cliente" ? `Cliente eliminato${r.data.abbonamentoChiuso ? " e abbonamento chiuso su Stripe" : ""}.` : r.data.soloAccesso ? "Accesso dell'ottica tolto: i suoi clienti restano visibili." : r.data.clientiRestano ? `Eliminato. I suoi ${r.data.clientiRestano} clienti restano nell'archivio.` : "Eliminato.");
     return;
+  }
+  if (b.hasAttribute("data-pilota-inizia")){ const r = await call("pilota", {op: "inizia"}); if (!r.ok) return msg(r.data.errore, "err"); await carica(); msg("Pilota iniziato: da oggi si contano le settimane."); return; }
+  if (b.hasAttribute("data-pilota-controlla")){
+    b.disabled = true; b.textContent = "Controllo in corso…";
+    const r = await call("pilota", {da: $("pilDa").value, a: $("pilA").value}); b.disabled = false; b.textContent = "Confronta Stripe e app";
+    if (!r.ok) return msg(r.data.errore, "err");
+    $("pilEsito").innerHTML = esitoPilota(r.data); return;
   }
   if (b.hasAttribute("data-prova")){
     if (!dati.prova) return;
