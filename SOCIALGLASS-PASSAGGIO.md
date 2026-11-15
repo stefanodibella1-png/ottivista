@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799600000**, prossimo 1799700000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799700000**, prossimo 1799800000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -83,6 +83,8 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 - Scelta di fine abbonamento (15/11/2026, v1799400000): si fa solo dagli ultimi 30 giorni della durata minima (`per.aperto`, dal `preavviso`) o dopo. Prima i tre pulsanti restano (nel riquadro «Cosa succede alla scadenza») ma il tocco apre un popup «Questa scelta sarà attiva dal <preavviso>» con la spiegazione della scelta, senza registrare nulla (v1799500000); `api/fine-periodo` risponde comunque 409. Prova: `fine21.py` (server `srv20.js`).
 
 - Codici fiscali falsi o di comodo (15/11/2026, v1799600000): `L.controlloCF` (registrazione e correzione dati) oltre a controllo e coerenza verifica che il codice del luogo di nascita (Belfiore, `api/_comuni.js`, ~10.700 codici di comuni anche soppressi e stati esteri, dati CC BY-SA da codice-fiscale-js 2.4.0) esista e corrisponda al «Luogo di nascita» dichiarato. `CF.canonico` (senza omocodia, controllo ricalcolato) e `L.clientePerCF` trovano lo stesso codice scritto in un'altra forma (registrazione, verifica, rinnovo). `L.stessaPersona` blocca la stessa persona (campo `Persona` = cognome|nome|data) con un altro codice fiscale e lo scrive nel Registro («codice fiscale sospetto»); limite: due omonimi nati lo stesso giorno vanno gestiti dall'amministratore. Nuovi campi `CFBase`, `Persona`, `DocumentoVerificato` (spunta obbligatoria «Ho controllato il codice fiscale sulla tessera sanitaria…» nel modulo); i clienti vecchi li ricevono nel giro notturno; la cancellazione dei dati li svuota. Rinnovo del CAF: mostra la stessa scheda della verifica anagrafica e, se il cliente aveva scelto di comprare l'usato o restituire, chiede conferma («ha cambiato idea»). Prove: `cf22.py`, `rin22.py` (server `srv20.js`).
+
+- Pagina che «si muoveva» sul telefono (15/11/2026, v1799700000): la lente ingrandita (`.fuoco`, scala 1.12) vicino al bordo destro allargava la pagina oltre lo schermo; il telefono rimpiccioliva la vista a ogni giro della lente e tutto (anche la scheda del cliente aperta sopra) si spostava. Ora `.scena .resp{overflow:clip}` e `html{overflow-x:clip}`. Prova: `dup23d.py` (larghezza pagina sempre 390 su telefono), server `srv23.js`.
 
 ## Laboratorio: verifica della montatura (13/11/2026)
 - Al pagamento (`avviaLavorazione`) la busta nasce «DA VERIFICARE» (`ord.lab.verifica`) e il laboratorio riceve una notifica push (iscrizione con «🔔 Attiva notifiche» in `laboratorio.html`; meta `push-lab`). La ricetta resta nascosta finché la montatura non è disponibile; le azioni ritirata/inizia/pronto sono rifiutate prima.

@@ -21,7 +21,9 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{height:100%;background:#fff;-webkit-text-size-adjust:100%}
+html{height:100%;background:#fff;-webkit-text-size-adjust:100%;overflow-x:hidden;overflow-x:clip}
+/* la lente ingrandita (.fuoco, scala 1.12) vicino al bordo non deve allargare la pagina: sul telefono la pagina rimpiccioliva e tutto si spostava */
+.scena .resp{overflow:clip}
 body{margin:0;min-height:100vh;min-height:100svh;font-family:var(--font);font-size:15px;line-height:1.6;color:var(--testo);position:relative;overflow-x:hidden;
   background:radial-gradient(900px 520px at 100% -10%,rgba(0,105,217,.13),transparent 60%),radial-gradient(700px 480px at 62% 0%,rgba(46,125,50,.08),transparent 60%),#fff}
 h1,h2,h3{letter-spacing:-.015em}
@@ -795,9 +797,9 @@ summary{min-height:24px}
 
   <div class="demo-nota" id="demoNota" hidden></div>
 
-<script src="cf.js?v=1799600000"></script>
-<script src="listini.js?v=1799600000"></script>
-<script src="app.js?v=1799600000"></script>
-<script src="prove-tempo.js?v=1799600000"></script>
+<script src="cf.js?v=1799700000"></script>
+<script src="listini.js?v=1799700000"></script>
+<script src="app.js?v=1799700000"></script>
+<script src="prove-tempo.js?v=1799700000"></script>
 </body>
 </html>
