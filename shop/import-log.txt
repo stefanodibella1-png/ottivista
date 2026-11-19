@@ -1,8 +1,10 @@
-prodotti letti: 637
+prodotti letti: 646
 … 0 elaborate, 0 con AR, 0 min
-… 40 elaborate, 33 con AR, 4 min
-… 80 elaborate, 71 con AR, 5 min
-… 120 elaborate, 102 con AR, 11 min
-… 160 elaborate, 111 con AR, 22 min
-… 200 elaborate, 133 con AR, 29 min
-montature: 636 · con AR: 135 · senza misure: 5
+… 40 elaborate, 32 con AR, 4 min
+… 80 elaborate, 70 con AR, 4 min
+… 120 elaborate, 105 con AR, 7 min
+… 160 elaborate, 118 con AR, 15 min
+… 200 elaborate, 133 con AR, 22 min
+… 240 elaborate, 144 con AR, 30 min
+… 280 elaborate, 170 con AR, 34 min
+montature: 645 · con AR: 172 · senza misure: 5
