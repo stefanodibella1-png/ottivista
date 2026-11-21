@@ -734,7 +734,7 @@ function codaEccezioni(utenti, segn, diff, cfg, ora, mont, labOn){
 // segnalazioni aperte del cliente: finché non sono risolte il rinnovo aspetta
 const segnalazioniAperte = f => (parseOrdine(f.Ordine).segnalazioni || []).filter(x => x.stato === "aperta");
 // versione dell'informativa privacy (privacy.html): si salva con il consenso del cliente; cambiarla se cambia il testo
-const INFORMATIVA_VERSIONE = "2026-11-14";
+const INFORMATIVA_VERSIONE = "2026-11-21";
 const LINK_SCADUTO = "Il link è scaduto: sono passati 30 giorni dalla registrazione senza attivare l'abbonamento. Se vuoi ancora i tuoi occhiali, torna al CAF o in ottica: ti registriamo di nuovo in un minuto.";
 function maiAttivato(f){ const o = parseOrdine(f && f.Ordine), pg = o.pagamento || {}; return !pg.attivatoIl && pg.stato !== "IN VERIFICA" && !(o.storico || []).length && !o.rinnovo; }
 // chi si registra da ora ha la data scritta nella scheda (LinkFino); per chi era già registrato i 30 giorni partono dal 13/11/2026

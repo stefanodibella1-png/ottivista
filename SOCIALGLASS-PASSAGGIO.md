@@ -11,7 +11,7 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
 
 ## Regole tecniche da rispettare
 - **Vercel Hobby: massimo 12 funzioni** e sono già 12 (file in `api/` escluso `_lib.js`). Nuovi endpoint: dentro file esistenti (azioni POST su `api/benvenuto`, `api/admin`, `api/ordine`, `api/login`…).
-- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1799900000**, prossimo 1800000000).
+- Dopo ogni modifica a JS/CSS: aumentare `?v=` in `index.html` e `laboratorio.html` (oggi **1800000000**, prossimo 1800100000).
 - Pubblicazione: commit su `main` → workflow `socialglass-deploy` + prova `socialglass-prova`; poi `git push -f origin main:gh-pages`. Su `main` arrivano anche commit automatici del catalogo shop: fare `git fetch` + `rebase` prima del push.
 - Firma dei commit:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
@@ -96,6 +96,8 @@ Leggi questo file all'inizio di ogni nuova sessione su SocialGlass.
   Prove: `pc24.cjs`, `ui24.py`, `liq24.cjs`, `lab24.cjs`, `adm24.py`, `ui24b.py`; 36 prove vecchie rilanciate sul codice di prima e su quello nuovo con `corri.sh` + `confronta.sh`: uguali tranne le differenze volute (cons9, cf20, rin22).
 
 - Regole dei compensi e del cambio ottica (decise da Stefano, 15/11/2026 notte, v1799900000): il compenso va a chi ha **commissionato** l'occhiale e matura solo alla consegna. Rinnovo fatto dal CAF → compenso al CAF; rinnovo fatto direttamente dall'ottica o rinnovo automatico (il cliente sceglie «occhiale nuovo» dalla sua pagina e va in ottica) → al CAF niente, solo all'ottica (`rinnova` salva `ord.caf = caf || ""`; `compensoPrevisto` salta `caf === ""`; `scadenze.esegui` passa `caf: ""`). CAF e ottica si cambiano **solo al rinnovo** (dai 30 giorni prima della scadenza), se il cliente lo chiede. «Cambia ottica» nel pannello: solo prima del pagamento (correzione della registrazione o rinnovo non ancora confermato) o, dopo la consegna, se la vecchia ottica è chiusa (disattivata); mai con l'occhiale ordinato e non consegnato. Prima di cambiare dopo la consegna fissa `ottica`/`caf` sugli occhiali già consegnati che non li avevano. Prova: `cmp25.cjs` (`comp19.cjs` aggiornata: i rinnovi di prova li fa il CAF).
+
+- Informativa privacy (21/11/2026, v1800000000): aggiunto che il laboratorio vede ricetta, montatura e nome del cliente; versione `INFORMATIVA_VERSIONE = "2026-11-21"` (i consensi già dati restano con la loro versione). Proprietà e vendita dell'occhiale in Sicilia (L.R. 25/1993 art. 71: è ottico chiunque commercializza beni del settore; L.R. 7/2024 art. 4: SCIA, 1 negozio ogni 5.000 abitanti, 300 m): Stefano è iscritto al Registro speciale, non direttore tecnico; da chiedere per iscritto a Camera di commercio di Catania e SUAP se SocialGlass (proprietaria e locatrice) deve avere un proprio esercizio di ottica. Se sì, si valuta il modello «ottica proprietaria e locatrice» (come Affittasi Occhiali).
 
 - Controllo generale (15/11/2026 sera): prova generale sul sito vero (Stripe test) tutta OK tranne D1 SEPA (non attivo nella dashboard Stripe); prove locali cons9, corr10, pag3, conc, sepa4, casi11, giro_ux, labflusso, mag12, notte13, m1, m2 senza regressioni (m1 aggiornata: nel laboratorio ora ci sono due pulsanti per busta; m1/m2 vanno lanciate con `srv-prova.js`). Health: titolare vuoto, copia esterna «manca-password», pagamenti «prova». Prompt per una nuova sessione: `SOCIALGLASS-NUOVA-SESSIONE.md`.
 
